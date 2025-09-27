@@ -1,6 +1,6 @@
-# Roemershag LoRa
+# Röemershag LoRa
 
-Rissmonitoring-Projekt für den Standort Roemershag.  
+Rissmonitoring-Projekt für den Standort Röemershag.  
 Basierend auf **Heltec WiFi LoRa 32 V3 (ESP32-S3)** mit einem **DS18B20**-Sensor.
 
 ## Payload-Format
@@ -14,7 +14,7 @@ Basierend auf **Heltec WiFi LoRa 32 V3 (ESP32-S3)** mit einem **DS18B20**-Sensor
 - LoRaWAN OTAA (EU868)  
 - AP-Modus mit Weboberfläche (Konfiguration und Monitoring)  
 - Konfiguration in NVS gespeichert  
-- OLED-Display mit sanften Updates (kein Flackern)  
+- OLED-Display mit sanften Updates
 - Datenerfassung: DS18B20, Risssensor, Batteriespannung  
 
 ## Struktur
