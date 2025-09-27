@@ -7,7 +7,7 @@
 #include <Preferences.h>
 #include <LittleFS.h>
 
-// ===== OLED (только в AP) =====
+// ===== OLED =====
 #include "HT_SSD1306Wire.h"
 SSD1306Wire OLED_Display(0x3c, 400000, SDA_OLED, SCL_OLED, GEOMETRY_128_64, RST_OLED);
 
