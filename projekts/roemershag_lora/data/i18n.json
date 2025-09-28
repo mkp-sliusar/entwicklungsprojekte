@@ -9,7 +9,6 @@
     "battery": "Battery",
     "mm": "mm",
     "mv": "mV",
-
     "controller": "Controller",
     "mode": "Mode",
     "ip": "IP",
@@ -18,7 +17,6 @@
     "heap": "Heap",
     "send": "Manual LoRa send",
     "reboot": "Reboot",
-
     "lora": "LoRa",
     "read_chip": "Read DevEUI from chip",
     "save_chip": "Save chip DevEUI",
@@ -29,14 +27,14 @@
     "ph_minutes": "Interval, min",
     "save": "Save",
     "footer_by": "developed by",
-
     "msg_saved_reboot": "Saved; rebooting…",
     "msg_save_error": "Save error",
     "msg_state_error": "state error",
     "msg_send_ok": "LoRa queued",
     "msg_send_err": "Send error",
     "msg_restarting": "restarting…",
-    "msg_reset_forbidden": "Reset forbidden"
+    "msg_reset_forbidden": "Reset forbidden",
+    "crack_len": "Crack length"
   },
   "de": {
     "title": "LoRa Rissmonitoring",
@@ -48,7 +46,6 @@
     "battery": "Batterie",
     "mm": "mm",
     "mv": "mV",
-
     "controller": "Controller",
     "mode": "Modus",
     "ip": "IP",
@@ -57,7 +54,6 @@
     "heap": "Heap",
     "send": "LoRa manuell senden",
     "reboot": "Neustart",
-
     "lora": "LoRa",
     "read_chip": "DevEUI vom Chip lesen",
     "save_chip": "Chip-DevEUI speichern",
@@ -68,14 +64,14 @@
     "ph_minutes": "Intervall, Min",
     "save": "Speichern",
     "footer_by": "entwickelt von",
-
     "msg_saved_reboot": "Gespeichert; Neustart…",
     "msg_save_error": "Speicherfehler",
     "msg_state_error": "State-Fehler",
     "msg_send_ok": "LoRa in Warteschlange",
     "msg_send_err": "Sendefehler",
     "msg_restarting": "Neustart…",
-    "msg_reset_forbidden": "Reset verweigert"
+    "msg_reset_forbidden": "Reset verweigert",
+    "crack_len": "Risslänge"
   },
   "uk": {
     "title": "LoRa Моніторинг тріщин",
@@ -87,7 +83,6 @@
     "battery": "Батарея",
     "mm": "мм",
     "mv": "мВ",
-
     "controller": "Контролер",
     "mode": "Режим",
     "ip": "IP",
@@ -96,7 +91,6 @@
     "heap": "Heap",
     "send": "Ручна передача LoRa",
     "reboot": "Перезапуск",
-
     "lora": "LoRa",
     "read_chip": "Зчитати DevEUI з чипа",
     "save_chip": "Зберегти DevEUI чипа",
@@ -107,13 +101,13 @@
     "ph_minutes": "Інтервал, хв",
     "save": "Зберегти",
     "footer_by": "розроблено",
-
     "msg_saved_reboot": "Збережено; перезапуск…",
     "msg_save_error": "Помилка збереження",
     "msg_state_error": "state error",
     "msg_send_ok": "LoRa у черзі",
     "msg_send_err": "Помилка відправки",
     "msg_restarting": "перезапуск…",
-    "msg_reset_forbidden": "Відмова у скиданні"
+    "msg_reset_forbidden": "Відмова у скиданні",
+    "crack_len": "Довжина тріщини"
   }
 }
