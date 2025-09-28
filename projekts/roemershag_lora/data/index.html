@@ -5,27 +5,55 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title id="t_title">LoRa Crack Monitoring</title>
 <style>
-:root{color-scheme:light dark;--bg:#111;--fg:#eee;--card:#1a1a1a;--border:#333;--muted:#9aa;--field:#222;--btn:#222}
-html[data-theme="light"]{--bg:#fff;--fg:#111;--card:#f7f7f8;--border:#ddd;--muted:#556;--field:#fff;--btn:#f3f4f6}
-*{box-sizing:border-box}
-body{font-family:system-ui,Arial,sans-serif;margin:16px;background:var(--bg);color:var(--fg)}
-h1{font-size:20px;margin:0 0 12px;display:flex;align-items:center;justify-content:space-between;gap:8px}
-h3{margin:0 0 8px}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
-.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px}
-.k{color:var(--muted)}
-.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-input,button{padding:8px 10px;border:1px solid var(--border);border-radius:10px;background:var(--field);color:var(--fg)}
-button:hover{background:var(--btn)}
-.field{display:flex;gap:6px;align-items:center;margin-top:8px}
-.field input{flex:1}
-small{color:var(--muted)}
-#themeBtn,#langBtn{font-size:14px;line-height:1;padding:6px 10px}
-.footer{margin-top:16px;padding-top:12px;border-top:1px solid var(--border);
-  font-size:12px;color:var(--muted);display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between}
-.footer a{color:inherit;text-decoration:none}
-.footer a:hover{text-decoration:underline}
-.hr{height:1px;background:var(--border);margin:10px 0}
+:root {
+  color-scheme: light dark;
+  --bg:#111; --fg:#eee; --card:#1a1a1a; --border:#333;
+  --muted:#9aa; --field:#222; --btn:#222;
+}
+html[data-theme="light"] {
+  --bg:#fff; --fg:#111; --card:#f7f7f8; --border:#ddd;
+  --muted:#556; --field:#fff; --btn:#f3f4f6;
+}
+* { box-sizing:border-box }
+html,body { height:100% }
+body {
+  font-family:system-ui,Arial,sans-serif;
+  margin:16px;
+  background:var(--bg);
+  color:var(--fg);
+  display:flex;
+  flex-direction:column;
+  min-height:10svh;
+  max-height: 95svh;
+}
+
+.main {
+  flex:1;
+  max-height:85vh;         
+  overflow:hidden;         
+}
+
+h1 { font-size:20px;margin:0 0 12px;display:flex;align-items:center;justify-content:space-between;gap:8px }
+h3 { margin:0 0 8px }
+.grid { display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px }
+.card { background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px }
+.k { color:var(--muted) }
+.row { display:flex;gap:8px;flex-wrap:wrap;align-items:center }
+input,button { padding:8px 10px;border:1px solid var(--border);border-radius:10px;background:var(--field);color:var(--fg) }
+button:hover { background:var(--btn) }
+.field { display:flex;gap:6px;align-items:center;margin-top:8px }
+.field input { flex:1 }
+.field label { min-width:120px }
+small { color:var(--muted) }
+#themeBtn,#langBtn { font-size:14px;line-height:1;padding:6px 10px }
+.footer {
+  margin-top:16px;padding-top:12px;border-top:1px solid var(--border);
+  font-size:12px;color:var(--muted);
+  display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:center
+}
+.footer a { color:inherit;text-decoration:none }
+.footer a:hover { text-decoration:underline }
+.hr { height:1px;background:var(--border);margin:10px 0 }
 </style>
 </head>
 <body>
@@ -37,6 +65,7 @@ small{color:var(--muted)}
   </div>
 </h1>
 
+<main class="main">
 <div class="grid">
   <!-- Sensors -->
   <div class="card">
@@ -68,159 +97,154 @@ small{color:var(--muted)}
     <h3 id="i_lora">LoRa</h3>
     <div class="row">
       <button id="btnReadChip">Read DevEUI from chip</button>
-      <button id="btnSaveChip">Save chip DevEUI</button>
+      <button id="btnSaveChip">DevEUI</button>
     </div>
+
     <div class="field">
+      <label for="devEuiField" id="i_deveui_k">DevEUI</label>
       <input id="devEuiField" placeholder="DevEUI MSB e.g. 0011223344556677">
-      <button id="btnSaveDev">Save DevEUI</button>
+      <button id="btnSaveDev">DevEUI</button>
     </div>
+
     <div class="field">
+      <label for="appEuiField" id="i_appeui_k">AppEUI</label>
       <input id="appEuiField" placeholder="AppEUI MSB">
       <button id="btnSaveAppEUI">Save</button>
     </div>
+
     <div class="field">
+      <label for="appKeyField" id="i_appkey_k">AppKey</label>
       <input id="appKeyField" placeholder="AppKey MSB">
       <button id="btnSaveAppKey">Save</button>
     </div>
+
     <div class="field">
+      <label for="minutesField" id="i_interval_k">Interval</label>
       <input id="minutesField" type="number" min="1" placeholder="Interval, min">
       <button id="btnSaveMinutes">Save</button>
     </div>
+
     <small id="devEuiMsg"></small>
   </div>
 </div>
+</main>
 
 <footer class="footer">
   <span>© <span id="yr"></span> MKP GmbH</span>
-  <span id="i_footer_by">developed by</span> <a href="mailto:roman.sliusar@marxkrontal.com">SLR</a>
+  <span id="i_footer_by">developed by</span> 
+  <a href="mailto:roman.sliusar@marxkrontal.com">SLR</a>
+  <a href="mailto:evgenij.koloda@marxkrontal.com">KOE</a>
+  <a href="mailto:Bernd.Schinkoethe@marxkrontal.com">SCE</a>
 </footer>
 
 <script>
-const THEME_KEY='theme';
-const LANG_KEY='lang';
-let I18N = {};
-let CURR_LANG = 'en';
-const LANGS = ['en','de','uk'];
+const THEME_KEY='theme', LANG_KEY='lang';
+let I18N={}, CURR_LANG='en';
+const LANGS=['en','de','uk'];
 
 function setTheme(t){
   document.documentElement.dataset.theme=t;
-  document.getElementById('themeBtn').textContent = (t==='dark'?'☀️':'🌙');
+  document.getElementById('themeBtn').textContent=(t==='dark'?'☀️':'🌙');
   localStorage.setItem(THEME_KEY,t);
 }
 function fmtTime(){const d=new Date(),p=n=>String(n).padStart(2,'0');return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;}
 function byId(i){return document.getElementById(i);}
-async function q(url,opts){const r=await fetch(url,opts); if(!r.ok) throw new Error(await r.text()); const ct=r.headers.get('content-type')||''; return ct.includes('application/json')? r.json(): r.text();}
+async function q(url,opts){const r=await fetch(url,opts);if(!r.ok)throw new Error(await r.text());const ct=r.headers.get('content-type')||'';return ct.includes('application/json')?r.json():r.text();}
 
 function applyI18n(){
-  const t = I18N[CURR_LANG]||I18N['en'];
-  // title
-  byId('i_title').textContent = t.title;
-  byId('t_title').textContent = t.title;
-  // sensors
-  byId('i_sensors').textContent = t.sensors;
-  byId('i_time_k').textContent = t.time;
-  byId('i_ds_k').textContent = t.ds18b20;
-  byId('i_adc_k').textContent = t.crack_adc;
-  byId('i_crack_k').textContent = t.crack;
-  byId('i_bat_k').textContent = t.battery;
-  byId('i_mm').textContent = t.mm;
-  byId('i_mv').textContent = t.mv;
-  // controller
-  byId('i_controller').textContent = t.controller;
-  byId('i_mode_k').textContent = t.mode;
-  byId('i_ip_k').textContent = t.ip;
-  byId('i_uptime_k').textContent = t.uptime;
-  byId('i_seconds').textContent = t.seconds;
-  byId('i_heap_k').textContent = t.heap;
-  byId('btnSend').textContent = t.send;
-  byId('btnReset').textContent = t.reboot;
-  // lora
-  byId('i_lora').textContent = t.lora;
-  byId('btnReadChip').textContent = t.read_chip;
-  byId('btnSaveChip').textContent = t.save_chip;
-  byId('btnSaveDev').textContent  = t.save_deveui;
-  byId('btnSaveAppEUI').textContent = t.save;
-  byId('btnSaveAppKey').textContent = t.save;
-  byId('btnSaveMinutes').textContent = t.save;
-  byId('devEuiField').placeholder = t.ph_deveui;
-  byId('appEuiField').placeholder = t.ph_appeui;
-  byId('appKeyField').placeholder = t.ph_appkey;
-  byId('minutesField').placeholder = t.ph_minutes;
-  byId('i_footer_by').textContent = t.footer_by;
-  // lang button label
-  byId('langBtn').textContent = CURR_LANG.toUpperCase();
+  const t=I18N[CURR_LANG]||I18N['en']||{};
+  byId('i_title').textContent=t.title||'LoRa Crack Monitoring';
+  byId('t_title').textContent=t.title||'LoRa Crack Monitoring';
+  byId('i_sensors').textContent=t.sensors||'Sensors';
+  byId('i_time_k').textContent=t.time||'Time';
+  byId('i_ds_k').textContent=t.ds18b20||'DS18B20';
+  byId('i_adc_k').textContent=t.crack_adc||'Crack ADC';
+  byId('i_crack_k').textContent=t.crack||'Crack';
+  byId('i_bat_k').textContent=t.battery||'Battery';
+  byId('i_mm').textContent=t.mm||'mm';
+  byId('i_mv').textContent=t.mv||'mV';
+  byId('i_controller').textContent=t.controller||'Controller';
+  byId('i_mode_k').textContent=t.mode||'Mode';
+  byId('i_ip_k').textContent=t.ip||'IP';
+  byId('i_uptime_k').textContent=t.uptime||'Uptime';
+  byId('i_seconds').textContent=t.seconds||'s';
+  byId('i_heap_k').textContent=t.heap||'Heap';
+  byId('btnSend').textContent=t.send||'Send';
+  byId('btnReset').textContent=t.reboot||'Reboot';
+  byId('i_lora').textContent=t.lora||'LoRa';
+  byId('btnReadChip').textContent=t.read_chip||'Read chip';
+  byId('btnSaveChip').textContent=t.save_chip||'Save chip';
+  byId('btnSaveDev').textContent=t.save_deveui||'Save DevEUI';
+  byId('btnSaveAppEUI').textContent=t.save||'Save';
+  byId('btnSaveAppKey').textContent=t.save||'Save';
+  byId('btnSaveMinutes').textContent=t.save||'Save';
+  byId('devEuiField').placeholder=t.ph_deveui||'DevEUI';
+  byId('appEuiField').placeholder=t.ph_appeui||'AppEUI';
+  byId('appKeyField').placeholder=t.ph_appkey||'AppKey';
+  byId('minutesField').placeholder=t.ph_minutes||'Interval';
+  byId('i_footer_by').textContent=t.footer_by||'developed by';
+  byId('i_deveui_k').textContent=t.deveui||'DevEUI';
+  byId('i_appeui_k').textContent=t.appeui||'AppEUI';
+  byId('i_appkey_k').textContent=t.appkey||'AppKey';
+  byId('i_interval_k').textContent=t.interval||'Interval';
+  byId('langBtn').textContent=CURR_LANG.toUpperCase();
 }
-
 async function initI18n(){
-  try{
-    I18N = await q('/i18n.json');
-  }catch(e){
-    I18N = {}; // fallback to EN literals already in HTML
-  }
-  const saved = localStorage.getItem(LANG_KEY);
-  CURR_LANG = saved && LANGS.includes(saved) ? saved : 'en';
+  try{I18N=await q('/i18n.json');}catch(e){I18N={};}
+  const saved=localStorage.getItem(LANG_KEY);
+  CURR_LANG=saved&&LANGS.includes(saved)?saved:'en';
   applyI18n();
 }
-
 document.addEventListener('DOMContentLoaded',()=>{
-  // theme
-  const savedTheme = localStorage.getItem(THEME_KEY);
-  const initTheme  = savedTheme || (window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
+  const savedTheme=localStorage.getItem(THEME_KEY);
+  const initTheme=savedTheme||(window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
   setTheme(initTheme);
-  byId('themeBtn').onclick = ()=> setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark');
-
-  // year
-  const y=byId('yr'); if(y) y.textContent=new Date().getFullYear();
-
-  // lang
-  byId('langBtn').onclick = ()=>{
-    const idx = LANGS.indexOf(CURR_LANG);
-    CURR_LANG = LANGS[(idx+1)%LANGS.length];
-    localStorage.setItem(LANG_KEY, CURR_LANG);
+  byId('themeBtn').onclick=()=>setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark');
+  const y=byId('yr');if(y)y.textContent=new Date().getFullYear();
+  byId('langBtn').onclick=()=>{
+    const idx=LANGS.indexOf(CURR_LANG);
+    CURR_LANG=LANGS[(idx+1)%LANGS.length];
+    localStorage.setItem(LANG_KEY,CURR_LANG);
     applyI18n();
   };
-
   initI18n();
-  setInterval(load,2000); load();
+  setInterval(load,2000);load();
 });
-
 async function load(){
   try{
-    const s = await q('/api/state');
+    const s=await q('/api/state');
     byId('t').textContent=fmtTime();
     byId('ds').textContent=(s.DS18B20_Temp??'--.-');
     byId('adc').textContent=(s.adc_raw??'-');
-    if(s.crack_x100!=null) byId('crk').textContent=(s.crack_x100/100).toFixed(2);
+    if(s.crack_x100!=null)byId('crk').textContent=(s.crack_x100/100).toFixed(2);
     byId('bat').textContent=(s.batt_mV??'-');
     byId('mode').textContent=s.mode||'-';
     byId('ip').textContent=s.ip||'-';
     byId('up').textContent=s.uptime_s??'-';
     byId('heap').textContent=s.heap_free??'-';
     if(s.cfg){
-      if(!byId('devEuiField').value) byId('devEuiField').value=s.cfg.devEui||'';
-      if(!byId('appEuiField').value) byId('appEuiField').value=s.cfg.appEui||'';
-      if(!byId('appKeyField').value) byId('appKeyField').value=s.cfg.appKey||'';
-      if(!byId('minutesField').value) byId('minutesField').value=s.cfg.minutes??15;
+      if(!byId('devEuiField').value)byId('devEuiField').value=s.cfg.devEui||'';
+      if(!byId('appEuiField').value)byId('appEuiField').value=s.cfg.appEui||'';
+      if(!byId('appKeyField').value)byId('appKeyField').value=s.cfg.appKey||'';
+      if(!byId('minutesField').value)byId('minutesField').value=s.cfg.minutes??15;
     }
   }catch(e){
     const t=I18N[CURR_LANG]||I18N['en']||{};
     byId('msg').textContent=t.msg_state_error||'state error';
   }
 }
-
-// LoRa config
 async function saveLoRaField(k,v){
   const t=I18N[CURR_LANG]||I18N['en']||{};
   try{
     await fetch('/api/config/lora',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({[k]:v})});
     byId('devEuiMsg').textContent=t.msg_saved_reboot||'Saved; rebooting…';
-  }catch(e){ byId('devEuiMsg').textContent=t.msg_save_error||'Save error'; }
+  }catch(e){byId('devEuiMsg').textContent=t.msg_save_error||'Save error';}
 }
 async function readDevEUI(){
   try{
-    const j = await q('/api/deveui');
-    byId('devEuiField').value = j.chip_devEui_msb || '';
-    byId('devEuiMsg').textContent = `chip MSB=${j.chip_devEui_msb}  LSB=${j.chip_devEui_lsb}  stored=${j.stored_devEui_msb}`;
+    const j=await q('/api/deveui');
+    byId('devEuiField').value=j.chip_devEui_msb||'';
+    byId('devEuiMsg').textContent=`chip MSB=${j.chip_devEui_msb}  LSB=${j.chip_devEui_lsb}  stored=${j.stored_devEui_msb}`;
   }catch(e){
     const t=I18N[CURR_LANG]||I18N['en']||{};
     byId('devEuiMsg').textContent=t.msg_save_error||'Save error';
@@ -231,34 +255,31 @@ async function saveChipDevEUI(){
   try{
     await fetch('/api/deveui',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({use:'chip'})});
     byId('devEuiMsg').textContent=t.msg_saved_reboot||'Saved; rebooting…';
-  }catch(e){ byId('devEuiMsg').textContent=t.msg_save_error||'Save error'; }
+  }catch(e){byId('devEuiMsg').textContent=t.msg_save_error||'Save error';}
 }
 async function saveDevEUI(){
-  const h = byId('devEuiField').value.trim();
+  const h=byId('devEuiField').value.trim();
   const t=I18N[CURR_LANG]||I18N['en']||{};
   try{
     await fetch('/api/deveui',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({devEui:h})});
     byId('devEuiMsg').textContent=t.msg_saved_reboot||'Saved; rebooting…';
-  }catch(e){ byId('devEuiMsg').textContent=t.msg_save_error||'Save error'; }
+  }catch(e){byId('devEuiMsg').textContent=t.msg_save_error||'Save error';}
 }
-
-// Buttons
-byId('btnReadChip').onclick = readDevEUI;
-byId('btnSaveChip').onclick = saveChipDevEUI;
-byId('btnSaveDev').onclick  = saveDevEUI;
-byId('btnSaveAppEUI').onclick = ()=> saveLoRaField('appEui', byId('appEuiField').value);
-byId('btnSaveAppKey').onclick = ()=> saveLoRaField('appKey', byId('appKeyField').value);
-byId('btnSaveMinutes').onclick= ()=> saveLoRaField('minutes', parseInt(byId('minutesField').value||'15'));
-
-byId('btnSend').onclick = async ()=>{
+byId('btnReadChip').onclick=readDevEUI;
+byId('btnSaveChip').onclick=saveChipDevEUI;
+byId('btnSaveDev').onclick=saveDevEUI;
+byId('btnSaveAppEUI').onclick=()=>saveLoRaField('appEui',byId('appEuiField').value);
+byId('btnSaveAppKey').onclick=()=>saveLoRaField('appKey',byId('appKeyField').value);
+byId('btnSaveMinutes').onclick=()=>saveLoRaField('minutes',parseInt(byId('minutesField').value||'15'));
+byId('btnSend').onclick=async()=>{
   const t=I18N[CURR_LANG]||I18N['en']||{};
-  try{ const r=await fetch('/api/send',{method:'POST'}); byId('msg').textContent = (r.ok?(t.msg_send_ok||'LoRa queued'):(t.msg_send_err||'Send error')); }
-  catch(e){ byId('msg').textContent=t.msg_send_err||'Send error'; }
+  try{const r=await fetch('/api/send',{method:'POST'});byId('msg').textContent=(r.ok?(t.msg_send_ok||'LoRa queued'):(t.msg_send_err||'Send error'));}
+  catch(e){byId('msg').textContent=t.msg_send_err||'Send error';}
 };
-byId('btnReset').onclick = async ()=>{
+byId('btnReset').onclick=async()=>{
   const t=I18N[CURR_LANG]||I18N['en']||{};
-  try{ const r=await fetch('/api/reset',{method:'POST'}); byId('msg').textContent = (r.ok?(t.msg_restarting||'restarting…'):(t.msg_reset_forbidden||'Reset forbidden')); }
-  catch(e){ byId('msg').textContent=t.msg_save_error||'Save error'; }
+  try{const r=await fetch('/api/reset',{method:'POST'});byId('msg').textContent=(r.ok?(t.msg_restarting||'restarting…'):(t.msg_reset_forbidden||'Reset forbidden'));}
+  catch(e){byId('msg').textContent=t.msg_save_error||'Save error';}
 };
 </script>
 </body>
