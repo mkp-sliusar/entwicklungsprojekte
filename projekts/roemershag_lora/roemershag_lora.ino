@@ -193,6 +193,14 @@ void api_state(){
   d["uptime_s"]= (uint32_t)(millis()/1000);
   d["heap_free"]= ESP.getFreeHeap();
 
+  // --- додано: виміри для UI ---
+  int adcRaw = 0;
+  uint16_t crack = readCrack_mm_x100(&adcRaw);
+  uint16_t batmV = readBattery_mV();
+  d["adc_raw"]    = adcRaw;      // UI: s.adc_raw
+  d["crack_x100"] = crack;       // UI: s.crack_x100  → показує в мм/100
+  d["batt_mV"]    = batmV;       // UI: s.batt_mV
+
   float tC = readTempOnceC();
   if (isfinite(tC)) d["DS18B20_Temp"] = tC;
   else              d["DS18B20_Temp"] = nullptr;
@@ -206,6 +214,7 @@ void api_state(){
   String out; serializeJson(d,out);
   http.send(200,"application/json",out);
 }
+
 void api_send(){ deviceState = DEVICE_STATE_SEND; http.send(200,"text/plain","queued"); }
 void api_reset(){ http.send(200,"text/plain","restarting"); delay(200); ESP.restart(); }
 
