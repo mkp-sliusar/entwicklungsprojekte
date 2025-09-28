@@ -1,13 +1,3 @@
-/* MKP UHFB – Heltec WiFi LoRa 32 V3 (ESP32-S3)
- * OneWire + DallasTemperature (DS18B20)
- * Пейлоад: [T_c_x100+5000][ADC_RAW][CRACK_mm_x100][VBAT_mV] = 8 байт
- *
- * Изменения по сравнению с предыдущей версией:
- *  - КАНОНИЧЕСКАЯ инициализация LoRaWAN в DEVICE_STATE_INIT в loop().
- *  - В AP-режиме Vext держим ВКЛ непрерывно (OLED питается стабильно).
- *  - Убраны VextON/OFF из функций чтения датчика температуры.
- *  - Обновление OLED без полного clear() для отсутствия «мигания».
- */
 
 #include "LoRaWan_APP.h"
 #include <WiFi.h>
