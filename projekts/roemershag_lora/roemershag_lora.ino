@@ -4,14 +4,20 @@
 #include <ArduinoJson.h>
 #include <Preferences.h>
 #include <LittleFS.h>
+#include <Wire.h>
+#include <Adafruit_ADS1X15.h>
 
 // ===== OLED =====
 #include "HT_SSD1306Wire.h"
 SSD1306Wire OLED_Display(0x3c, 400000, SDA_OLED, SCL_OLED, GEOMETRY_128_64, RST_OLED);
 
+// ===== ADS1115 на другій I²C (GPIO47/48) =====
+TwoWire I2C_ADS = TwoWire(1);
+Adafruit_ADS1115 ads;
+
 // ===== Pins (Heltec V3 / ESP32-S3) =====
 #define ONE_WIRE_BUS 4
-#define ADC_CRACK    2
+#define ADC_CRACK    2     // не використовується для crack з ADS, лишено для сумісності
 #define VBAT_Read    1
 #define ADC_Ctrl     37
 #define PIN_MODE_OUT 45
@@ -32,6 +38,9 @@ uint8_t firstDs[8] = {0};
 bool firstDsFound = false;
 const uint8_t DS_RES_BITS = 10; // ~187.5ms
 
+// ===== Режим (має бути вище за функції, що його використовують) =====
+bool apMode = false;
+
 // ===== NVS конфиг =====
 Preferences prefs;
 struct Cfg {
@@ -47,7 +56,7 @@ void loadCfg(){
   prefs.begin("uhfb", true);
   cfg.minutes  = prefs.getUInt("minutes", cfg.minutes);
   cfg.ssid     = prefs.getString("ssid", "");
-  cfg.wifi_pw = prefs.getString("wifi_pw", ""); // не використовується, але збережено для сумісності
+  cfg.wifi_pw  = prefs.getString("wifi_pw", "");
   prefs.getBytes("devEui", cfg.devEui, 8);
   prefs.getBytes("appEui", cfg.appEui, 8);
   prefs.getBytes("appKey", cfg.appKey,16);
@@ -92,7 +101,7 @@ void devEuiFromChip(uint8_t out[8]){
 }
 String devEuiSuffix6(){ char buf[7]; sprintf(buf,"%02X%02X%02X", cfg.devEui[5], cfg.devEui[6], cfg.devEui[7]); return String(buf); }
 
-// ===== DS18B20: найти первый датчик =====
+// ===== DS18B20: =====
 bool dsFindFirst(uint8_t addrOut[8]){
   if (sensors.getAddress(addrOut, 0)) return true;
   OneWire ow(ONE_WIRE_BUS);
@@ -116,13 +125,18 @@ uint16_t readBattery_mV(){
   return (uint16_t)(factor * raw * 1000.0f);
 }
 
-// Лінійна шкала: мм*100 = raw * Lx100 / 4096
+// Crack через ADS1115 AIN0: мм*100 = raw * Lx100 / 32767 (0..32767 для single-ended)
 uint16_t readCrack_mm_x100(int* rawOut){
-  analogSetAttenuation(ADC_11db);
-  delay(2);
-  int raw = analogRead(ADC_CRACK);
+  bool usedVext = false;
+  if(!apMode){ VextON(); delay(3); usedVext = true; }
+
+  int16_t raw = ads.readADC_SingleEnded(0); // AIN0 vs GND
+  if(usedVext) VextOFF();
+
+  if(raw < 0) raw = 0; // очікується 0..32767
   if(rawOut) *rawOut = raw;
-  uint32_t mmx100 = (uint32_t)raw * (uint32_t)cfg.crack_len_mm_x100 / 4096u;
+
+  uint32_t mmx100 = (uint32_t)raw * (uint32_t)cfg.crack_len_mm_x100 / 32767u;
   if (mmx100 > 65535u) mmx100 = 65535u;
   return (uint16_t)mmx100;
 }
@@ -139,7 +153,7 @@ int16_t readTemp_c_x100(){
   return (int16_t)v;
 }
 
-// Разовое чтение для UI
+// Разове читання для UI
 float readTempOnceC(){
   if (!firstDsFound) return NAN;
   sensors.requestTemperaturesByAddress(firstDs);
@@ -210,7 +224,7 @@ void api_state(){
   c["devEui"]= toHex(cfg.devEui,8);
   c["appEui"]= toHex(cfg.appEui,8);
   c["appKey"]= toHex(cfg.appKey,16);
-  c["crack_len_x100"]= cfg.crack_len_mm_x100; // нове поле
+  c["crack_len_x100"]= cfg.crack_len_mm_x100;
 
   String out; serializeJson(d,out);
   http.send(200,"application/json",out);
@@ -338,14 +352,11 @@ void oledSensorsOnce(){
   if(isfinite(t)) OLED_Display.drawString(0, 14, String("DS18B20  ")+String(t,1)+" C");
   else            OLED_Display.drawString(0, 14, "DS18B20  n/a");
   OLED_Display.drawString(0, 26, String("ADC      ")+String(adcRaw));
-  OLED_Display.drawString(0, 38, String("Crack    ")+String(crack/100.0f,2)+" mm"); // уже зі шкалою
+  OLED_Display.drawString(0, 38, String("Crack    ")+String(crack/100.0f,2)+" mm");
   OLED_Display.drawString(0, 50, String("Battery  ")+String(bat)+" mV");
 
   OLED_Display.display();
 }
-
-// ===== Режим =====
-bool apMode=false;
 
 void setup(){
   Serial.begin(115200);
@@ -362,6 +373,18 @@ void setup(){
   memcpy(devEui,  cfg.devEui,  sizeof(devEui));
   memcpy(appEui,  cfg.appEui,  sizeof(appEui));
   memcpy(appKey,  cfg.appKey,  sizeof(appKey));
+
+  // I2C для OLED (клас OLED також викликає init, але pins/частоту задаємо тут)
+  Wire.begin(SDA_OLED, SCL_OLED, 400000);
+
+  // Друга I2C для ADS1115 на GPIO47/48
+  I2C_ADS.begin(47, 48, 400000);
+  if(!ads.begin(0x48, &I2C_ADS)){
+    Serial.println("ADS1115 not found");
+  }else{
+    ads.setGain(GAIN_ONE);                 // ±4.096 В
+    ads.setDataRate(RATE_ADS1115_128SPS);  // досить
+  }
 
   sensors.begin();
   firstDsFound = dsFindFirst(firstDs);
