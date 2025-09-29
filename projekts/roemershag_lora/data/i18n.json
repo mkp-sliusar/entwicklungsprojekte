@@ -39,7 +39,8 @@
     "r0": "ADC r0",
     "mm0": "mm0",
     "r1": "ADC r1",
-    "mm1": "mm1"
+    "mm1": "mm1",
+    "crack_status":"Crack sensor", "present":"OK", "not_connected":"N/C"
   },
   "de": {
     "title": "LoRa Rissmonitoring",
@@ -81,7 +82,8 @@
     "r0": "ADC r0",
     "mm0": "mm0",
     "r1": "ADC r1",
-    "mm1": "mm1"
+    "mm1": "mm1",
+    "crack_status":"Riss-Sensor", "present":"OK", "not_connected":"N/V"
   },
   "uk": {
     "title": "LoRa Моніторинг тріщин",
@@ -123,6 +125,7 @@
     "r0": "ADC r0",
     "mm0": "mm0",
     "r1": "ADC r1",
-    "mm1": "mm1"
+    "mm1": "mm1",
+    "crack_status":"Датчик тріщини", "present":"OK", "not_connected":"N/C"
   }
 }
