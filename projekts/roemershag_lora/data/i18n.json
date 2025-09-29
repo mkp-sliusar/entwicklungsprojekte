@@ -45,7 +45,10 @@
     "not_connected": "N/C",
     "rssi": "RSSI",
     "snr": "SNR",
-    "dl_age": "DL age"
+    "dl_age": "DL age",
+    "use_chip": "Use chip DevEUI",
+    "save_all_lora": "Save all LoRa settings",
+    "save_cal_all": "Save crack calibration"
   },
   "de": {
     "title": "LoRa Rissmonitoring",
@@ -93,7 +96,10 @@
     "not_connected": "N/V",
     "rssi": "RSSI",
     "snr": "SNR",
-    "dl_age": "DL-Alter"
+    "dl_age": "DL-Alter",
+    "use_chip": "Chip-DevEUI verwenden",
+    "save_all_lora": "Alle LoRa-Einstellungen speichern",
+    "save_cal_all": "Risskalibrierung speichern"
   },
   "uk": {
     "title": "LoRa Моніторинг тріщин",
@@ -141,6 +147,9 @@
     "not_connected": "N/C",
     "rssi": "RSSI",
     "snr": "SNR",
-    "dl_age": "Вік DL"
+    "dl_age": "Вік DL",
+    "use_chip": "Використати DevEUI з чипа",
+    "save_all_lora": "Зберегти всі налаштування LoRa",
+    "save_cal_all": "Зберегти калібрування тріщини"
   }
 }
