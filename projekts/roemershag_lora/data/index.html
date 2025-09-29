@@ -5,42 +5,160 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title id="t_title">LoRa Crack Monitoring</title>
 <style>
-:root { color-scheme: light dark; --bg:#111; --fg:#eee; --card:#1a1a1a; --border:#333; --muted:#9aa; --field:#222; --btn:#222; }
-html[data-theme="light"] { --bg:#fff; --fg:#111; --card:#f7f7f8; --border:#ddd; --muted:#556; --field:#fff; --btn:#f3f4f6; }
-* { box-sizing:border-box }
-html,body { height:100% }
-body { font-family:system-ui,Arial,sans-serif; margin:16px; background:var(--bg); color:var(--fg); display:flex; flex-direction:column; min-height:10svh; max-height:95svh; }
-.main { flex:1; max-height:85vh; overflow:hidden; }
-h1 { font-size:20px;margin:0 0 12px;display:flex;align-items:center;justify-content:space-between;gap:8px }
-h3 { margin:0 0 8px }
-.grid { display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px }
-.card { background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px }
-.k { color:var(--muted) }
-.row { display:flex;gap:8px;flex-wrap:wrap;align-items:center }
-input,button { padding:8px 10px;border:1px solid var(--border);border-radius:10px;background:var(--field);color:var(--fg) }
-button:hover { background:var(--btn) }
-.field { display:flex;gap:6px;align-items:center;margin-top:8px }
-.field input { flex:1 }
-.field label { min-width:120px }
-small { color:var(--muted) }
-#themeBtn,#langBtn { font-size:14px;line-height:1;padding:6px 10px }
-.footer { margin-top:16px;padding-top:12px;border-top:1px solid var(--border);font-size:12px;color:var(--muted);display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:center }
-.footer a { color:inherit;text-decoration:none }
-.footer a:hover { text-decoration:underline }
-.hr { height:1px;background:var(--border);margin:10px 0 }
+:root{color-scheme:light dark;--bg:#111;--fg:#eee;--card:#1a1a1a;--border:#333;--muted:#9aa;--field:#222;--btn:#222}
+html[data-theme="light"]{--bg:#fff;--fg:#111;--card:#f7f7f8;--border:#ddd;--muted:#556;--field:#fff;--btn:#f3f4f6}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{font-family:system-ui,Arial,sans-serif;margin:16px;background:var(--bg);color:var(--fg);display:flex;flex-direction:column;min-height:10svh;max-height:95svh}
+.main{flex:1;max-height:85vh;overflow:hidden}
+h1{font-size:20px;margin:0 0 12px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+h3{margin:0 0 8px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
+
+/* Cards */
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px;display:flex;flex-direction:column}
+.k{color:var(--muted)}
+.hr{height:1px;background:var(--border);margin:10px 0}
+
+/* Inputs */
+input{padding:12px 14px;border:1px solid var(--border);border-radius:8px;background:var(--field);color:var(--fg)}
+input:focus{outline:none;box-shadow:0 0 0 2px inset var(--border)}
+.field{display:flex;gap:4px;align-items:center;margin-top:8px}
+.field input{flex:1;min-width:0}
+.field label{min-width:120px}
+
+/* Buttons */
+.btn{
+  padding:8px 12px;
+  border:1px solid var(--border);
+  border-radius:10px;
+  background:var(--field);
+  color:var(--fg);
+  font-weight:600;
+  margin-top:8px;   /* відступ зверху */
+}
+.btn:hover{background:var(--btn)}
+.btn-block{display:block;width:100%}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.actions{margin-top:auto}
+/* LoRa: 2 кнопки завжди на всю ширину блоку, однакової висоти */
+.card:has(#i_lora) .row {
+  display: flex;
+  gap: 12px;
+}
+
+.card:has(#i_lora) .row .btn {
+  flex: 1 1 0;          /* однакова ширина */
+  min-width: 0;
+  height: 48px;         /* фіксована висота */
+  display: flex;
+  align-items: center;  /* вертикальне вирівнювання тексту */
+  justify-content: center;
+}
+
+/* Badges */
 .badge{display:inline-block;padding:2px 8px;border:1px solid var(--border);border-radius:999px;font-size:12px;background:var(--btn)}
-.badge.ok{outline:1px solid #2c7;}
-.badge.err{outline:1px solid #e55;}
+.badge.ok{outline:1px solid #2c7}
+.badge.err{outline:1px solid #e55}
+
+small{color:var(--muted)}
+#themeBtn,#langBtn{font-size:14px;line-height:1;padding:6px 10px}
+
+/* Footer */
+.footer{margin-top:16px;padding-top:12px;border-top:1px solid var(--border);font-size:12px;color:var(--muted);display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:center}
+.footer a{color:inherit;text-decoration:none}
+.footer a:hover{text-decoration:underline}
+
+/* LoRa layout: label | input (кнопка зверху у .row) */
+.card:has(#i_lora) .field{display:grid;grid-template-columns:120px minmax(0,1fr);column-gap:6px;row-gap:8px}
+
+/* Tablet */
+@media (max-width:900px){
+  body{margin:10px}
+  .main{max-height:none;overflow:auto}
+  .grid{grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}
+  h1{flex-wrap:wrap;gap:8px}
+  .row{flex-wrap:wrap;gap:6px}
+}
+
+/* Phones */
+@media (max-width:640px){
+  body{margin:8px}
+  h1{flex-direction:column;align-items:flex-start}
+  .grid{grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+  .field{flex-direction:column;align-items:stretch}
+  .field label{min-width:unset}
+  input,.btn{width:100%;max-width:100%}
+  .row{width:100%}
+  .card:has(#i_lora) .field{grid-template-columns:1fr}
+}
+
+/* Very narrow phones */
+@media (max-width:360px){
+  .grid{grid-template-columns:1fr}
+  h1 img{height:22px}
+  #themeBtn,#langBtn{padding:6px 8px;font-size:13px}
+}
+/* === Типографіка: однаково всюди === */
+:root{
+  --ff: system-ui, Arial, sans-serif;
+  --fs: 14px;          /* базовий розмір */
+  --lh: 1.35;          /* базова лінійна висота */
+}
+
+html, body{ font-family: var(--ff); font-size: var(--fs); line-height: var(--lh) }
+
+/* Форм-елементи й кнопки наслідують базу */
+button, input, select, textarea { 
+  font: inherit; 
+  line-height: inherit; 
+  color: inherit;
+}
+
+/* Тексти допоміжні теж вирівняні */
+.k, small, label { font: inherit }
+
+/* Заголовки — лише вага, без зміни розміру */
+h1, h3 { font-family: var(--ff); line-height: 1.2 }
+h1 { font-weight: 700 }
+h3 { font-weight: 600 }
+
+/* Бейджі наслідують базовий шрифт */
+.badge { font: inherit; font-size: inherit }
+/* === Уніфіковані розміри інпутів (як на скріні) === */
+:root{
+  --in-fs: 14px;          /* розмір шрифту полів */
+  --in-lh: 1;          /* лінійна висота */
+  --in-pad-y: 8px;       /* вертикальний паддінг */
+  --in-pad-x: 16px;       /* горизонтальний паддінг */
+  --in-radius: 12px;      /* радіус кутів */
+}
+
+input, select, textarea {
+  font-size: var(--in-fs);
+  line-height: var(--in-lh);
+  padding: var(--in-pad-y) var(--in-pad-x);
+  border-radius: var(--in-radius);
+}
+
+/* трохи більші підписи поруч із полями */
+.field label { font-size: 16px }
+
+
 </style>
 </head>
 <body>
 <h1>
-  <span><img src="/logo.svg" alt="MKP" style="height:28px;vertical-align:middle;margin-right:8px"><span id="i_title">LoRa Crack Monitoring</span></span>
+  <a href="https://www.marxkrontal.com/de/" target="_blank" style="display:flex;align-items:center;text-decoration:none;color:inherit;gap:8px">
+    <img src="/logo.svg" alt="MKP" style="height:28px;vertical-align:middle">
+    <span id="i_title">LoRa Crack Monitoring</span>
+  </a>
   <div class="row">
-    <button id="langBtn" title="Language">EN</button>
-    <button id="themeBtn" title="Theme">🌙</button>
+    <button id="langBtn" class="btn" title="Language">EN</button>
+    <button id="themeBtn" class="btn" title="Theme">🌙</button>
   </div>
 </h1>
+
 
 <main class="main">
 <div class="grid">
@@ -66,9 +184,9 @@ small { color:var(--muted) }
     <div><span class="k" id="i_snr_k">SNR</span>: <b id="snr">—</b> dB</div>
     <div><span class="k" id="i_dlage_k">DL age</span>: <b id="dlage">—</b> s</div>
     <div class="hr"></div>
-    <div class="row">
-      <button id="btnSend">Manual LoRa send</button>
-      <button id="btnReset">Reboot</button>
+    <div class="row actions">
+      <button id="btnSend" class="btn">Manual LoRa send</button>
+      <button id="btnReset" class="btn">Reboot</button>
       <small id="msg"></small>
     </div>
   </div>
@@ -77,35 +195,31 @@ small { color:var(--muted) }
   <div class="card">
     <h3 id="i_lora">LoRa</h3>
     <div class="row">
-      <button id="btnReadChip">Read DevEUI from chip</button>
-      <button id="btnSaveChip">DevEUI</button>
+      <button id="btnReadChip" class="btn">Read DevEUI from chip</button>
+      <button id="btnSaveChip" class="btn">Use chip DevEUI</button>
     </div>
 
     <div class="field">
       <label for="devEuiField" id="i_deveui_k">DevEUI</label>
       <input id="devEuiField" placeholder="DevEUI MSB e.g. 0011223344556677">
-      <button id="btnSaveDev">DevEUI</button>
     </div>
-
     <div class="field">
       <label for="appEuiField" id="i_appeui_k">AppEUI</label>
       <input id="appEuiField" placeholder="AppEUI MSB">
-      <button id="btnSaveAppEUI">Save</button>
     </div>
-
     <div class="field">
       <label for="appKeyField" id="i_appkey_k">AppKey</label>
       <input id="appKeyField" placeholder="AppKey MSB">
-      <button id="btnSaveAppKey">Save</button>
     </div>
-
     <div class="field">
       <label for="minutesField" id="i_interval_k">Interval</label>
       <input id="minutesField" type="number" min="1" placeholder="Interval, min">
-      <button id="btnSaveMinutes">Save</button>
     </div>
 
-    <small id="devEuiMsg"></small>
+    <div class="actions">
+      <button id="btnSaveLoRa" class="btn btn-block">Save all LoRa settings</button>
+      <small id="devEuiMsg"></small>
+    </div>
   </div>
 
   <!-- Crack calibration -->
@@ -127,8 +241,9 @@ small { color:var(--muted) }
       <label for="mm1Field" id="i_mm1_k">mm1</label>
       <input id="mm1Field" type="number" step="0.01" min="0" placeholder="e.g. 10">
     </div>
-    <div class="row">
-      <button id="btnSaveCal">Save</button>
+
+    <div class="actions">
+      <button id="btnSaveCalAll" class="btn btn-block">Save crack calibration</button>
       <small id="calMsg"></small>
     </div>
   </div>
@@ -136,7 +251,7 @@ small { color:var(--muted) }
 </main>
 
 <footer class="footer">
-  <span>© <span id="yr"></span> MKP GmbH</span>
+  <a href="https://www.marxkrontal.com/de/" target="_blank">© <span id="yr"></span> MKP GmbH</a>
   <span id="i_footer_by">developed by</span>
   <a href="mailto:roman.sliusar@marxkrontal.com">SLR</a>
   <a href="mailto:evgenij.koloda@marxkrontal.com">KOE</a>
@@ -146,16 +261,15 @@ small { color:var(--muted) }
 <script>
 const THEME_KEY='theme', LANG_KEY='lang';
 let I18N={}, CURR_LANG='en';
-const LANGS=['en','de','uk'];
 
+function byId(i){return document.getElementById(i)}
 function setTheme(t){
   document.documentElement.dataset.theme=t;
-  document.getElementById('themeBtn').textContent=(t==='dark'?'☀️':'🌙');
+  byId('themeBtn').textContent=(t==='dark'?'☀️':'🌙');
   localStorage.setItem(THEME_KEY,t);
 }
-function fmtTime(){const d=new Date(),p=n=>String(n).padStart(2,'0');return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;}
-function byId(i){return document.getElementById(i);}
-async function q(url,opts){const r=await fetch(url,opts);if(!r.ok)throw new Error(await r.text());const ct=r.headers.get('content-type')||'';return ct.includes('application/json')?r.json():r.text();}
+function fmtTime(){const d=new Date(),p=n=>String(n).padStart(2,'0');return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`}
+async function q(url,opts){const r=await fetch(url,opts);if(!r.ok)throw new Error(await r.text());const ct=r.headers.get('content-type')||'';return ct.includes('application/json')?r.json():r.text()}
 
 function applyI18n(){
   const t=I18N[CURR_LANG]||I18N['en']||{};
@@ -175,64 +289,64 @@ function applyI18n(){
   byId('i_ip_k').textContent=t.ip||'IP';
   byId('i_uptime_k').textContent=t.uptime||'Uptime';
   byId('i_heap_k').textContent=t.heap||'Heap';
-  byId('btnSend').textContent=t.send||'Send';
-  byId('btnReset').textContent=t.reboot||'Reboot';
-  byId('i_lora').textContent=t.lora||'LoRa';
-  byId('btnReadChip').textContent=t.read_chip||'Read chip';
-  byId('btnSaveChip').textContent=t.save_chip||'Save chip';
-  byId('btnSaveDev').textContent=t.save_deveui||'Save DevEUI';
-  byId('btnSaveAppEUI').textContent=t.save||'Save';
-  byId('btnSaveAppKey').textContent=t.save||'Save';
-  byId('btnSaveMinutes').textContent=t.save||'Save';
-  byId('devEuiField').placeholder=t.ph_deveui||'DevEUI';
-  byId('appEuiField').placeholder=t.ph_appeui||'AppEUI';
-  byId('appKeyField').placeholder=t.ph_appkey||'AppKey';
-  byId('minutesField').placeholder=t.ph_minutes||'Interval';
-  byId('i_footer_by').textContent=t.footer_by||'developed by';
-  byId('i_deveui_k').textContent=t.deveui||'DevEUI';
-  byId('i_appeui_k').textContent=t.appeui||'AppEUI';
-  byId('i_appkey_k').textContent=t.appkey||'AppKey';
-  byId('i_interval_k').textContent=t.interval||'Interval';
-  byId('i_crcal').textContent=t.crack_cal||'Crack calibration';
-  byId('i_r0_k').textContent=t.r0||'ADC r0';
-  byId('i_mm0_k').textContent=t.mm0||'mm0';
-  byId('i_r1_k').textContent=t.r1||'ADC r1';
-  byId('i_mm1_k').textContent=t.mm1||'mm1';
-  byId('btnSaveCal').textContent = t.save || 'Save';
-  byId('i_rssi_k').textContent=t.rssi||'RSSI';
-  byId('i_snr_k').textContent=t.snr||'SNR';
-  byId('i_dlage_k').textContent=t.dl_age||'DL age';
-  byId('langBtn').textContent=CURR_LANG.toUpperCase();
-}
 
-async function initI18n(){
-  try{I18N=await q('/i18n.json');}catch(e){I18N={};}
-  const saved=localStorage.getItem(LANG_KEY);
-  CURR_LANG=saved&&LANGS.includes(saved)?saved:'en';
-  applyI18n();
+  // Buttons i18n
+  byId('btnSend').textContent       = t.send || 'Manual LoRa send';
+  byId('btnReset').textContent      = t.reboot || 'Reboot';
+  byId('i_lora').textContent        = t.lora || 'LoRa';
+  byId('btnReadChip').textContent   = t.read_chip || 'Read DevEUI from chip';
+  byId('btnSaveChip').textContent   = t.use_chip || 'Use chip DevEUI';
+  byId('btnSaveLoRa').textContent   = t.save_all_lora || 'Save all LoRa settings';
+  byId('btnSaveCalAll').textContent = t.save_cal_all || 'Save crack calibration';
+
+  // Placeholders
+  byId('devEuiField').placeholder   = t.ph_deveui  || 'DevEUI MSB e.g. 0011223344556677';
+  byId('appEuiField').placeholder   = t.ph_appeui  || 'AppEUI MSB';
+  byId('appKeyField').placeholder   = t.ph_appkey  || 'AppKey MSB';
+  byId('minutesField').placeholder  = t.ph_minutes || 'Interval, min';
+
+  byId('i_footer_by').textContent   = t.footer_by || 'developed by';
+  byId('i_deveui_k').textContent    = t.deveui || 'DevEUI';
+  byId('i_appeui_k').textContent    = t.appeui || 'AppEUI';
+  byId('i_appkey_k').textContent    = t.appkey || 'AppKey';
+  byId('i_interval_k').textContent  = t.interval || 'Interval';
+  byId('i_crcal').textContent       = t.crack_cal || 'Crack calibration';
+  byId('i_r0_k').textContent        = t.r0 || 'ADC r0';
+  byId('i_mm0_k').textContent       = t.mm0 || 'mm0';
+  byId('i_r1_k').textContent        = t.r1 || 'ADC r1';
+  byId('i_mm1_k').textContent       = t.mm1 || 'mm1';
+  byId('i_rssi_k').textContent      = t.rssi || 'RSSI';
+  byId('i_snr_k').textContent       = t.snr || 'SNR';
+  byId('i_dlage_k').textContent     = t.dl_age || 'DL age';
+  byId('langBtn').textContent       = CURR_LANG.toUpperCase();
 }
 
 document.addEventListener('DOMContentLoaded',()=>{
   const savedTheme=localStorage.getItem(THEME_KEY);
-  const initTheme=savedTheme||(window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
+  const initTheme=savedTheme||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
   setTheme(initTheme);
   byId('themeBtn').onclick=()=>setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark');
   const y=byId('yr');if(y)y.textContent=new Date().getFullYear();
-  byId('langBtn').onclick=()=>{const idx=LANGS.indexOf(CURR_LANG);CURR_LANG = LANGS[(idx + 1) % LANGS.length];
-  localStorage.setItem(LANG_KEY,CURR_LANG);applyI18n();};
+  byId('langBtn').onclick=()=>{
+    const LANGS=['en','de','uk'];
+    const idx=LANGS.indexOf(CURR_LANG);CURR_LANG=LANGS[(idx+1)%LANGS.length];
+    localStorage.setItem(LANG_KEY,CURR_LANG);applyI18n();
+  };
   initI18n();
   setInterval(load,2000);load();
 });
 
+async function initI18n(){
+  try{I18N=await q('/i18n.json')}catch(e){I18N={}}
+  const saved=localStorage.getItem(LANG_KEY);
+  CURR_LANG=saved&&['en','de','uk'].includes(saved)?saved:'en';
+  applyI18n();
+}
+
 function setCrackStatus(present){
   const el=byId('cr_status');
-  if(present){
-    el.textContent='OK';
-    el.classList.remove('err'); el.classList.add('ok');
-  }else{
-    el.textContent='N/C';
-    el.classList.remove('ok'); el.classList.add('err');
-  }
+  if(present){el.textContent='OK';el.classList.remove('err');el.classList.add('ok')}
+  else{el.textContent='N/C';el.classList.remove('ok');el.classList.add('err')}
 }
 
 async function load(){
@@ -242,20 +356,14 @@ async function load(){
     byId('ds').textContent=(s.DS18B20_Temp??'--.-');
     const present=!!s.crack_present;
 
-    byId('adc').textContent = present ? (s.adc_raw??'-') : 'N/C';
+    byId('adc').textContent=present?(s.adc_raw??'-'):'N/C';
     setCrackStatus(present);
 
     if(present){
-      if(s.crack_mm!=null){
-        byId('crk').textContent=(+s.crack_mm).toFixed(3);
-      }else if(s.crack_x100!=null){
-        byId('crk').textContent=(s.crack_x100/100).toFixed(3);
-      }else{
-        byId('crk').textContent='-';
-      }
-    }else{
-      byId('crk').textContent='N/C';
-    }
+      if(s.crack_mm!=null) byId('crk').textContent=(+s.crack_mm).toFixed(3);
+      else if(s.crack_x100!=null) byId('crk').textContent=(s.crack_x100/100).toFixed(3);
+      else byId('crk').textContent='-';
+    }else byId('crk').textContent='N/C';
 
     byId('bat').textContent=(s.batt_mV??'-');
     byId('mode').textContent=s.mode||'-';
@@ -263,11 +371,10 @@ async function load(){
     byId('up').textContent=s.uptime_s??'-';
     byId('heap').textContent=s.heap_free??'-';
 
-    // LoRa metrics (from backend when a DL received)
     const L=s.lora||{};
-    byId('rssi').textContent = (L.rssi!=null)?L.rssi:'—';
-    byId('snr').textContent  = (L.snr !=null)?L.snr :'—';
-    byId('dlage').textContent= (L.age_s!=null)?L.age_s:'—';
+    byId('rssi').textContent=(L.rssi!=null)?L.rssi:'—';
+    byId('snr').textContent=(L.snr!=null)?L.snr:'—';
+    byId('dlage').textContent=(L.age_s!=null)?L.age_s:'—';
 
     if(s.cfg){
       if(!byId('devEuiField').value)byId('devEuiField').value=s.cfg.devEui||'';
@@ -277,10 +384,10 @@ async function load(){
 
       if(s.cfg.crack_cal){
         const cc=s.cfg.crack_cal;
-        if(cc.r0!=null && !byId('r0Field').value)  byId('r0Field').value=cc.r0;
-        if(cc.mm0!=null && !byId('mm0Field').value)byId('mm0Field').value=(+cc.mm0).toFixed(2);
-        if(cc.r1!=null && !byId('r1Field').value)  byId('r1Field').value=cc.r1;
-        if(cc.mm1!=null && !byId('mm1Field').value)byId('mm1Field').value=(+cc.mm1).toFixed(2);
+        if(cc.r0!=null&&!byId('r0Field').value)byId('r0Field').value=cc.r0;
+        if(cc.mm0!=null&&!byId('mm0Field').value)byId('mm0Field').value=(+cc.mm0).toFixed(2);
+        if(cc.r1!=null&&!byId('r1Field').value)byId('r1Field').value=cc.r1;
+        if(cc.mm1!=null&&!byId('mm1Field').value)byId('mm1Field').value=(+cc.mm1).toFixed(2);
       }
     }
   }catch(e){
@@ -289,12 +396,54 @@ async function load(){
   }
 }
 
-async function saveLoRaField(k,v){
+/* Actions */
+byId('btnReadChip').onclick=readDevEUI;
+byId('btnSaveChip').onclick=saveChipDevEUI;
+byId('btnSaveLoRa').onclick=saveLoRaAll;
+byId('btnSaveCalAll').onclick=saveCrackCalAll;
+
+byId('btnSend').onclick=async()=>{
   const t=I18N[CURR_LANG]||I18N['en']||{};
   try{
-    await fetch('/api/config/lora',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({[k]:v})});
+    const r=await fetch('/api/send',{method:'POST'});
+    byId('msg').textContent=r.ok?(t.msg_send_ok||'LoRa queued'):(t.msg_send_err||'Send error');
+  }catch(e){byId('msg').textContent=t.msg_send_err||'Send error'}
+};
+byId('btnReset').onclick=async()=>{
+  const t=I18N[CURR_LANG]||I18N['en']||{};
+  try{
+    const r=await fetch('/api/reset',{method:'POST'});
+    byId('msg').textContent=r.ok?(t.msg_restarting||'restarting…'):(t.msg_reset_forbidden||'Reset forbidden');
+  }catch(e){byId('msg').textContent=t.msg_save_error||'Save error'}
+};
+
+async function saveLoRaAll(){
+  const payload={
+    devEui:byId('devEuiField').value.trim(),
+    appEui:byId('appEuiField').value.trim(),
+    appKey:byId('appKeyField').value.trim(),
+    minutes:parseInt(byId('minutesField').value||'15')
+  };
+  const t=I18N[CURR_LANG]||I18N['en']||{};
+  try{
+    await fetch('/api/config/lora',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     byId('devEuiMsg').textContent=t.msg_saved_reboot||'Saved; rebooting…';
-  }catch(e){byId('devEuiMsg').textContent=t.msg_save_error||'Save error';}
+  }catch(e){byId('devEuiMsg').textContent=t.msg_save_error||'Save error'}
+}
+
+async function saveCrackCalAll(){
+  const r0=parseInt(byId('r0Field').value);
+  const r1=parseInt(byId('r1Field').value);
+  const mm0=parseFloat(byId('mm0Field').value);
+  const mm1=parseFloat(byId('mm1Field').value);
+  const t=I18N[CURR_LANG]||I18N['en']||{};
+  if(!Number.isFinite(r0)||!Number.isFinite(r1)||!Number.isFinite(mm0)||!Number.isFinite(mm1)){
+    byId('calMsg').textContent=t.msg_save_error||'Save error';return;
+  }
+  try{
+    await fetch('/api/config/lora',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({crack_cal:{r0,mm0,r1,mm1}})});
+    byId('calMsg').textContent=t.msg_saved_reboot||'Saved; rebooting…';
+  }catch(e){byId('calMsg').textContent=t.msg_save_error||'Save error'}
 }
 
 async function readDevEUI(){
@@ -312,58 +461,8 @@ async function saveChipDevEUI(){
   try{
     await fetch('/api/deveui',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({use:'chip'})});
     byId('devEuiMsg').textContent=t.msg_saved_reboot||'Saved; rebooting…';
-  }catch(e){byId('devEuiMsg').textContent=t.msg_save_error||'Save error';}
+  }catch(e){byId('devEuiMsg').textContent=t.msg_save_error||'Save error'}
 }
-async function saveDevEUI(){
-  const h=byId('devEuiField').value.trim();
-  const t=I18N[CURR_LANG]||I18N['en']||{};
-  try{
-    await fetch('/api/deveui',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({devEui:h})});
-    byId('devEuiMsg').textContent=t.msg_saved_reboot||'Saved; rebooting…';
-  }catch(e){byId('devEuiMsg').textContent=t.msg_save_error||'Save error';}
-}
-
-async function saveCrackCal(){
-  const t=I18N[CURR_LANG]||I18N['en']||{};
-  const r0=parseInt(byId('r0Field').value);
-  const r1=parseInt(byId('r1Field').value);
-  const mm0=parseFloat(byId('mm0Field').value);
-  const mm1=parseFloat(byId('mm1Field').value);
-  const msg=byId('calMsg');
-
-  if(!Number.isFinite(r0)||!Number.isFinite(r1)||!Number.isFinite(mm0)||!Number.isFinite(mm1)){
-    msg.textContent=t.msg_save_error||'Save error'; return;
-  }
-  try{
-    await fetch('/api/config/lora',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({crack_cal:{r0,mm0,r1,mm1}})
-    });
-    msg.textContent=t.msg_saved_reboot||'Saved; rebooting…';
-  }catch(e){
-    msg.textContent=t.msg_save_error||'Save error';
-  }
-}
-
-byId('btnReadChip').onclick=readDevEUI;
-byId('btnSaveChip').onclick=saveChipDevEUI;
-byId('btnSaveDev').onclick=saveDevEUI;
-byId('btnSaveAppEUI').onclick=()=>saveLoRaField('appEui',byId('appEuiField').value);
-byId('btnSaveAppKey').onclick=()=>saveLoRaField('appKey',byId('appKeyField').value);
-byId('btnSaveMinutes').onclick=()=>saveLoRaField('minutes',parseInt(byId('minutesField').value||'15'));
-byId('btnSaveCal').onclick=saveCrackCal;
-
-byId('btnSend').onclick=async()=>{
-  const t=I18N[CURR_LANG]||I18N['en']||{};
-  try{const r=await fetch('/api/send',{method:'POST'});byId('msg').textContent=(r.ok?(t.msg_send_ok||'LoRa queued'):(t.msg_send_err||'Send error')); }
-  catch(e){byId('msg').textContent=t.msg_send_err||'Send error';}
-};
-byId('btnReset').onclick=async()=>{
-  const t=I18N[CURR_LANG]||I18N['en']||{};
-  try{const r=await fetch('/api/reset',{method:'POST'});byId('msg').textContent=(r.ok?(t.msg_restarting||'restarting…'):(t.msg_reset_forbidden||'Reset forbidden')); }
-  catch(e){byId('msg').textContent=t.msg_save_error||'Save error';}
-};
 </script>
 </body>
 </html>
