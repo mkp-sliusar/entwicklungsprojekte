@@ -29,8 +29,8 @@ small { color:var(--muted) }
 .footer a:hover { text-decoration:underline }
 .hr { height:1px;background:var(--border);margin:10px 0 }
 .badge{display:inline-block;padding:2px 8px;border:1px solid var(--border);border-radius:999px;font-size:12px;background:var(--btn)}
-.badge.ok{outline:1px solid #2c7; }
-.badge.err{outline:1px solid #e55; }
+.badge.ok{outline:1px solid #2c7;}
+.badge.err{outline:1px solid #e55;}
 </style>
 </head>
 <body>
@@ -60,8 +60,11 @@ small { color:var(--muted) }
     <h3 id="i_controller">Controller</h3>
     <div><span class="k" id="i_mode_k">Mode</span>: <b id="mode">-</b></div>
     <div><span class="k" id="i_ip_k">IP</span>: <b id="ip">-</b></div>
-    <div><span class="k" id="i_uptime_k">Uptime</span>: <b id="up">-</b> <span id="i_seconds">s</span></div>
+    <div><span class="k" id="i_uptime_k">Uptime</span>: <b id="up">-</b> s</div>
     <div><span class="k" id="i_heap_k">Heap</span>: <b id="heap">-</b> B</div>
+    <div><span class="k" id="i_rssi_k">RSSI</span>: <b id="rssi">—</b> dBm</div>
+    <div><span class="k" id="i_snr_k">SNR</span>: <b id="snr">—</b> dB</div>
+    <div><span class="k" id="i_dlage_k">DL age</span>: <b id="dlage">—</b> s</div>
     <div class="hr"></div>
     <div class="row">
       <button id="btnSend">Manual LoRa send</button>
@@ -171,7 +174,6 @@ function applyI18n(){
   byId('i_mode_k').textContent=t.mode||'Mode';
   byId('i_ip_k').textContent=t.ip||'IP';
   byId('i_uptime_k').textContent=t.uptime||'Uptime';
-  byId('i_seconds').textContent=t.seconds||'s';
   byId('i_heap_k').textContent=t.heap||'Heap';
   byId('btnSend').textContent=t.send||'Send';
   byId('btnReset').textContent=t.reboot||'Reboot';
@@ -191,13 +193,15 @@ function applyI18n(){
   byId('i_appeui_k').textContent=t.appeui||'AppEUI';
   byId('i_appkey_k').textContent=t.appkey||'AppKey';
   byId('i_interval_k').textContent=t.interval||'Interval';
-  // calibration labels
   byId('i_crcal').textContent=t.crack_cal||'Crack calibration';
   byId('i_r0_k').textContent=t.r0||'ADC r0';
   byId('i_mm0_k').textContent=t.mm0||'mm0';
   byId('i_r1_k').textContent=t.r1||'ADC r1';
   byId('i_mm1_k').textContent=t.mm1||'mm1';
   byId('btnSaveCal').textContent = t.save || 'Save';
+  byId('i_rssi_k').textContent=t.rssi||'RSSI';
+  byId('i_snr_k').textContent=t.snr||'SNR';
+  byId('i_dlage_k').textContent=t.dl_age||'DL age';
   byId('langBtn').textContent=CURR_LANG.toUpperCase();
 }
 
@@ -238,7 +242,6 @@ async function load(){
     byId('ds').textContent=(s.DS18B20_Temp??'--.-');
     const present=!!s.crack_present;
 
-    // ADC & Crack
     byId('adc').textContent = present ? (s.adc_raw??'-') : 'N/C';
     setCrackStatus(present);
 
@@ -259,6 +262,12 @@ async function load(){
     byId('ip').textContent=s.ip||'-';
     byId('up').textContent=s.uptime_s??'-';
     byId('heap').textContent=s.heap_free??'-';
+
+    // LoRa metrics (from backend when a DL received)
+    const L=s.lora||{};
+    byId('rssi').textContent = (L.rssi!=null)?L.rssi:'—';
+    byId('snr').textContent  = (L.snr !=null)?L.snr :'—';
+    byId('dlage').textContent= (L.age_s!=null)?L.age_s:'—';
 
     if(s.cfg){
       if(!byId('devEuiField').value)byId('devEuiField').value=s.cfg.devEui||'';
