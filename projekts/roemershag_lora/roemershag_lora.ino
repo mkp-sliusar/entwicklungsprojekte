@@ -1,4 +1,11 @@
 #include "LoRaWan_APP.h"
+#ifdef CLASS
+#undef CLASS
+#endif
+#ifdef DR
+#undef DR
+#endif
+
 #include <WiFi.h>
 #include <WebServer.h>
 #include <ArduinoJson.h>
@@ -6,9 +13,11 @@
 #include <LittleFS.h>
 #include <Wire.h>
 #include <Adafruit_ADS1X15.h>
+#include "HT_SSD1306Wire.h"
+#include <OneWire.h>
+#include <DallasTemperature.h>
 
 // ===== OLED =====
-#include "HT_SSD1306Wire.h"
 SSD1306Wire OLED_Display(0x3c, 400000, SDA_OLED, SCL_OLED, GEOMETRY_128_64, RST_OLED);
 
 // ===== ADS1115 на другій I²C (GPIO47/48) =====
@@ -17,19 +26,42 @@ Adafruit_ADS1115 ads;
 
 // ===== Pins (Heltec V3 / ESP32-S3) =====
 #define ONE_WIRE_BUS 4
-#define ADC_CRACK    2     // не використовується для crack з ADS, лишено для сумісності
+#define ADC_CRACK    2     // не використовується для crack з ADS
 #define VBAT_Read    1
 #define ADC_Ctrl     37
 #define PIN_MODE_OUT 45
 #define PIN_MODE_IN  46
 
-// ===== Vext =====
-static inline void VextON(){ pinMode(Vext, OUTPUT); digitalWrite(Vext, LOW); }
-static inline void VextOFF(){ pinMode(Vext, OUTPUT); digitalWrite(Vext, HIGH); }
+// ===== Керування живленням сенсорів (ADS1115 + DS18B20) =====
+#define SENS_EN 7
+#define SENS_ACTIVE_HIGH 1
+static inline void SensorsON(){ pinMode(SENS_EN, OUTPUT); digitalWrite(SENS_EN, SENS_ACTIVE_HIGH?HIGH:LOW); }
+static inline void SensorsOFF(){ digitalWrite(SENS_EN, SENS_ACTIVE_HIGH?LOW:HIGH); pinMode(SENS_EN, INPUT); }
+
+void sensorsPowerOn(){
+  SensorsON();
+  delay(12);                         // було 3 → 12 мс для стабілізації
+
+  I2C_ADS.begin(47, 48, 400000);
+  if (ads.begin(0x48, &I2C_ADS)) {
+    ads.setGain(GAIN_ONE);
+    ads.setDataRate(RATE_ADS1115_128SPS);
+    (void)ads.readADC_SingleEnded(0); // «холостий» семпл
+    delay(2);
+  } else {
+    Serial.println("ADS1115 not found");
+  }
+}
+
+void sensorsPowerOff(){
+  I2C_ADS.end();
+  pinMode(47, INPUT);
+  pinMode(48, INPUT);
+  pinMode(ONE_WIRE_BUS, INPUT);
+  SensorsOFF();
+}
 
 // ===== OneWire + DallasTemperature =====
-#include <OneWire.h>
-#include <DallasTemperature.h>
 OneWire oneWire(ONE_WIRE_BUS);
 DallasTemperature sensors(&oneWire);
 
@@ -38,7 +70,7 @@ uint8_t firstDs[8] = {0};
 bool firstDsFound = false;
 const uint8_t DS_RES_BITS = 10; // ~187.5ms
 
-// ===== Режим (має бути вище за функції, що його використовують) =====
+// ===== Режим =====
 bool apMode = false;
 
 // ===== NVS конфиг =====
@@ -49,7 +81,7 @@ struct Cfg {
   uint8_t appEui[8]  = { 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00 };
   uint8_t appKey[16] = { 0x63,0x6A,0xC0,0x9B,0x24,0x82,0x4A,0x47, 0x30,0x32,0x80,0x58,0xCE,0x63,0x6A,0xDF };
   uint32_t minutes   = 2;
-  uint16_t crack_len_mm_x100 = 1000; // 10.00 мм за замовчуванням
+  uint16_t crack_len_mm_x100 = 1000;
 } cfg;
 
 void loadCfg(){
@@ -101,7 +133,7 @@ void devEuiFromChip(uint8_t out[8]){
 }
 String devEuiSuffix6(){ char buf[7]; sprintf(buf,"%02X%02X%02X", cfg.devEui[5], cfg.devEui[6], cfg.devEui[7]); return String(buf); }
 
-// ===== DS18B20: =====
+// ===== DS18B20 =====
 bool dsFindFirst(uint8_t addrOut[8]){
   if (sensors.getAddress(addrOut, 0)) return true;
   OneWire ow(ONE_WIRE_BUS);
@@ -125,17 +157,11 @@ uint16_t readBattery_mV(){
   return (uint16_t)(factor * raw * 1000.0f);
 }
 
-// Crack через ADS1115 AIN0: мм*100 = raw * Lx100 / 32767 (0..32767 для single-ended)
+// Crack через ADS1115 AIN0: мм*100 = raw * Lx100 / 32767
 uint16_t readCrack_mm_x100(int* rawOut){
-  bool usedVext = false;
-  if(!apMode){ VextON(); delay(3); usedVext = true; }
-
-  int16_t raw = ads.readADC_SingleEnded(0); // AIN0 vs GND
-  if(usedVext) VextOFF();
-
-  if(raw < 0) raw = 0; // очікується 0..32767
+  int16_t raw = ads.readADC_SingleEnded(0);
+  if(raw < 0) raw = 0;
   if(rawOut) *rawOut = raw;
-
   uint32_t mmx100 = (uint32_t)raw * (uint32_t)cfg.crack_len_mm_x100 / 32767u;
   if (mmx100 > 65535u) mmx100 = 65535u;
   return (uint16_t)mmx100;
@@ -165,10 +191,22 @@ float readTempOnceC(){
 
 // ===== Payload =====
 static void prepareTxFrame(uint8_t){
+  sensorsPowerOn();
+  if (!firstDsFound) {
+    sensors.begin();
+    firstDsFound = dsFindFirst(firstDs);
+    if (firstDsFound) sensors.setResolution(firstDs, DS_RES_BITS);
+  } else {
+    sensors.setResolution(firstDs, DS_RES_BITS);
+  }
+
   int adcRaw=0;
   int16_t t   = readTemp_c_x100();
   uint16_t cr = readCrack_mm_x100(&adcRaw);
   uint16_t vb = readBattery_mV();
+
+  sensorsPowerOff();
+
   appDataSize = 8;
   appData[0]=t>>8;      appData[1]=t;
   appData[2]=adcRaw>>8; appData[3]=adcRaw;
@@ -208,16 +246,26 @@ void api_state(){
   d["uptime_s"]= (uint32_t)(millis()/1000);
   d["heap_free"]= ESP.getFreeHeap();
 
+  sensorsPowerOn();
+  if (!firstDsFound) {
+    sensors.begin();
+    firstDsFound = dsFindFirst(firstDs);
+    if (firstDsFound) sensors.setResolution(firstDs, DS_RES_BITS);
+  } else {
+    sensors.setResolution(firstDs, DS_RES_BITS);
+  }
+
   int adcRaw = 0;
   uint16_t crack = readCrack_mm_x100(&adcRaw);
   uint16_t batmV = readBattery_mV();
+  float tC = readTempOnceC();
+
+  sensorsPowerOff();
+
   d["adc_raw"]    = adcRaw;
   d["crack_x100"] = crack;
   d["batt_mV"]    = batmV;
-
-  float tC = readTempOnceC();
-  if (isfinite(tC)) d["DS18B20_Temp"] = tC;
-  else              d["DS18B20_Temp"] = nullptr;
+  if (isfinite(tC)) d["DS18B20_Temp"] = tC; else d["DS18B20_Temp"] = nullptr;
 
   JsonObject c = d.createNestedObject("cfg");
   c["minutes"]= cfg.minutes;
@@ -259,7 +307,6 @@ void api_cfg_lora(){
     saveKVu("minutes",cfg.minutes);
   }
 
-  // приймаємо довжину в мм (float), зберігаємо *100
   if(d.containsKey("crack_len_mm")){
     float L = d["crack_len_mm"].as<float>();
     if(isfinite(L) && L>0.01f && L<1000.0f){
@@ -334,13 +381,22 @@ void oledBoot(const String& ssid){
   OLED_Display.drawString(0, 28, "AP: " + ssid);
   OLED_Display.display();
 }
-
-// Обновлення без миготіння
 void oledSensorsOnce(){
+  sensorsPowerOn();
+  if (!firstDsFound) {
+    sensors.begin();
+    firstDsFound = dsFindFirst(firstDs);
+    if (firstDsFound) sensors.setResolution(firstDs, DS_RES_BITS);
+  } else {
+    sensors.setResolution(firstDs, DS_RES_BITS);
+  }
+
   float t = readTempOnceC();
   int adcRaw=0;
   uint16_t crack = readCrack_mm_x100(&adcRaw);
   uint16_t bat = readBattery_mV();
+
+  sensorsPowerOff();
 
   OLED_Display.setFont(ArialMT_Plain_10);
   OLED_Display.setTextAlignment(TEXT_ALIGN_LEFT);
@@ -374,21 +430,15 @@ void setup(){
   memcpy(appEui,  cfg.appEui,  sizeof(appEui));
   memcpy(appKey,  cfg.appKey,  sizeof(appKey));
 
-  // I2C для OLED (клас OLED також викликає init, але pins/частоту задаємо тут)
+  // I2C для OLED
   Wire.begin(SDA_OLED, SCL_OLED, 400000);
 
-  // Друга I2C для ADS1115 на GPIO47/48
-  I2C_ADS.begin(47, 48, 400000);
-  if(!ads.begin(0x48, &I2C_ADS)){
-    Serial.println("ADS1115 not found");
-  }else{
-    ads.setGain(GAIN_ONE);                 // ±4.096 В
-    ads.setDataRate(RATE_ADS1115_128SPS);  // досить
-  }
-
+  // Ініціалізація сенсорів з живленням
+  sensorsPowerOn();
   sensors.begin();
   firstDsFound = dsFindFirst(firstDs);
   if (firstDsFound) sensors.setResolution(firstDs, DS_RES_BITS);
+  sensorsPowerOff();
 
   if(apMode){
     WiFi.mode(WIFI_AP);
@@ -396,7 +446,7 @@ void setup(){
 
     bool fsOk = LittleFS.begin(true);
     if (!fsOk) {
-      Serial.println("[FS] LittleFS mount failed even after format");
+      Serial.println("[FS] LittleFS mount failed even after format]");
     } else {
       attachHttpFS();
     }
@@ -404,17 +454,17 @@ void setup(){
     WiFi.setTxPower(WIFI_POWER_7dBm);
     WiFi.softAP(ssid.c_str(), "12345678");
 
-    VextON(); delay(5);
+    pinMode(Vext, OUTPUT); digitalWrite(Vext, LOW);
 
     OLED_Display.init();
     oledBoot(ssid); delay(500);
     oledSensorsOnce();
-  }else{
+  } else {
     WiFi.mode(WIFI_OFF);
     #if defined(CONFIG_BT_ENABLED) && CONFIG_BT_ENABLED
       btStop();
     #endif
-    VextOFF();
+    digitalWrite(Vext, HIGH);
   }
 
   deviceState = DEVICE_STATE_INIT;
@@ -433,7 +483,7 @@ void loop(){
   switch (deviceState) {
     case DEVICE_STATE_INIT:
       LoRaWAN.init(loraWanClass, loraWanRegion);
-      LoRaWAN.setDefaultDR(3);
+      LoRaWAN.setDefaultDR(DR_3);
       deviceState = overTheAirActivation ? DEVICE_STATE_JOIN : DEVICE_STATE_SEND;
       break;
 
@@ -454,6 +504,7 @@ void loop(){
       break;
 
     case DEVICE_STATE_SLEEP:
+      sensorsPowerOff();
       if (apMode) {
         LoRaWAN.sleep(CLASS_C);
       } else {
