@@ -16,6 +16,7 @@
 #include "HT_SSD1306Wire.h"
 #include <OneWire.h>
 #include <DallasTemperature.h>
+#include <math.h>
 
 // ===== OLED =====
 SSD1306Wire OLED_Display(0x3c, 400000, SDA_OLED, SCL_OLED, GEOMETRY_128_64, RST_OLED);
@@ -40,7 +41,7 @@ static inline void SensorsOFF(){ digitalWrite(SENS_EN, SENS_ACTIVE_HIGH?LOW:HIGH
 
 void sensorsPowerOn(){
   SensorsON();
-  delay(12);                         // було 3 → 12 мс для стабілізації
+  delay(12); // було 3 → 12 мс для стабілізації
 
   I2C_ADS.begin(47, 48, 400000);
   if (ads.begin(0x48, &I2C_ADS)) {
@@ -82,6 +83,12 @@ struct Cfg {
   uint8_t appKey[16] = { 0x63,0x6A,0xC0,0x9B,0x24,0x82,0x4A,0x47, 0x30,0x32,0x80,0x58,0xCE,0x63,0x6A,0xDF };
   uint32_t minutes   = 2;
   uint16_t crack_len_mm_x100 = 1000;
+
+  // 2-точкова калібровка: raw r0→mm0, raw r1→mm1 (x100)
+  int16_t  crack_r0 = 0;
+  int16_t  crack_r1 = 32767;
+  uint16_t crack_mm0_x100 = 0;        // 0.00 мм
+  uint16_t crack_mm1_x100 = 1000;     // 10.00 мм (дефолт = crack_len_mm_x100)
 } cfg;
 
 void loadCfg(){
@@ -93,10 +100,17 @@ void loadCfg(){
   prefs.getBytes("appEui", cfg.appEui, 8);
   prefs.getBytes("appKey", cfg.appKey,16);
   cfg.crack_len_mm_x100 = prefs.getUShort("cr_len_x100", cfg.crack_len_mm_x100);
+
+  cfg.crack_r0        = prefs.getShort ("cr_r0",  cfg.crack_r0);
+  cfg.crack_r1        = prefs.getShort ("cr_r1",  cfg.crack_r1);
+  cfg.crack_mm0_x100  = prefs.getUShort("cr_mm0", cfg.crack_mm0_x100);
+  cfg.crack_mm1_x100  = prefs.getUShort("cr_mm1", cfg.crack_mm1_x100);
+  if (cfg.crack_mm1_x100 == 1000) cfg.crack_mm1_x100 = cfg.crack_len_mm_x100;
   prefs.end();
 }
 void saveKVu(const char* k, uint32_t v){ prefs.begin("uhfb", false); prefs.putUInt(k, v); prefs.end(); }
 void saveUShort(const char* k, uint16_t v){ prefs.begin("uhfb", false); prefs.putUShort(k, v); prefs.end(); }
+void saveShort (const char* k, int16_t v){ prefs.begin("uhfb", false); prefs.putShort (k, v); prefs.end(); }
 void saveBytes(const char* k, const uint8_t* d, size_t n){ prefs.begin("uhfb", false); prefs.putBytes(k, d, n); prefs.end(); }
 
 // ===== LoRaWAN (глобалы для Heltec LoRaWan_APP) =====
@@ -118,7 +132,7 @@ uint8_t  nwkSKey[16] = {0};
 uint8_t  appSKey[16] = {0};
 uint32_t devAddr     = 0;
 
-// ===== Утилиты =====
+// ===== Утиліти =====
 String toHex(const uint8_t* v, size_t n){ char b[3]; String s; s.reserve(n*2); for(size_t i=0;i<n;i++){ sprintf(b,"%02X", v[i]); s+=b; } return s; }
 String toHexLSB(const uint8_t* v, size_t n){ char b[3]; String s; s.reserve(n*2); for(int i=n-1;i>=0;i--){ sprintf(b,"%02X", v[i]); s+=b; } return s; }
 bool parseHex(const String& s, uint8_t* out, size_t n){
@@ -145,7 +159,34 @@ bool dsFindFirst(uint8_t addrOut[8]){
   return false;
 }
 
-// ===== Измерения =====
+// ===== Калібрування crack: raw -> мм*100 =====
+static inline uint16_t mapCrackRawToMMx100(int raw){
+  const int32_t r0 = cfg.crack_r0;
+  const int32_t r1 = cfg.crack_r1;
+  const int32_t y0 = cfg.crack_mm0_x100;
+  const int32_t y1 = cfg.crack_mm1_x100;
+  int32_t den = (r1 - r0);
+  if (den == 0) return 0;
+  int64_t num = (int64_t)(y1 - y0) * (int64_t)(raw - r0);
+  int64_t y   = (int64_t)y0 + (num + (den>0 ? den/2 : -den/2)) / den; // з округленням
+  if (y < 0) y = 0;
+  if (y > 65535) y = 65535;
+  return (uint16_t)y;
+}
+
+// НОВЕ: float-маппер для точного відображення в тисячних
+static inline float mapCrackRawToMM_f(int raw){
+  const float r0  = (float)cfg.crack_r0;
+  const float r1  = (float)cfg.crack_r1;
+  const float mm0 = (float)cfg.crack_mm0_x100/100.0f;
+  const float mm1 = (float)cfg.crack_mm1_x100/100.0f;
+  if (r1 == r0) return 0.0f;
+  float mm = mm0 + (mm1 - mm0) * ((float)raw - r0) / (r1 - r0);
+  if (mm < 0) mm = 0;
+  return mm;
+}
+
+// ===== Вимірювання =====
 uint16_t readBattery_mV(){
   const float factor = 1.0f/4096.0f/0.210282997855762f; // R1=390k, R2=100k
   analogSetAttenuation(ADC_0db);
@@ -157,14 +198,12 @@ uint16_t readBattery_mV(){
   return (uint16_t)(factor * raw * 1000.0f);
 }
 
-// Crack через ADS1115 AIN0: мм*100 = raw * Lx100 / 32767
+// Crack через ADS1115 AIN0 з 2-точковим мапінгом (x100 для сумісності)
 uint16_t readCrack_mm_x100(int* rawOut){
   int16_t raw = ads.readADC_SingleEnded(0);
-  if(raw < 0) raw = 0;
+  if(raw < 0) raw = 0;            // однополярний сенсор
   if(rawOut) *rawOut = raw;
-  uint32_t mmx100 = (uint32_t)raw * (uint32_t)cfg.crack_len_mm_x100 / 32767u;
-  if (mmx100 > 65535u) mmx100 = 65535u;
-  return (uint16_t)mmx100;
+  return mapCrackRawToMMx100(raw);
 }
 
 // Температура для пейлоада
@@ -200,18 +239,25 @@ static void prepareTxFrame(uint8_t){
     sensors.setResolution(firstDs, DS_RES_BITS);
   }
 
-  int adcRaw=0;
+  int16_t  adcRaw = ads.readADC_SingleEnded(0);
+  if(adcRaw < 0) adcRaw = 0;
+
   int16_t t   = readTemp_c_x100();
-  uint16_t cr = readCrack_mm_x100(&adcRaw);
   uint16_t vb = readBattery_mV();
+
+  // crack у тисячних (x1000) у 2 байти → макс 65.535 мм
+  float mm = mapCrackRawToMM_f(adcRaw);
+  if (mm < 0) mm = 0;
+  if (mm > 65.535f) mm = 65.535f;
+  uint16_t cr1000 = (uint16_t)lrintf(mm * 1000.0f);
 
   sensorsPowerOff();
 
   appDataSize = 8;
-  appData[0]=t>>8;      appData[1]=t;
-  appData[2]=adcRaw>>8; appData[3]=adcRaw;
-  appData[4]=cr>>8;     appData[5]=cr;
-  appData[6]=vb>>8;     appData[7]=vb;
+  appData[0]=t>>8;        appData[1]=t;
+  appData[2]=adcRaw>>8;   appData[3]=adcRaw;
+  appData[4]=cr1000>>8;   appData[5]=cr1000;  // <-- Crack x1000
+  appData[6]=vb>>8;       appData[7]=vb;
 }
 
 // ===== Web (AP) =====
@@ -240,7 +286,7 @@ bool streamFileFS(const char* p){
 }
 
 void api_state(){
-  StaticJsonDocument<768> d;
+  StaticJsonDocument<1184> d;
   d["mode"] = (WiFi.getMode()==WIFI_AP) ? "AP" : "LNS";
   d["ip"]= ipStr();
   d["uptime_s"]= (uint32_t)(millis()/1000);
@@ -256,14 +302,16 @@ void api_state(){
   }
 
   int adcRaw = 0;
-  uint16_t crack = readCrack_mm_x100(&adcRaw);
+  uint16_t crack = readCrack_mm_x100(&adcRaw); // x100 (сумісність / бекенд)
   uint16_t batmV = readBattery_mV();
   float tC = readTempOnceC();
+  float crack_mm = mapCrackRawToMM_f(adcRaw);  // для UI з тисячними
 
   sensorsPowerOff();
 
   d["adc_raw"]    = adcRaw;
-  d["crack_x100"] = crack;
+  d["crack_x100"] = crack;       // сумісність
+  d["crack_mm"]   = crack_mm;    // точне відображення
   d["batt_mV"]    = batmV;
   if (isfinite(tC)) d["DS18B20_Temp"] = tC; else d["DS18B20_Temp"] = nullptr;
 
@@ -273,6 +321,11 @@ void api_state(){
   c["appEui"]= toHex(cfg.appEui,8);
   c["appKey"]= toHex(cfg.appKey,16);
   c["crack_len_x100"]= cfg.crack_len_mm_x100;
+  JsonObject cal = c.createNestedObject("crack_cal");
+  cal["r0"]  = cfg.crack_r0;
+  cal["mm0"] = (float)cfg.crack_mm0_x100/100.0f;
+  cal["r1"]  = cfg.crack_r1;
+  cal["mm1"] = (float)cfg.crack_mm1_x100/100.0f;
 
   String out; serializeJson(d,out);
   http.send(200,"application/json",out);
@@ -282,19 +335,25 @@ void api_send(){ deviceState = DEVICE_STATE_SEND; http.send(200,"text/plain","qu
 void api_reset(){ http.send(200,"text/plain","restarting"); delay(200); ESP.restart(); }
 
 void api_cfg_get(){
-  StaticJsonDocument<512> d;
+  StaticJsonDocument<672> d;
   d["devEui"]= toHex(cfg.devEui,8);
   d["appEui"]= toHex(cfg.appEui,8);
   d["appKey"]= toHex(cfg.appKey,16);
   d["minutes"]= cfg.minutes;
   d["crack_len_x100"]= cfg.crack_len_mm_x100;
+  JsonObject cal = d.createNestedObject("crack_cal");
+  cal["r0"]  = cfg.crack_r0;
+  cal["mm0"] = (float)cfg.crack_mm0_x100/100.0f;
+  cal["r1"]  = cfg.crack_r1;
+  cal["mm1"] = (float)cfg.crack_mm1_x100/100.0f;
+
   String out; serializeJson(d,out);
   http.send(200,"application/json",out);
 }
 
 void api_cfg_lora(){
   if(!http.hasArg("plain")){ http.send(400,"text/plain","bad json"); return; }
-  StaticJsonDocument<256> d; 
+  StaticJsonDocument<384> d;
   if(deserializeJson(d,http.arg("plain"))){ http.send(400,"text/plain","bad json"); return; }
   bool ok=true;
 
@@ -312,6 +371,7 @@ void api_cfg_lora(){
     if(isfinite(L) && L>0.01f && L<1000.0f){
       uint16_t Lx100 = (uint16_t)(L*100.0f + 0.5f);
       cfg.crack_len_mm_x100 = Lx100;
+      if (cfg.crack_mm1_x100 < Lx100) cfg.crack_mm1_x100 = Lx100;
       saveUShort("cr_len_x100", cfg.crack_len_mm_x100);
     } else {
       http.send(400,"text/plain","len range");
@@ -319,13 +379,36 @@ void api_cfg_lora(){
     }
   }
 
+  if(d.containsKey("crack_cal")){
+    JsonObject cal = d["crack_cal"].as<JsonObject>();
+    bool okc = true;
+    if(cal.containsKey("r0"))  cfg.crack_r0 = cal["r0"].as<int>();
+    if(cal.containsKey("r1"))  cfg.crack_r1 = cal["r1"].as<int>();
+    if(cal.containsKey("mm0")) {
+      float mm0 = cal["mm0"].as<float>();
+      if(isfinite(mm0) && mm0>=0 && mm0<1000.0f) cfg.crack_mm0_x100 = (uint16_t)lrintf(mm0*100.0f);
+      else okc=false;
+    }
+    if(cal.containsKey("mm1")) {
+      float mm1 = cal["mm1"].as<float>();
+      if(isfinite(mm1) && mm1>=0 && mm1<=1000.0f) cfg.crack_mm1_x100 = (uint16_t)lrintf(mm1*100.0f);
+      else okc=false;
+    }
+    if(!okc || cfg.crack_r0==cfg.crack_r1){ http.send(400,"text/plain","cal error"); return; }
+
+    saveShort ("cr_r0",  cfg.crack_r0);
+    saveShort ("cr_r1",  cfg.crack_r1);
+    saveUShort("cr_mm0", cfg.crack_mm0_x100);
+    saveUShort("cr_mm1", cfg.crack_mm1_x100);
+  }
+
   if(!ok){ http.send(400,"text/plain","hex error"); return; }
-  saveBytes("devEui",cfg.devEui,8); 
-  saveBytes("appEui",cfg.appEui,8); 
+  saveBytes("devEui",cfg.devEui,8);
+  saveBytes("appEui",cfg.appEui,8);
   saveBytes("appKey",cfg.appKey,16);
 
-  http.send(200,"text/plain","ok"); 
-  delay(200); 
+  http.send(200,"text/plain","ok");
+  delay(200);
   ESP.restart();
 }
 
@@ -340,7 +423,7 @@ void api_deveui_get(){
 }
 void api_deveui_post(){
   if(!http.hasArg("plain")){ http.send(400,"text/plain","bad json"); return; }
-  StaticJsonDocument<128> d; 
+  StaticJsonDocument<128> d;
   if(deserializeJson(d,http.arg("plain"))){ http.send(400,"text/plain","bad json"); return; }
   if(d.containsKey("use") && String((const char*)d["use"])=="chip"){
     devEuiFromChip(cfg.devEui); saveBytes("devEui",cfg.devEui,8);
@@ -393,10 +476,12 @@ void oledSensorsOnce(){
 
   float t = readTempOnceC();
   int adcRaw=0;
-  uint16_t crack = readCrack_mm_x100(&adcRaw);
+  uint16_t crack_x100 = readCrack_mm_x100(&adcRaw);
   uint16_t bat = readBattery_mV();
 
   sensorsPowerOff();
+
+  float crack_mm = mapCrackRawToMM_f(adcRaw); // показ у тисячних
 
   OLED_Display.setFont(ArialMT_Plain_10);
   OLED_Display.setTextAlignment(TEXT_ALIGN_LEFT);
@@ -408,7 +493,7 @@ void oledSensorsOnce(){
   if(isfinite(t)) OLED_Display.drawString(0, 14, String("DS18B20  ")+String(t,1)+" C");
   else            OLED_Display.drawString(0, 14, "DS18B20  n/a");
   OLED_Display.drawString(0, 26, String("ADC      ")+String(adcRaw));
-  OLED_Display.drawString(0, 38, String("Crack    ")+String(crack/100.0f,2)+" mm");
+  OLED_Display.drawString(0, 38, String("Crack    ")+String(crack_mm,3)+" mm");
   OLED_Display.drawString(0, 50, String("Battery  ")+String(bat)+" mV");
 
   OLED_Display.display();

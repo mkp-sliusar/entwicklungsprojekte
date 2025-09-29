@@ -34,7 +34,12 @@
     "msg_send_err": "Send error",
     "msg_restarting": "restarting…",
     "msg_reset_forbidden": "Reset forbidden",
-    "crack_len": "Crack length"
+    "crack_len": "Crack length",
+    "crack_cal": "Crack calibration",
+    "r0": "ADC r0",
+    "mm0": "mm0",
+    "r1": "ADC r1",
+    "mm1": "mm1"
   },
   "de": {
     "title": "LoRa Rissmonitoring",
@@ -71,7 +76,12 @@
     "msg_send_err": "Sendefehler",
     "msg_restarting": "Neustart…",
     "msg_reset_forbidden": "Reset verweigert",
-    "crack_len": "Risslänge"
+    "crack_len": "Risslänge",
+    "crack_cal": "Risskalibrierung",
+    "r0": "ADC r0",
+    "mm0": "mm0",
+    "r1": "ADC r1",
+    "mm1": "mm1"
   },
   "uk": {
     "title": "LoRa Моніторинг тріщин",
@@ -108,6 +118,11 @@
     "msg_send_err": "Помилка відправки",
     "msg_restarting": "перезапуск…",
     "msg_reset_forbidden": "Відмова у скиданні",
-    "crack_len": "Довжина тріщини"
+    "crack_len": "Довжина тріщини",
+    "crack_cal": "Калібрування тріщини",
+    "r0": "ADC r0",
+    "mm0": "mm0",
+    "r1": "ADC r1",
+    "mm1": "mm1"
   }
 }

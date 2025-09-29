@@ -5,27 +5,11 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title id="t_title">LoRa Crack Monitoring</title>
 <style>
-:root {
-  color-scheme: light dark;
-  --bg:#111; --fg:#eee; --card:#1a1a1a; --border:#333;
-  --muted:#9aa; --field:#222; --btn:#222;
-}
-html[data-theme="light"] {
-  --bg:#fff; --fg:#111; --card:#f7f7f8; --border:#ddd;
-  --muted:#556; --field:#fff; --btn:#f3f4f6;
-}
+:root { color-scheme: light dark; --bg:#111; --fg:#eee; --card:#1a1a1a; --border:#333; --muted:#9aa; --field:#222; --btn:#222; }
+html[data-theme="light"] { --bg:#fff; --fg:#111; --card:#f7f7f8; --border:#ddd; --muted:#556; --field:#fff; --btn:#f3f4f6; }
 * { box-sizing:border-box }
 html,body { height:100% }
-body {
-  font-family:system-ui,Arial,sans-serif;
-  margin:16px;
-  background:var(--bg);
-  color:var(--fg);
-  display:flex;
-  flex-direction:column;
-  min-height:10svh;
-  max-height: 95svh;
-}
+body { font-family:system-ui,Arial,sans-serif; margin:16px; background:var(--bg); color:var(--fg); display:flex; flex-direction:column; min-height:10svh; max-height:95svh; }
 .main { flex:1; max-height:85vh; overflow:hidden; }
 h1 { font-size:20px;margin:0 0 12px;display:flex;align-items:center;justify-content:space-between;gap:8px }
 h3 { margin:0 0 8px }
@@ -40,11 +24,7 @@ button:hover { background:var(--btn) }
 .field label { min-width:120px }
 small { color:var(--muted) }
 #themeBtn,#langBtn { font-size:14px;line-height:1;padding:6px 10px }
-.footer {
-  margin-top:16px;padding-top:12px;border-top:1px solid var(--border);
-  font-size:12px;color:var(--muted);
-  display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:center
-}
+.footer { margin-top:16px;padding-top:12px;border-top:1px solid var(--border);font-size:12px;color:var(--muted);display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:center }
 .footer a { color:inherit;text-decoration:none }
 .footer a:hover { text-decoration:underline }
 .hr { height:1px;background:var(--border);margin:10px 0 }
@@ -94,13 +74,6 @@ small { color:var(--muted) }
       <button id="btnSaveChip">DevEUI</button>
     </div>
 
-    <!-- NEW: Crack length (mm) -->
-    <div class="field">
-      <label for="crLenField" id="i_crlen_k">Crack length</label>
-      <input id="crLenField" type="number" step="0.01" min="0.01" placeholder="Length, mm">
-      <button id="btnSaveCrLen">Save</button>
-    </div>
-
     <div class="field">
       <label for="devEuiField" id="i_deveui_k">DevEUI</label>
       <input id="devEuiField" placeholder="DevEUI MSB e.g. 0011223344556677">
@@ -127,12 +100,37 @@ small { color:var(--muted) }
 
     <small id="devEuiMsg"></small>
   </div>
+
+  <!-- Crack calibration -->
+  <div class="card">
+    <h3 id="i_crcal">Crack calibration</h3>
+    <div class="field">
+      <label for="r0Field" id="i_r0_k">ADC r0</label>
+      <input id="r0Field" type="number" step="1" placeholder="e.g. 25484">
+    </div>
+    <div class="field">
+      <label for="mm0Field" id="i_mm0_k">mm0</label>
+      <input id="mm0Field" type="number" step="0.01" min="0" placeholder="e.g. 0">
+    </div>
+    <div class="field">
+      <label for="r1Field" id="i_r1_k">ADC r1</label>
+      <input id="r1Field" type="number" step="1" placeholder="e.g. 5">
+    </div>
+    <div class="field">
+      <label for="mm1Field" id="i_mm1_k">mm1</label>
+      <input id="mm1Field" type="number" step="0.01" min="0" placeholder="e.g. 10">
+    </div>
+    <div class="row">
+      <button id="btnSaveCal">Save</button>
+      <small id="calMsg"></small>
+    </div>
+  </div>
 </div>
 </main>
 
 <footer class="footer">
   <span>© <span id="yr"></span> MKP GmbH</span>
-  <span id="i_footer_by">developed by</span> 
+  <span id="i_footer_by">developed by</span>
   <a href="mailto:roman.sliusar@marxkrontal.com">SLR</a>
   <a href="mailto:evgenij.koloda@marxkrontal.com">KOE</a>
   <a href="mailto:Bernd.Schinkoethe@marxkrontal.com">SCE</a>
@@ -188,7 +186,15 @@ function applyI18n(){
   byId('i_appeui_k').textContent=t.appeui||'AppEUI';
   byId('i_appkey_k').textContent=t.appkey||'AppKey';
   byId('i_interval_k').textContent=t.interval||'Interval';
-  byId('i_crlen_k').textContent=t.crack_len||'Crack length';
+
+  // calibration labels
+  byId('i_crcal').textContent=t.crack_cal||'Crack calibration';
+  byId('i_r0_k').textContent=t.r0||'ADC r0';
+  byId('i_mm0_k').textContent=t.mm0||'mm0';
+  byId('i_r1_k').textContent=t.r1||'ADC r1';
+  byId('i_mm1_k').textContent=t.mm1||'mm1';
+
+  byId('btnSaveCal').textContent = t.save || 'Save';
   byId('langBtn').textContent=CURR_LANG.toUpperCase();
 }
 
@@ -206,7 +212,6 @@ document.addEventListener('DOMContentLoaded',()=>{
   byId('themeBtn').onclick=()=>setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark');
   const y=byId('yr');if(y)y.textContent=new Date().getFullYear();
   byId('langBtn').onclick=()=>{const idx=LANGS.indexOf(CURR_LANG);CURR_LANG = LANGS[(idx + 1) % LANGS.length];
-;
   localStorage.setItem(LANG_KEY,CURR_LANG);applyI18n();};
   initI18n();
   setInterval(load,2000);load();
@@ -218,20 +223,26 @@ async function load(){
     byId('t').textContent=fmtTime();
     byId('ds').textContent=(s.DS18B20_Temp??'--.-');
     byId('adc').textContent=(s.adc_raw??'-');
-    if(s.crack_x100!=null)byId('crk').textContent=(s.crack_x100/100).toFixed(2);
+    if(s.crack_x100!=null) byId('crk').textContent=(s.crack_x100/100).toFixed(3); // thousandths
     byId('bat').textContent=(s.batt_mV??'-');
     byId('mode').textContent=s.mode||'-';
     byId('ip').textContent=s.ip||'-';
     byId('up').textContent=s.uptime_s??'-';
     byId('heap').textContent=s.heap_free??'-';
+
     if(s.cfg){
       if(!byId('devEuiField').value)byId('devEuiField').value=s.cfg.devEui||'';
       if(!byId('appEuiField').value)byId('appEuiField').value=s.cfg.appEui||'';
       if(!byId('appKeyField').value)byId('appKeyField').value=s.cfg.appKey||'';
       if(!byId('minutesField').value)byId('minutesField').value=s.cfg.minutes??15;
-      // NEW: populate crack length from cfg
-      if(s.cfg.crack_len_x100!=null && !byId('crLenField').value)
-        byId('crLenField').value=(s.cfg.crack_len_x100/100).toFixed(2);
+
+      if(s.cfg.crack_cal){
+        const cc=s.cfg.crack_cal;
+        if(cc.r0!=null && !byId('r0Field').value)  byId('r0Field').value=cc.r0;
+        if(cc.mm0!=null && !byId('mm0Field').value)byId('mm0Field').value=(+cc.mm0).toFixed(2);
+        if(cc.r1!=null && !byId('r1Field').value)  byId('r1Field').value=cc.r1;
+        if(cc.mm1!=null && !byId('mm1Field').value)byId('mm1Field').value=(+cc.mm1).toFixed(2);
+      }
     }
   }catch(e){
     const t=I18N[CURR_LANG]||I18N['en']||{};
@@ -246,6 +257,7 @@ async function saveLoRaField(k,v){
     byId('devEuiMsg').textContent=t.msg_saved_reboot||'Saved; rebooting…';
   }catch(e){byId('devEuiMsg').textContent=t.msg_save_error||'Save error';}
 }
+
 async function readDevEUI(){
   try{
     const j=await q('/api/deveui');
@@ -269,7 +281,29 @@ async function saveDevEUI(){
   try{
     await fetch('/api/deveui',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({devEui:h})});
     byId('devEuiMsg').textContent=t.msg_saved_reboot||'Saved; rebooting…';
-  }catch(e){byId('devEuiMsg').textContent=t.msg_save_error||'Save error';
+  }catch(e){byId('devEuiMsg').textContent=t.msg_save_error||'Save error';}
+}
+
+async function saveCrackCal(){
+  const t=I18N[CURR_LANG]||I18N['en']||{};
+  const r0=parseInt(byId('r0Field').value);
+  const r1=parseInt(byId('r1Field').value);
+  const mm0=parseFloat(byId('mm0Field').value);
+  const mm1=parseFloat(byId('mm1Field').value);
+  const msg=byId('calMsg');
+
+  if(!Number.isFinite(r0)||!Number.isFinite(r1)||!Number.isFinite(mm0)||!Number.isFinite(mm1)){
+    msg.textContent=t.msg_save_error||'Save error'; return;
+  }
+  try{
+    await fetch('/api/config/lora',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({crack_cal:{r0,mm0,r1,mm1}})
+    });
+    msg.textContent=t.msg_saved_reboot||'Saved; rebooting…';
+  }catch(e){
+    msg.textContent=t.msg_save_error||'Save error';
   }
 }
 
@@ -279,17 +313,16 @@ byId('btnSaveDev').onclick=saveDevEUI;
 byId('btnSaveAppEUI').onclick=()=>saveLoRaField('appEui',byId('appEuiField').value);
 byId('btnSaveAppKey').onclick=()=>saveLoRaField('appKey',byId('appKeyField').value);
 byId('btnSaveMinutes').onclick=()=>saveLoRaField('minutes',parseInt(byId('minutesField').value||'15'));
-// NEW: save crack length in mm
-byId('btnSaveCrLen').onclick=()=>saveLoRaField('crack_len_mm', parseFloat(byId('crLenField').value||'0'));
+byId('btnSaveCal').onclick=saveCrackCal;
 
 byId('btnSend').onclick=async()=>{
   const t=I18N[CURR_LANG]||I18N['en']||{};
-  try{const r=await fetch('/api/send',{method:'POST'});byId('msg').textContent=(r.ok?(t.msg_send_ok||'LoRa queued'):(t.msg_send_err||'Send error'));}
+  try{const r=await fetch('/api/send',{method:'POST'});byId('msg').textContent=(r.ok?(t.msg_send_ok||'LoRa queued'):(t.msg_send_err||'Send error')); }
   catch(e){byId('msg').textContent=t.msg_send_err||'Send error';}
 };
 byId('btnReset').onclick=async()=>{
   const t=I18N[CURR_LANG]||I18N['en']||{};
-  try{const r=await fetch('/api/reset',{method:'POST'});byId('msg').textContent=(r.ok?(t.msg_restarting||'restarting…'):(t.msg_reset_forbidden||'Reset forbidden'));}
+  try{const r=await fetch('/api/reset',{method:'POST'});byId('msg').textContent=(r.ok?(t.msg_restarting||'restarting…'):(t.msg_reset_forbidden||'Reset forbidden')); }
   catch(e){byId('msg').textContent=t.msg_save_error||'Save error';}
 };
 </script>
