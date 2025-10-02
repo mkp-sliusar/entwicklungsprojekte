@@ -1,6 +1,3 @@
-Ось повний скетч з DR/ADR через API та застосуванням у стеку.
-
-```cpp
 #include "LoRaWan_APP.h"
 #ifdef CLASS
 #undef CLASS
@@ -95,16 +92,15 @@ struct Cfg {
   int16_t  crack_r1 = 25480;
   uint16_t crack_mm0_x100 = 0;
   uint16_t crack_mm1_x100 = 1000;
-  // NEW:
-  uint8_t  lora_dr  = 3;    // 0..5 (EU868)
-  bool     lora_adr = true; // ADR вкл доки не зафіксовано DR
+  // LoRa
+  uint8_t  lora_dr  = 3;     // 0..5 (EU868)
+  bool     lora_adr = true;  // ADR auto
 } cfg;
 
 void saveKVu(const char* k, uint32_t v) { prefs.begin("uhfb", false); prefs.putUInt(k, v); prefs.end(); }
 void saveUShort(const char* k, uint16_t v){ prefs.begin("uhfb", false); prefs.putUShort(k, v); prefs.end(); }
 void saveShort (const char* k, int16_t v){ prefs.begin("uhfb", false); prefs.putShort (k, v); prefs.end(); }
 void saveBytes(const char* k, const uint8_t* d, size_t n){ prefs.begin("uhfb", false); prefs.putBytes(k, d, n); prefs.end(); }
-// NEW:
 void saveUChar(const char* k, uint8_t v){ prefs.begin("uhfb", false); prefs.putUChar(k, v); prefs.end(); }
 void saveBool (const char* k, bool    v){ prefs.begin("uhfb", false); prefs.putBool (k, v);  prefs.end(); }
 
@@ -122,7 +118,7 @@ void loadCfg() {
   cfg.crack_mm0_x100 = prefs.getUShort("cr_mm0", cfg.crack_mm0_x100);
   cfg.crack_mm1_x100 = prefs.getUShort("cr_mm1", cfg.crack_mm1_x100);
   if (cfg.crack_mm1_x100 == 1000) cfg.crack_mm1_x100 = cfg.crack_len_mm_x100;
-  // NEW:
+  // LoRa
   cfg.lora_dr  = prefs.getUChar("lora_dr",  cfg.lora_dr);
   cfg.lora_adr = prefs.getBool ("lora_adr", cfg.lora_adr);
   prefs.end();
@@ -263,7 +259,7 @@ float readTempOnceC() {
 }
 
 // ===== LoRa DR helpers =====
-static inline dr_t mapDR(uint8_t idx){
+static inline uint8_t mapDR(uint8_t idx){
   switch(idx){
     case 0: return DR_0;
     case 1: return DR_1;
@@ -275,7 +271,9 @@ static inline dr_t mapDR(uint8_t idx){
   }
 }
 static inline void applyLoraDataRate(){
+  // ADR керується глобальною змінною loraWanAdr у Heltec
   loraWanAdr = cfg.lora_adr;
+  // Стартовий DR (ігнорується мережею, якщо ADR=true)
   LoRaWAN.setDefaultDR(mapDR(cfg.lora_dr));
 }
 
@@ -379,7 +377,6 @@ void api_state() {
   JsonObject cal = c.createNestedObject("crack_cal");
   cal["r0"] = cfg.crack_r0;  cal["mm0"] = (float)cfg.crack_mm0_x100 / 100.0f;
   cal["r1"] = cfg.crack_r1;  cal["mm1"] = (float)cfg.crack_mm1_x100 / 100.0f;
-  // NEW:
   c["dr"]  = cfg.lora_dr;
   c["adr"] = cfg.lora_adr;
 
@@ -400,7 +397,6 @@ void api_cfg_get() {
   JsonObject cal = d.createNestedObject("crack_cal");
   cal["r0"] = cfg.crack_r0;  cal["mm0"] = (float)cfg.crack_mm0_x100 / 100.0f;
   cal["r1"] = cfg.crack_r1;  cal["mm1"] = (float)cfg.crack_mm1_x100 / 100.0f;
-  // NEW:
   d["dr"]  = cfg.lora_dr;
   d["adr"] = cfg.lora_adr;
 
@@ -448,7 +444,7 @@ void api_cfg_lora() {
     saveUShort("cr_mm1", cfg.crack_mm1_x100);
   }
 
-  // NEW: DR/ADR
+  // DR/ADR
   if (d.containsKey("dr")) {
     int v = d["dr"].as<int>();
     if (v < 0 || v > 5) { http.send(400, "text/plain", "dr range"); return; }
@@ -527,9 +523,7 @@ void oledBoot(const String& ssid) {
   apScroll.x      = 0;
   apScroll.active = (apScroll.w > 128);
 
-  if (!apScroll.active) OLED_Display.drawString(0, apScroll.y, line);
-  else                  OLED_Display.drawString(0, apScroll.y, line);
-
+  OLED_Display.drawString(0, apScroll.y, line);
   OLED_Display.display();
 }
 
@@ -582,6 +576,9 @@ void setup() {
   loadCfg();
   appTxDutyCycle = 60000UL * cfg.minutes;
 
+  // підготувати LoRa налаштування до init
+  loraWanAdr = cfg.lora_adr;
+
   memcpy(devEui, cfg.devEui, sizeof(devEui));
   memcpy(appEui, cfg.appEui, sizeof(appEui));
   memcpy(appKey, cfg.appKey, sizeof(appKey));
@@ -633,7 +630,7 @@ void loop() {
   switch (deviceState) {
     case DEVICE_STATE_INIT:
       LoRaWAN.init(loraWanClass, loraWanRegion);
-      applyLoraDataRate(); // NEW: DR/ADR з cfg
+      applyLoraDataRate(); // застосувати DR/ADR з cfg
       deviceState = overTheAirActivation ? DEVICE_STATE_JOIN : DEVICE_STATE_SEND;
       break;
 
@@ -664,4 +661,3 @@ void loop() {
       break;
   }
 }
-```

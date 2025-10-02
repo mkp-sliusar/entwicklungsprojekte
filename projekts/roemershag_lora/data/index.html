@@ -5,56 +5,64 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title id="t_title">LoRa Crack Monitoring</title>
 <style>
-:root{color-scheme:light dark;--bg:#111;--fg:#eee;--card:#1a1a1a;--border:#333;--muted:#9aa;--field:#222;--btn:#222}
-html[data-theme="light"]{--bg:#fff;--fg:#111;--card:#f7f7f8;--border:#ddd;--muted:#556;--field:#fff;--btn:#f3f4f6}
+/* === Theme tokens === */
+:root{
+  --bg:#111; --fg:#eee; --card:#1a1a1a; --border:#333; --muted:#9aa; --field:#222; --btn:#222;
+  --ff:system-ui,Arial,sans-serif; --fs:14px; --lh:1.35;
+  --in-fs:14px; --in-lh:1; --in-pad-y:8px; --in-pad-x:16px; --in-radius:12px;
+}
+html[data-theme="light"]{
+  color-scheme: light;
+  --bg:#fff; --fg:#111; --card:#f7f7f8; --border:#ddd; --muted:#556; --field:#fff; --btn:#f3f4f6;
+}
+html[data-theme="dark"]{ color-scheme: dark; }
+
+/* Base */
 *{box-sizing:border-box}
 html,body{height:100%}
-body{font-family:system-ui,Arial,sans-serif;margin:16px;background:var(--bg);color:var(--fg);display:flex;flex-direction:column;min-height:10svh;max-height:95svh}
+html,body{font-family:var(--ff);font-size:var(--fs);line-height:var(--lh)}
+body{margin:16px;background:var(--bg);color:var(--fg);display:flex;flex-direction:column;min-height:10svh;max-height:95svh}
 .main{flex:1;max-height:85vh;overflow:hidden}
 h1{font-size:20px;margin:0 0 12px;display:flex;align-items:center;justify-content:space-between;gap:8px}
 h3{margin:0 0 8px}
+h1,h3{font-family:var(--ff);line-height:1.2}
+h1{font-weight:700} h3{font-weight:600}
+.k,small,label{font:inherit}
+
+/* Grid */
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
 
 /* Cards */
 .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px;display:flex;flex-direction:column}
-.k{color:var(--muted)}
 .hr{height:1px;background:var(--border);margin:10px 0}
 
-/* Inputs */
-input{padding:12px 14px;border:1px solid var(--border);border-radius:8px;background:var(--field);color:var(--fg)}
-input:focus{outline:none;box-shadow:0 0 0 2px inset var(--border)}
+/* Controls */
+button,input,select,textarea{font:inherit;line-height:inherit;color:inherit}
+input,select,textarea{
+  font-size:var(--in-fs);line-height:var(--in-lh);
+  padding:var(--in-pad-y) var(--in-pad-x);
+  border:1px solid var(--border);border-radius:var(--in-radius);
+  background:var(--field);color:var(--fg);
+}
+input:focus,select:focus,textarea:focus{outline:none;box-shadow:0 0 0 2px inset var(--border)}
+/* make native select look like input */
+select{-webkit-appearance:none;-moz-appearance:none;appearance:none}
+
+/* Field layout */
 .field{display:flex;gap:4px;align-items:center;margin-top:8px}
-.field input{flex:1;min-width:0}
-.field label{min-width:120px}
+.field input,.field select{flex:1;min-width:0}
+.field label{min-width:120px;font-size:16px}
 
 /* Buttons */
-.btn{
-  padding:8px 12px;
-  border:1px solid var(--border);
-  border-radius:10px;
-  background:var(--field);
-  color:var(--fg);
-  font-weight:600;
-  margin-top:8px;   /* відступ зверху */
-}
+.btn{padding:8px 12px;border:1px solid var(--border);border-radius:10px;background:var(--field);color:var(--fg);font-weight:600;margin-top:8px}
 .btn:hover{background:var(--btn)}
 .btn-block{display:block;width:100%}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .actions{margin-top:auto}
-/* LoRa: 2 кнопки завжди на всю ширину блоку, однакової висоти */
-.card:has(#i_lora) .row {
-  display: flex;
-  gap: 12px;
-}
 
-.card:has(#i_lora) .row .btn {
-  flex: 1 1 0;          /* однакова ширина */
-  min-width: 0;
-  height: 48px;         /* фіксована висота */
-  display: flex;
-  align-items: center;  /* вертикальне вирівнювання тексту */
-  justify-content: center;
-}
+/* LoRa: 2 кнопки однакові */
+.card:has(#i_lora) .row{display:flex;gap:12px}
+.card:has(#i_lora) .row .btn{flex:1 1 0;min-width:0;height:48px;display:flex;align-items:center;justify-content:center}
 
 /* Badges */
 .badge{display:inline-block;padding:2px 8px;border:1px solid var(--border);border-radius:999px;font-size:12px;background:var(--btn)}
@@ -69,7 +77,7 @@ small{color:var(--muted)}
 .footer a{color:inherit;text-decoration:none}
 .footer a:hover{text-decoration:underline}
 
-/* LoRa layout: label | input (кнопка зверху у .row) */
+/* LoRa layout: label | input */
 .card:has(#i_lora) .field{display:grid;grid-template-columns:120px minmax(0,1fr);column-gap:6px;row-gap:8px}
 
 /* Tablet */
@@ -88,7 +96,7 @@ small{color:var(--muted)}
   .grid{grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
   .field{flex-direction:column;align-items:stretch}
   .field label{min-width:unset}
-  input,.btn{width:100%;max-width:100%}
+  input,.btn,select{width:100%;max-width:100%}
   .row{width:100%}
   .card:has(#i_lora) .field{grid-template-columns:1fr}
 }
@@ -99,52 +107,6 @@ small{color:var(--muted)}
   h1 img{height:22px}
   #themeBtn,#langBtn{padding:6px 8px;font-size:13px}
 }
-/* === Типографіка: однаково всюди === */
-:root{
-  --ff: system-ui, Arial, sans-serif;
-  --fs: 14px;          /* базовий розмір */
-  --lh: 1.35;          /* базова лінійна висота */
-}
-
-html, body{ font-family: var(--ff); font-size: var(--fs); line-height: var(--lh) }
-
-/* Форм-елементи й кнопки наслідують базу */
-button, input, select, textarea { 
-  font: inherit; 
-  line-height: inherit; 
-  color: inherit;
-}
-
-/* Тексти допоміжні теж вирівняні */
-.k, small, label { font: inherit }
-
-/* Заголовки — лише вага, без зміни розміру */
-h1, h3 { font-family: var(--ff); line-height: 1.2 }
-h1 { font-weight: 700 }
-h3 { font-weight: 600 }
-
-/* Бейджі наслідують базовий шрифт */
-.badge { font: inherit; font-size: inherit }
-/* === Уніфіковані розміри інпутів (як на скріні) === */
-:root{
-  --in-fs: 14px;          /* розмір шрифту полів */
-  --in-lh: 1;          /* лінійна висота */
-  --in-pad-y: 8px;       /* вертикальний паддінг */
-  --in-pad-x: 16px;       /* горизонтальний паддінг */
-  --in-radius: 12px;      /* радіус кутів */
-}
-
-input, select, textarea {
-  font-size: var(--in-fs);
-  line-height: var(--in-lh);
-  padding: var(--in-pad-y) var(--in-pad-x);
-  border-radius: var(--in-radius);
-}
-
-/* трохи більші підписи поруч із полями */
-.field label { font-size: 16px }
-
-
 </style>
 </head>
 <body>
@@ -158,7 +120,6 @@ input, select, textarea {
     <button id="themeBtn" class="btn" title="Theme">🌙</button>
   </div>
 </h1>
-
 
 <main class="main">
 <div class="grid">
@@ -214,6 +175,18 @@ input, select, textarea {
     <div class="field">
       <label for="minutesField" id="i_interval_k">Interval</label>
       <input id="minutesField" type="number" min="1" placeholder="Interval, min">
+    </div>
+    <div class="field">
+      <label for="drField" id="i_dr_k">DataRate (EU868)</label>
+      <select id="drField">
+        <option id="opt_dr_auto" value="auto">Auto</option>
+        <option value="0">DR0 (SF12 / 125kHz)</option>
+        <option value="1">DR1 (SF11 / 125kHz)</option>
+        <option value="2">DR2 (SF10 / 125kHz)</option>
+        <option value="3">DR3 (SF9  / 125kHz)</option>
+        <option value="4">DR4 (SF8  / 125kHz)</option>
+        <option value="5">DR5 (SF7  / 125kHz)</option>
+      </select>
     </div>
 
     <div class="actions">
@@ -272,25 +245,41 @@ function fmtTime(){const d=new Date(),p=n=>String(n).padStart(2,'0');return `${p
 async function q(url,opts){const r=await fetch(url,opts);if(!r.ok)throw new Error(await r.text());const ct=r.headers.get('content-type')||'';return ct.includes('application/json')?r.json():r.text()}
 
 function applyI18n(){
-  const t=I18N[CURR_LANG]||I18N['en']||{};
-  byId('i_title').textContent=t.title||'LoRa Crack Monitoring';
-  byId('t_title').textContent=t.title||'LoRa Crack Monitoring';
-  byId('i_sensors').textContent=t.sensors||'Sensors';
-  byId('i_time_k').textContent=t.time||'Time';
-  byId('i_ds_k').textContent=t.ds18b20||'DS18B20';
-  byId('i_adc_k').textContent=t.crack_adc||'Crack ADC';
-  byId('i_crack_status_k').textContent=t.crack_status||'Crack sensor';
-  byId('i_crack_k').textContent=t.crack||'Crack';
-  byId('i_bat_k').textContent=t.battery||'Battery';
-  byId('i_mm').textContent=t.mm||'mm';
-  byId('i_mv').textContent=t.mv||'mV';
-  byId('i_controller').textContent=t.controller||'Controller';
-  byId('i_mode_k').textContent=t.mode||'Mode';
-  byId('i_ip_k').textContent=t.ip||'IP';
-  byId('i_uptime_k').textContent=t.uptime||'Uptime';
-  byId('i_heap_k').textContent=t.heap||'Heap';
+  const t = I18N[CURR_LANG] || I18N['en'] || {};
 
-  // Buttons i18n
+  // Заголовки/лейбли
+  byId('i_title').textContent = t.title || 'LoRa Crack Monitoring';
+  byId('t_title').textContent = t.title || 'LoRa Crack Monitoring';
+  byId('i_sensors').textContent = t.sensors || 'Sensors';
+  byId('i_time_k').textContent = t.time || 'Time';
+  byId('i_ds_k').textContent = t.ds18b20 || 'DS18B20';
+  byId('i_adc_k').textContent = t.crack_adc || 'Crack ADC';
+  byId('i_crack_status_k').textContent = t.crack_status || 'Crack sensor';
+  byId('i_crack_k').textContent = t.crack || 'Crack';
+  byId('i_bat_k').textContent = t.battery || 'Battery';
+  byId('i_mm').textContent = t.mm || 'mm';
+  byId('i_mv').textContent = t.mv || 'mV';
+  byId('i_controller').textContent = t.controller || 'Controller';
+  byId('i_mode_k').textContent = t.mode || 'Mode';
+  byId('i_ip_k').textContent = t.ip || 'IP';
+  byId('i_uptime_k').textContent = t.uptime || 'Uptime';
+  byId('i_heap_k').textContent = t.heap || 'Heap';
+  byId('i_rssi_k').textContent = t.rssi || 'RSSI';
+  byId('i_snr_k').textContent = t.snr || 'SNR';
+  byId('i_dlage_k').textContent = t.dl_age || 'DL age';
+  byId('i_footer_by').textContent = t.footer_by || 'developed by';
+  byId('i_deveui_k').textContent = t.deveui || 'DevEUI';
+  byId('i_appeui_k').textContent = t.appeui || 'AppEUI';
+  byId('i_appkey_k').textContent = t.appkey || 'AppKey';
+  byId('i_interval_k').textContent = t.interval || 'Interval';
+  byId('i_crcal').textContent = t.crack_cal || 'Crack calibration';
+  byId('i_r0_k').textContent = t.r0 || 'ADC r0';
+  byId('i_mm0_k').textContent = t.mm0 || 'mm0';
+  byId('i_r1_k').textContent = t.r1 || 'ADC r1';
+  byId('i_mm1_k').textContent = t.mm1 || 'mm1';
+  byId('i_dr_k').textContent = t.drate || 'DataRate (EU868)';
+
+  // Кнопки
   byId('btnSend').textContent       = t.send || 'Manual LoRa send';
   byId('btnReset').textContent      = t.reboot || 'Reboot';
   byId('i_lora').textContent        = t.lora || 'LoRa';
@@ -299,27 +288,19 @@ function applyI18n(){
   byId('btnSaveLoRa').textContent   = t.save_all_lora || 'Save all LoRa settings';
   byId('btnSaveCalAll').textContent = t.save_cal_all || 'Save crack calibration';
 
-  // Placeholders
-  byId('devEuiField').placeholder   = t.ph_deveui  || 'DevEUI MSB e.g. 0011223344556677';
-  byId('appEuiField').placeholder   = t.ph_appeui  || 'AppEUI MSB';
-  byId('appKeyField').placeholder   = t.ph_appkey  || 'AppKey MSB';
-  byId('minutesField').placeholder  = t.ph_minutes || 'Interval, min';
+  // Плейсхолдери
+  byId('devEuiField').placeholder  = t.ph_deveui  || 'DevEUI MSB e.g. 0011223344556677';
+  byId('appEuiField').placeholder  = t.ph_appeui  || 'AppEUI MSB';
+  byId('appKeyField').placeholder  = t.ph_appkey  || 'AppKey MSB';
+  byId('minutesField').placeholder = t.ph_minutes || 'Interval, min';
 
-  byId('i_footer_by').textContent   = t.footer_by || 'developed by';
-  byId('i_deveui_k').textContent    = t.deveui || 'DevEUI';
-  byId('i_appeui_k').textContent    = t.appeui || 'AppEUI';
-  byId('i_appkey_k').textContent    = t.appkey || 'AppKey';
-  byId('i_interval_k').textContent  = t.interval || 'Interval';
-  byId('i_crcal').textContent       = t.crack_cal || 'Crack calibration';
-  byId('i_r0_k').textContent        = t.r0 || 'ADC r0';
-  byId('i_mm0_k').textContent       = t.mm0 || 'mm0';
-  byId('i_r1_k').textContent        = t.r1 || 'ADC r1';
-  byId('i_mm1_k').textContent       = t.mm1 || 'mm1';
-  byId('i_rssi_k').textContent      = t.rssi || 'RSSI';
-  byId('i_snr_k').textContent       = t.snr || 'SNR';
-  byId('i_dlage_k').textContent     = t.dl_age || 'DL age';
-  byId('langBtn').textContent       = CURR_LANG.toUpperCase();
+  // Select DR: пункт Auto
+  const optAuto = byId('opt_dr_auto'); if (optAuto) optAuto.textContent = t.auto || 'Auto';
+
+  // Кнопка перемикання мови
+  byId('langBtn').textContent = CURR_LANG.toUpperCase();
 }
+
 
 document.addEventListener('DOMContentLoaded',()=>{
   const savedTheme=localStorage.getItem(THEME_KEY);
@@ -344,9 +325,25 @@ async function initI18n(){
 }
 
 function setCrackStatus(present){
-  const el=byId('cr_status');
-  if(present){el.textContent='OK';el.classList.remove('err');el.classList.add('ok')}
-  else{el.textContent='N/C';el.classList.remove('ok');el.classList.add('err')}
+  const t = I18N[CURR_LANG] || I18N['en'] || {};
+  const el = byId('cr_status');
+  if(present){ el.textContent = t.ok || 'OK'; el.classList.remove('err'); el.classList.add('ok'); }
+  else{ el.textContent = t.nc || 'N/C'; el.classList.remove('ok'); el.classList.add('err'); }
+}
+
+async function readDevEUI(){
+  try{
+    const j=await q('/api/deveui');
+    byId('devEuiField').value=j.chip_devEui_msb||'';
+    const t=I18N[CURR_LANG]||I18N['en']||{};
+    byId('devEuiMsg').textContent =
+      `${(t.chip_msb||'chip MSB')}=${j.chip_devEui_msb}  ` +
+      `${(t.chip_lsb||'LSB')}=${j.chip_devEui_lsb}  ` +
+      `${(t.stored_msb||'stored')}=${j.stored_devEui_msb}`;
+  }catch(e){
+    const t=I18N[CURR_LANG]||I18N['en']||{};
+    byId('devEuiMsg').textContent=t.msg_save_error||'Save error';
+  }
 }
 
 async function load(){
@@ -381,6 +378,13 @@ async function load(){
       if(!byId('appEuiField').value)byId('appEuiField').value=s.cfg.appEui||'';
       if(!byId('appKeyField').value)byId('appKeyField').value=s.cfg.appKey||'';
       if(!byId('minutesField').value)byId('minutesField').value=s.cfg.minutes??15;
+
+      const drSel = byId('drField');
+      if(drSel){
+        if(s.cfg.adr===true) drSel.value='auto';
+        else if(s.cfg.dr!=null && s.cfg.dr>=0 && s.cfg.dr<=5) drSel.value=String(s.cfg.dr);
+        else drSel.value='auto';
+      }
 
       if(s.cfg.crack_cal){
         const cc=s.cfg.crack_cal;
@@ -418,12 +422,16 @@ byId('btnReset').onclick=async()=>{
 };
 
 async function saveLoRaAll(){
+  const sel = byId('drField') ? byId('drField').value : 'auto';
   const payload={
     devEui:byId('devEuiField').value.trim(),
     appEui:byId('appEuiField').value.trim(),
     appKey:byId('appKeyField').value.trim(),
     minutes:parseInt(byId('minutesField').value||'15')
   };
+  if(sel==='auto'){ payload.adr=true; }
+  else { payload.dr=parseInt(sel); payload.adr=false; }
+
   const t=I18N[CURR_LANG]||I18N['en']||{};
   try{
     await fetch('/api/config/lora',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
@@ -446,16 +454,7 @@ async function saveCrackCalAll(){
   }catch(e){byId('calMsg').textContent=t.msg_save_error||'Save error'}
 }
 
-async function readDevEUI(){
-  try{
-    const j=await q('/api/deveui');
-    byId('devEuiField').value=j.chip_devEui_msb||'';
-    byId('devEuiMsg').textContent=`chip MSB=${j.chip_devEui_msb}  LSB=${j.chip_devEui_lsb}  stored=${j.stored_devEui_msb}`;
-  }catch(e){
-    const t=I18N[CURR_LANG]||I18N['en']||{};
-    byId('devEuiMsg').textContent=t.msg_save_error||'Save error';
-  }
-}
+
 async function saveChipDevEUI(){
   const t=I18N[CURR_LANG]||I18N['en']||{};
   try{
