@@ -6,6 +6,8 @@
 #undef DR
 #endif
 
+#include "data/logoMKP.h"
+
 #include <WiFi.h>
 #include <WebServer.h>
 #include <ArduinoJson.h>
@@ -27,11 +29,11 @@ Adafruit_ADS1115 ads;
 
 // ===== Pins (Heltec V3 / ESP32-S3) =====
 #define ONE_WIRE_BUS 4
-#define ADC_CRACK 2
-#define VBAT_Read 1
-#define ADC_Ctrl 37
+#define ADC_CRACK    2
+#define VBAT_Read    1
+#define ADC_Ctrl     37
 #define PIN_MODE_OUT 45
-#define PIN_MODE_IN 46
+#define PIN_MODE_IN  46
 #define PIN_CRACK_PRES 3
 
 // ===== Керування живленням сенсорів (ADS1115 + DS18B20) =====
@@ -83,16 +85,26 @@ bool apMode = false;
 Preferences prefs;
 struct Cfg {
   String ssid, wifi_pw;
-  uint8_t devEui[8] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
-  uint8_t appEui[8] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
-  uint8_t appKey[16] = { 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00 };
+  uint8_t devEui[8] = { 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00 };
+  uint8_t appEui[8] = { 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00 };
+  uint8_t appKey[16]= { 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00 };
   uint32_t minutes = 2;
   uint16_t crack_len_mm_x100 = 1000;
   int16_t  crack_r0 = 5;
   int16_t  crack_r1 = 25480;
   uint16_t crack_mm0_x100 = 0;
   uint16_t crack_mm1_x100 = 1000;
+  // LoRa
+  uint8_t  lora_dr  = 3;     // 0..5 (EU868)
+  bool     lora_adr = true;  // ADR auto
 } cfg;
+
+void saveKVu(const char* k, uint32_t v) { prefs.begin("uhfb", false); prefs.putUInt(k, v); prefs.end(); }
+void saveUShort(const char* k, uint16_t v){ prefs.begin("uhfb", false); prefs.putUShort(k, v); prefs.end(); }
+void saveShort (const char* k, int16_t v){ prefs.begin("uhfb", false); prefs.putShort (k, v); prefs.end(); }
+void saveBytes(const char* k, const uint8_t* d, size_t n){ prefs.begin("uhfb", false); prefs.putBytes(k, d, n); prefs.end(); }
+void saveUChar(const char* k, uint8_t v){ prefs.begin("uhfb", false); prefs.putUChar(k, v); prefs.end(); }
+void saveBool (const char* k, bool    v){ prefs.begin("uhfb", false); prefs.putBool (k, v);  prefs.end(); }
 
 void loadCfg() {
   prefs.begin("uhfb", true);
@@ -108,12 +120,10 @@ void loadCfg() {
   cfg.crack_mm0_x100 = prefs.getUShort("cr_mm0", cfg.crack_mm0_x100);
   cfg.crack_mm1_x100 = prefs.getUShort("cr_mm1", cfg.crack_mm1_x100);
   if (cfg.crack_mm1_x100 == 1000) cfg.crack_mm1_x100 = cfg.crack_len_mm_x100;
+  cfg.lora_dr  = prefs.getUChar("lora_dr",  cfg.lora_dr);
+  cfg.lora_adr = prefs.getBool ("lora_adr", cfg.lora_adr);
   prefs.end();
 }
-void saveKVu(const char* k, uint32_t v) { prefs.begin("uhfb", false); prefs.putUInt(k, v); prefs.end(); }
-void saveUShort(const char* k, uint16_t v){ prefs.begin("uhfb", false); prefs.putUShort(k, v); prefs.end(); }
-void saveShort (const char* k, int16_t v){ prefs.begin("uhfb", false); prefs.putShort (k, v); prefs.end(); }
-void saveBytes(const char* k, const uint8_t* d, size_t n){ prefs.begin("uhfb", false); prefs.putBytes(k, d, n); prefs.end(); }
 
 // ===== LoRaWAN (глобалы для Heltec LoRaWan_APP) =====
 uint16_t userChannelsMask[6] = { 0x00FF, 0, 0, 0, 0, 0 };
@@ -149,14 +159,12 @@ extern "C" void downLinkDataHandle(McpsIndication_t *mcpsIndication) {
 }
 
 // ===== OLED marquee (прокрутка AP SSID) =====
-struct OledMarquee {
-  String text; int y = 28; int w = 0; int x = 0; bool active = false; uint32_t last = 0;
-} apScroll;
+struct OledMarquee { String text; int y=28; int w=0; int x=0; bool active=false; uint32_t last=0; } apScroll;
 
 void oledMarqueeTick() {
   if (!apScroll.active) return;
   const uint32_t now = millis();
-  if (now - apScroll.last < 40) return;   // швидкість
+  if (now - apScroll.last < 40) return;
   apScroll.last = now;
 
   OLED_Display.setColor(BLACK);
@@ -174,21 +182,9 @@ void oledMarqueeTick() {
 }
 
 // ===== Утиліти =====
-String toHex(const uint8_t* v, size_t n) {
-  char b[3]; String s; s.reserve(n*2);
-  for (size_t i=0;i<n;i++){ sprintf(b,"%02X", v[i]); s+=b; }
-  return s;
-}
-String toHexLSB(const uint8_t* v, size_t n) {
-  char b[3]; String s; s.reserve(n*2);
-  for (int i=n-1;i>=0;i--){ sprintf(b,"%02X", v[i]); s+=b; }
-  return s;
-}
-bool parseHex(const String& s, uint8_t* out, size_t n) {
-  if (s.length()!=n*2) return false;
-  for (size_t i=0;i<n;i++){ char b[3]={ (char)s[2*i], (char)s[2*i+1], 0 }; out[i]=(uint8_t)strtoul(b,nullptr,16); }
-  return true;
-}
+String toHex(const uint8_t* v, size_t n) { char b[3]; String s; s.reserve(n*2); for (size_t i=0;i<n;i++){ sprintf(b,"%02X", v[i]); s+=b; } return s; }
+String toHexLSB(const uint8_t* v, size_t n) { char b[3]; String s; s.reserve(n*2); for (int i=n-1;i>=0;i--){ sprintf(b,"%02X", v[i]); s+=b; } return s; }
+bool parseHex(const String& s, uint8_t* out, size_t n) { if (s.length()!=n*2) return false; for (size_t i=0;i<n;i++){ char b[3]={ (char)s[2*i], (char)s[2*i+1], 0 }; out[i]=(uint8_t)strtoul(b,nullptr,16); } return true; }
 void devEuiFromChip(uint8_t out[8]) {
   uint64_t mac = ESP.getEfuseMac(); uint8_t m[6];
   for (int i=0;i<6;i++) m[i]=(mac>>(8*(5-i)))&0xFF;
@@ -249,30 +245,82 @@ float readTempOnceC() {
   return tC;
 }
 
-// ===== Payload =====
-static void prepareTxFrame(uint8_t) {
+// ===== LoRa DR helpers =====
+static inline uint8_t mapDR(uint8_t idx){
+  switch(idx){
+    case 0: return DR_0;
+    case 1: return DR_1;
+    case 2: return DR_2;
+    case 3: return DR_3;
+    case 4: return DR_4;
+    case 5: return DR_5;
+    default:return DR_3;
+  }
+}
+static inline void applyLoraDataRate(){
+  loraWanAdr = cfg.lora_adr;                         // глобальна змінна Heltec
+  LoRaWAN.setDefaultDR(mapDR(cfg.lora_dr));          // стартовий DR (мережа може змінити при ADR)
+}
+
+// ===== OLED: splash з логотипом (3 с) =====
+static void oledSplash(){
+  OLED_Display.init();
+  OLED_Display.clear();
+  OLED_Display.setColor(WHITE);
+
+  const int x = (128 - logoMKP_width) / 2;
+  const int y = 0;
+  OLED_Display.drawXbm(x, y, logoMKP_width, logoMKP_height, (const uint8_t*)logoMKP_bits);
+
+  OLED_Display.setFont(ArialMT_Plain_10);
+  OLED_Display.setTextAlignment(TEXT_ALIGN_CENTER);
+  OLED_Display.drawString(64, logoMKP_height + 2, "MARX KRONTAL PARTNER");
+  OLED_Display.display();
+  delay(3000);
+}
+
+// ===== OLED: 5 рядків (4 сенсори + RSSI) =====
+void oledSensorsOnce() {
   sensorsPowerOn();
   if (!firstDsFound) { sensors.begin(); firstDsFound = dsFindFirst(firstDs); if (firstDsFound) sensors.setResolution(firstDs, DS_RES_BITS); }
   else sensors.setResolution(firstDs, DS_RES_BITS);
 
   bool present = crackPresent();
-  int16_t adcRaw = present ? ads.readADC_SingleEnded(0) : 0;
-  if (adcRaw < 0) adcRaw = 0;
-
-  int16_t t = readTemp_c_x100();
-  uint16_t vb = readBattery_mV();
-
-  float mm = present ? mapCrackRawToMM_f(adcRaw) : 0.0f;
-  if (mm < 0) mm = 0; if (mm > 65.535f) mm = 65.535f;
-  uint16_t cr1000 = (uint16_t)lrintf(mm * 1000.0f);
-
+  float t = readTempOnceC();
+  int adcRaw = 0;
+  (void)(present ? readCrack_mm_x100(&adcRaw) : 0);
+  uint16_t bat = readBattery_mV();
   sensorsPowerOff();
 
-  appDataSize = 8;
-  appData[0] = t >> 8;  appData[1] = t;
-  appData[2] = adcRaw >> 8; appData[3] = adcRaw;
-  appData[4] = cr1000 >> 8; appData[5] = cr1000;
-  appData[6] = vb >> 8;    appData[7] = vb;
+  float crack_mm = present ? mapCrackRawToMM_f(adcRaw) : NAN;
+
+  OLED_Display.clear();
+  OLED_Display.setFont(ArialMT_Plain_10);
+  OLED_Display.setTextAlignment(TEXT_ALIGN_LEFT);
+
+  int y = 0, dy = 12;
+
+  if (isfinite(t)) OLED_Display.drawString(0, y,   String("DS18B20  ")+String(t,1)+" C");
+  else             OLED_Display.drawString(0, y,   "DS18B20  N/C");
+  y += dy;
+
+  OLED_Display.drawString(0, y, String("ADC      ")+(present?String(adcRaw):String("N/C")));
+  y += dy;
+
+  if (present) OLED_Display.drawString(0, y, String("Crack    ")+String(crack_mm,3)+" mm");
+  else         OLED_Display.drawString(0, y, "Crack    N/C");
+  y += dy;
+
+  OLED_Display.drawString(0, y, String("Battery  ")+String(bat)+" mV");
+  y += dy;
+
+  if (lora_has_rx){
+    OLED_Display.drawString(0, y, String("RSSI ")+String(lora_last_rssi)+"  SNR "+String(lora_last_snr));
+  } else {
+    OLED_Display.drawString(0, y, "RSSI  —");
+  }
+
+  OLED_Display.display();
 }
 
 // ===== Web (AP) =====
@@ -326,7 +374,6 @@ void api_state() {
   d["batt_mV"] = batmV;
   if (isfinite(tC)) d["DS18B20_Temp"] = tC; else d["DS18B20_Temp"] = nullptr;
 
-  // LoRa link metrics (і вкладено, і в корені)
   JsonObject lj = d.createNestedObject("lora");
   if (lora_has_rx) {
     const uint32_t age = (millis() - lora_last_rx_ms)/1000;
@@ -350,6 +397,8 @@ void api_state() {
   JsonObject cal = c.createNestedObject("crack_cal");
   cal["r0"] = cfg.crack_r0;  cal["mm0"] = (float)cfg.crack_mm0_x100 / 100.0f;
   cal["r1"] = cfg.crack_r1;  cal["mm1"] = (float)cfg.crack_mm1_x100 / 100.0f;
+  c["dr"]  = cfg.lora_dr;
+  c["adr"] = cfg.lora_adr;
 
   String out; serializeJson(d, out);
   http.send(200, "application/json", out);
@@ -368,6 +417,8 @@ void api_cfg_get() {
   JsonObject cal = d.createNestedObject("crack_cal");
   cal["r0"] = cfg.crack_r0;  cal["mm0"] = (float)cfg.crack_mm0_x100 / 100.0f;
   cal["r1"] = cfg.crack_r1;  cal["mm1"] = (float)cfg.crack_mm1_x100 / 100.0f;
+  d["dr"]  = cfg.lora_dr;
+  d["adr"] = cfg.lora_adr;
 
   String out; serializeJson(d, out);
   http.send(200, "application/json", out);
@@ -383,7 +434,10 @@ void api_cfg_lora() {
   if (d.containsKey("appEui")) ok &= parseHex((const char*)d["appEui"], cfg.appEui, 8);
   if (d.containsKey("appKey")) ok &= parseHex((const char*)d["appKey"], cfg.appKey,16);
 
-  if (d.containsKey("minutes")) { cfg.minutes = d["minutes"].as<uint32_t>(); saveKVu("minutes", cfg.minutes); }
+  if (d.containsKey("minutes")) {
+    cfg.minutes = d["minutes"].as<uint32_t>();
+    saveKVu("minutes", cfg.minutes);
+  }
 
   if (d.containsKey("crack_len_mm")) {
     float L = d["crack_len_mm"].as<float>();
@@ -408,6 +462,19 @@ void api_cfg_lora() {
     saveShort ("cr_r1",  cfg.crack_r1);
     saveUShort("cr_mm0", cfg.crack_mm0_x100);
     saveUShort("cr_mm1", cfg.crack_mm1_x100);
+  }
+
+  if (d.containsKey("dr")) {
+    int v = d["dr"].as<int>();
+    if (v < 0 || v > 5) { http.send(400, "text/plain", "dr range"); return; }
+    cfg.lora_dr  = (uint8_t)v;
+    cfg.lora_adr = false; // фіксований DR → ADR off
+    saveUChar("lora_dr",  cfg.lora_dr);
+    saveBool ("lora_adr", cfg.lora_adr);
+  }
+  if (d.containsKey("adr")) {
+    cfg.lora_adr = d["adr"].as<bool>();
+    saveBool("lora_adr", cfg.lora_adr);
   }
 
   if (!ok) { http.send(400, "text/plain", "hex error"); return; }
@@ -461,61 +528,32 @@ void attachHttpFS() {
   http.begin();
 }
 
-// ===== OLED =====
-void oledBoot(const String& ssid) {
-  OLED_Display.init(); OLED_Display.clear();
-  OLED_Display.setFont(ArialMT_Plain_10);
-  OLED_Display.setTextAlignment(TEXT_ALIGN_LEFT);
-  OLED_Display.drawString(0, 0,  "MARX KRONTAL PARTNER");
-  OLED_Display.drawString(0, 14, "UHFB Carport");
+// ===== Payload (для LoRaWAN) =====
+void prepareTxFrame(uint8_t port) {
+  (void)port;
 
-  String line = "AP: " + ssid;
-  apScroll.text   = line;
-  apScroll.w      = OLED_Display.getStringWidth(line);
-  apScroll.x      = 0;
-  apScroll.active = (apScroll.w > 128);
-
-  if (!apScroll.active) OLED_Display.drawString(0, apScroll.y, line);
-  else                  OLED_Display.drawString(0, apScroll.y, line);
-
-  OLED_Display.display();
-}
-
-void oledSensorsOnce() {
   sensorsPowerOn();
   if (!firstDsFound) { sensors.begin(); firstDsFound = dsFindFirst(firstDs); if (firstDsFound) sensors.setResolution(firstDs, DS_RES_BITS); }
   else sensors.setResolution(firstDs, DS_RES_BITS);
 
   bool present = crackPresent();
-  float t = readTempOnceC();
-  int adcRaw = 0;
-  (void)(present ? readCrack_mm_x100(&adcRaw) : 0);
-  uint16_t bat = readBattery_mV();
+  int16_t adcRaw = present ? ads.readADC_SingleEnded(0) : 0;
+  if (adcRaw < 0) adcRaw = 0;
+
+  int16_t t = readTemp_c_x100();
+  uint16_t vb = readBattery_mV();
+
+  float mm = present ? mapCrackRawToMM_f(adcRaw) : 0.0f;
+  if (mm < 0) mm = 0; if (mm > 65.535f) mm = 65.535f;
+  uint16_t cr1000 = (uint16_t)lrintf(mm * 1000.0f);
+
   sensorsPowerOff();
 
-  float crack_mm = present ? mapCrackRawToMM_f(adcRaw) : NAN;
-
-  OLED_Display.setFont(ArialMT_Plain_10);
-  OLED_Display.setTextAlignment(TEXT_ALIGN_LEFT);
-
-  OLED_Display.setColor(BLACK);
-  OLED_Display.fillRect(0, 12, 128, 52);   // очистити область даних
-  OLED_Display.setColor(WHITE);
-
-  if (isfinite(t)) OLED_Display.drawString(0, 14, String("DS18B20  ")+String(t,1)+" C");
-  else             OLED_Display.drawString(0, 14, "DS18B20  n/a");
-  OLED_Display.drawString(0, 26, String("ADC      ")+(present?String(adcRaw):String("N/C")));
-  if (present) OLED_Display.drawString(0, 38, String("Crack    ")+String(crack_mm,3)+" mm");
-  else         OLED_Display.drawString(0, 38, "Crack    N/C");
-  OLED_Display.drawString(0, 50, String("Battery  ")+String(bat)+" mV");
-
-  // LoRa link line
-  String linkLine = lora_has_rx
-    ? ("LoRa  RSSI " + String(lora_last_rssi) + "  SNR " + String(lora_last_snr))
-    : "LoRa  —";
-  OLED_Display.drawString(0, 60, linkLine);
-
-  OLED_Display.display();
+  appDataSize = 8;
+  appData[0] = t >> 8;  appData[1] = t;
+  appData[2] = adcRaw >> 8; appData[3] = adcRaw;
+  appData[4] = cr1000 >> 8; appData[5] = cr1000;
+  appData[6] = vb >> 8;    appData[7] = vb;
 }
 
 void setup() {
@@ -531,6 +569,8 @@ void setup() {
   loadCfg();
   appTxDutyCycle = 60000UL * cfg.minutes;
 
+  loraWanAdr = cfg.lora_adr;
+
   memcpy(devEui, cfg.devEui, sizeof(devEui));
   memcpy(appEui, cfg.appEui, sizeof(appEui));
   memcpy(appKey, cfg.appKey, sizeof(appKey));
@@ -543,6 +583,8 @@ void setup() {
   sensorsPowerOff();
 
   if (apMode) {
+    isTxConfirmed = true;
+    confirmedNbTrials = 3;
     WiFi.mode(WIFI_AP);
     String ssid = "Rissmonitoring-" + devEuiSuffix6();
 
@@ -555,9 +597,8 @@ void setup() {
 
     pinMode(Vext, OUTPUT); digitalWrite(Vext, LOW);
 
-    OLED_Display.init();
-    oledBoot(ssid); delay(500);
-    oledSensorsOnce();
+    oledSplash();        // 3 с логотип
+    oledSensorsOnce();   // далі — екран із 5 рядками
   } else {
     WiFi.mode(WIFI_OFF);
 #if defined(CONFIG_BT_ENABLED) && CONFIG_BT_ENABLED
@@ -572,7 +613,7 @@ void setup() {
 void loop() {
   if (apMode) {
     http.handleClient();
-    oledMarqueeTick();                   // прокрутка «AP: SSID…»
+    oledMarqueeTick();
     static uint32_t tmr=0;
     if (millis()-tmr>5000) { tmr=millis(); oledSensorsOnce(); }
   }
@@ -580,7 +621,7 @@ void loop() {
   switch (deviceState) {
     case DEVICE_STATE_INIT:
       LoRaWAN.init(loraWanClass, loraWanRegion);
-      LoRaWAN.setDefaultDR(DR_3);
+      applyLoraDataRate();
       deviceState = overTheAirActivation ? DEVICE_STATE_JOIN : DEVICE_STATE_SEND;
       break;
 
