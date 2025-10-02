@@ -13,8 +13,14 @@
 }
 html[data-theme="light"]{
   color-scheme: light;
-  --bg:#fff; --fg:#111; --card:#f7f7f8; --border:#ddd; --muted:#556; --field:#fff; --btn:#f3f4f6;
+  /* палітра від найсвітлішого до темнішого */
+  --g0:#f6f7f8; --g1:#eef0f1; --g2:#e3e5e7; --g3:#d8dadc; --g4:#cdd0d3; --g5:#c2c5c8;
+
+  --bg:var(--g0);        /* фон — найсвітліший */
+  --fg:#111; --border:#ddd; --muted:#556; --field:#fff; --btn:#f3f4f6;
+  --card:var(--g3);      /* запасне значення для картки */
 }
+
 html[data-theme="dark"]{ color-scheme: dark; }
 
 /* Base */
@@ -47,6 +53,15 @@ input,select,textarea{
 input:focus,select:focus,textarea:focus{outline:none;box-shadow:0 0 0 2px inset var(--border)}
 /* make native select look like input */
 select{-webkit-appearance:none;-moz-appearance:none;appearance:none}
+/* базово картка бере свій тон із змінної --cardTone */
+.grid > .card{ background:var(--cardTone, var(--card)); }
+
+/* 1..5: від темнішого до світлішого; далі повторюється */
+.grid > .card:nth-of-type(5n+1){ --cardTone:var(--g5) }
+.grid > .card:nth-of-type(5n+2){ --cardTone:var(--g4) }
+.grid > .card:nth-of-type(5n+3){ --cardTone:var(--g3) }
+.grid > .card:nth-of-type(5n+4){ --cardTone:var(--g2) }
+.grid > .card:nth-of-type(5n+5){ --cardTone:var(--g1) }
 
 /* Field layout */
 .field{display:flex;gap:4px;align-items:center;margin-top:8px}
@@ -79,6 +94,8 @@ small{color:var(--muted)}
 
 /* LoRa layout: label | input */
 .card:has(#i_lora) .field{display:grid;grid-template-columns:120px minmax(0,1fr);column-gap:6px;row-gap:8px}
+/* статус над кнопками */
+.status{display:block;min-height:1.2em;margin-bottom:6px;color:var(--muted);word-break:break-word;white-space:pre-line}
 
 /* Tablet */
 @media (max-width:900px){
@@ -127,7 +144,13 @@ small{color:var(--muted)}
   <div class="card">
     <h3 id="i_sensors">Sensors</h3>
     <div><span class="k" id="i_time_k">Time</span>: <b id="t">--:--:--</b></div>
-    <div><span class="k" id="i_ds_k">DS18B20</span>: <b id="ds">--.-</b> °C</div>
+    <div>
+      <span class="k" id="i_ds_k">DS18B20</span>:
+      <span id="ds">-</span><span id="ds_unit"> °C</span>
+
+
+    </div>
+
     <div><span class="k" id="i_adc_k">Crack ADC</span>: <b id="adc">-</b></div>
     <div><span class="k" id="i_crack_status_k">Crack sensor</span>: <span id="cr_status" class="badge">—</span></div>
     <div><span class="k" id="i_crack_k">Crack</span>: <b id="crk">-</b> <span id="i_mm">mm</span></div>
@@ -145,10 +168,12 @@ small{color:var(--muted)}
     <div><span class="k" id="i_snr_k">SNR</span>: <b id="snr">—</b> dB</div>
     <div><span class="k" id="i_dlage_k">DL age</span>: <b id="dlage">—</b> s</div>
     <div class="hr"></div>
-    <div class="row actions">
-      <button id="btnSend" class="btn">Manual LoRa send</button>
-      <button id="btnReset" class="btn">Reboot</button>
-      <small id="msg"></small>
+    <div class="actions">
+      <small id="msg" class="status" aria-live="polite"></small>
+      <div class="row">
+        <button id="btnSend" class="btn">Manual LoRa send</button>
+        <button id="btnReset" class="btn">Reboot</button>
+      </div>
     </div>
   </div>
 
@@ -350,7 +375,26 @@ async function load(){
   try{
     const s=await q('/api/state');
     byId('t').textContent=fmtTime();
-    byId('ds').textContent=(s.DS18B20_Temp??'--.-');
+
+    // DS18B20: "-", "N/C", або температура
+    const vRaw = s.DS18B20_Temp;
+    const vNum = Number(vRaw);
+    const dsHasValue =
+      vRaw !== null && vRaw !== undefined &&
+      Number.isFinite(vNum) && vNum > -100 && vNum < 125; // фільтрує -127 та абсурд
+
+    if (dsHasValue) {
+      byId('ds').textContent = vNum.toFixed(1);
+      byId('ds').classList.remove('badge','err','ok');
+      byId('ds_unit').textContent = ' °C';
+    } else {
+      const t = I18N[CURR_LANG] || I18N['en'] || {};
+      byId('ds').textContent = t.nc || 'N/C';
+      byId('ds').classList.add('badge','err'); // той самий стиль, що і Crack sensor N/C
+      byId('ds_unit').textContent = '';
+    }
+
+
     const present=!!s.crack_present;
 
     byId('adc').textContent=present?(s.adc_raw??'-'):'N/C';
