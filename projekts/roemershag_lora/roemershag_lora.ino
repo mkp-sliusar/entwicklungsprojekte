@@ -543,6 +543,8 @@ void setup() {
   sensorsPowerOff();
 
   if (apMode) {
+    isTxConfirmed = true;         // отримаєш ACK -> оновиться RSSI/SNR
+    confirmedNbTrials = 3;
     WiFi.mode(WIFI_AP);
     String ssid = "Rissmonitoring-" + devEuiSuffix6();
 
