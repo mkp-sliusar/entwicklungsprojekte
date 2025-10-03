@@ -1,3 +1,16 @@
+/*
+ * Heltec ESP32-S3 (LoRa V3) crack monitoring node
+ * - ADS1115 on secondary I2C
+ * - DS18B20 on OneWire
+ * - SSD1306 OLED
+ * - Optional Wi-Fi AP for local config UI (LittleFS)
+ * - LoRaWAN uplink with fixed payload format (8 bytes)
+ *
+ * Notes:
+ * - Time sync is stubbed out (no RTC/DeviceTime).
+ * - Payload format preserved for compatibility.
+ */
+
 #include "LoRaWan_APP.h"
 #ifdef CLASS
 #undef CLASS
@@ -20,96 +33,116 @@
 #include <DallasTemperature.h>
 #include <math.h>
 
-// ---- Time sync stubs (no SysTime) ----
-static inline bool     sysTimeLooksValid(){ return false; }     // немає RTC/DeviceTime
-static inline uint32_t now_sec(){ return millis()/1000UL; }     // uptime в секундах
-static inline bool     loraRequestDeviceTime(){ return false; } // запити DeviceTime вимкнені
+// ---------- Constants ----------
 
-// ===== OLED =====
-SSD1306Wire OLED_Display(0x3c, 400000, SDA_OLED, SCL_OLED, GEOMETRY_128_64, RST_OLED);
+// OLED
+static constexpr uint8_t  OLED_ADDR            = 0x3C;
 
-// ===== ADS1115 на другій I²C (GPIO47/48) =====
+// I2C (secondary for ADS1115 on ESP32-S3 GPIO 47/48)
+static constexpr int      I2C_ADS_SDA          = 47;
+static constexpr int      I2C_ADS_SCL          = 48;
+static constexpr uint32_t I2C_FREQ_HZ          = 400000;
+
+// Pinout (Heltec V3 / ESP32-S3)
+static constexpr int PIN_ONE_WIRE              = 4;
+static constexpr int PIN_ADC_CRACK_UNUSED      = 2;   // reserved
+static constexpr int PIN_VBAT_ADC              = 1;
+static constexpr int PIN_ADC_CTRL              = 37;  // enables VBAT divider sampling
+static constexpr int PIN_MODE_OUT              = 45;
+static constexpr int PIN_MODE_IN               = 46;
+static constexpr int PIN_CRACK_PRESENT         = 3;
+
+// Sensor power rail (ADS1115 + DS18B20)
+static constexpr int  PIN_SENS_EN              = 7;
+static constexpr bool SENS_ACTIVE_HIGH         = true;
+
+// LoRaWAN defaults (EU868)
+static constexpr uint8_t  LORAWAN_DR_DEFAULT   = 3;   // DR_3
+static constexpr bool     LORAWAN_ADR_DEFAULT  = true;
+
+// ADS1115
+static constexpr uint8_t  ADS1115_ADDR         = 0x48;
+
+// DS18B20
+static constexpr uint8_t  DS_RES_BITS          = 10;  // ~187.5 ms conversion
+
+// Battery ADC divider
+// R1=390k (to VBAT), R2=100k (to GND) → scale factor below matches original code path
+static constexpr float VBAT_ADC_FACTOR         = 1.0f/4096.0f/0.210282997855762f;
+
+// UI / Wi-Fi AP
+static constexpr char   AP_PSK[]               = "12345678";
+static constexpr size_t JSON_STATE_DOC         = 1400; // keep headroom for /api/state
+static constexpr size_t JSON_CFG_DOC           = 768;
+
+// Telemetry scheduling
+static constexpr uint32_t MS_PER_SEC           = 1000UL;
+static constexpr uint32_t SEC_PER_MIN          = 60UL;
+
+// OLED marquee
+static constexpr uint32_t MARQUEE_PERIOD_MS    = 40;
+
+// Misc
+static constexpr uint8_t  UPLINK_PORT          = 2;
+static constexpr uint8_t  CONF_TRIALS_AP       = 3;
+static constexpr uint8_t  CONF_TRIALS_FIELD    = 1;
+
+// ---------- Time sync stubs (no SysTime/RTC) ----------
+static inline bool     sysTimeLooksValid()            { return false; }               // no RTC/DeviceTime available
+static inline uint32_t now_sec()                      { return millis()/MS_PER_SEC; } // uptime seconds
+static inline bool     loraRequestDeviceTime()        { return false; }               // DeviceTime disabled
+
+// ---------- OLED ----------
+SSD1306Wire OLED_Display(OLED_ADDR, I2C_FREQ_HZ, SDA_OLED, SCL_OLED, GEOMETRY_128_64, RST_OLED);
+
+// ---------- Secondary I2C + ADS1115 ----------
 TwoWire I2C_ADS = TwoWire(1);
 Adafruit_ADS1115 ads;
 
-// ===== Pins (Heltec V3 / ESP32-S3) =====
-#define ONE_WIRE_BUS   4
-#define ADC_CRACK      2
-#define VBAT_Read      1
-#define ADC_Ctrl       37
-#define PIN_MODE_OUT   45
-#define PIN_MODE_IN    46
-#define PIN_CRACK_PRES 3
-
-// ===== Керування живленням сенсорів (ADS1115 + DS18B20) =====
-#define SENS_EN 7
-#define SENS_ACTIVE_HIGH 1
-static inline void SensorsON()  { pinMode(SENS_EN, OUTPUT); digitalWrite(SENS_EN, SENS_ACTIVE_HIGH ? HIGH : LOW); }
-static inline void SensorsOFF() { digitalWrite(SENS_EN, SENS_ACTIVE_HIGH ? LOW : HIGH); pinMode(SENS_EN, INPUT); }
-
-static inline bool crackPresent() { pinMode(PIN_CRACK_PRES, INPUT_PULLUP); return digitalRead(PIN_CRACK_PRES) == LOW; }
-
-void sensorsPowerOn() {
-  SensorsON();
-  delay(12);
-  I2C_ADS.begin(47, 48, 400000);
-  if (ads.begin(0x48, &I2C_ADS)) {
-    ads.setGain(GAIN_ONE);
-    ads.setDataRate(RATE_ADS1115_128SPS);
-    (void)ads.readADC_SingleEnded(0);
-    delay(2);
-  } else {
-    Serial.println("ADS1115 not found");
-  }
-}
-void sensorsPowerOff() {
-  I2C_ADS.end();
-  pinMode(47, INPUT);
-  pinMode(48, INPUT);
-  pinMode(ONE_WIRE_BUS, INPUT);
-  SensorsOFF();
-}
-
-// ===== OneWire + DallasTemperature =====
-OneWire oneWire(ONE_WIRE_BUS);
+// ---------- OneWire + DS18B20 ----------
+OneWire oneWire(PIN_ONE_WIRE);
 DallasTemperature sensors(&oneWire);
-
-// DS18B20
-uint8_t firstDs[8] = { 0 };
+uint8_t firstDs[8] = {0};
 bool firstDsFound = false;
-const uint8_t DS_RES_BITS = 10;  // ~187.5ms
 
-// ===== Режим =====
+// ---------- Mode ----------
 bool apMode = false;
 
-// ===== NVS конфиг =====
+// ---------- NVS config ----------
 Preferences prefs;
+
 struct Cfg {
   String ssid, wifi_pw;
-  uint8_t devEui[8] = { 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00 };
-  uint8_t appEui[8] = { 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00 };
-  uint8_t appKey[16]= { 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00 };
+  uint8_t devEui[8]  = {0};
+  uint8_t appEui[8]  = {0};
+  uint8_t appKey[16] = {0};
+
   uint32_t minutes = 2;
-  uint16_t crack_len_mm_x100 = 1000;
-  int16_t  crack_r0 = 5;
-  int16_t  crack_r1 = 25480;
-  uint16_t crack_mm0_x100 = 0;
-  uint16_t crack_mm1_x100 = 1000;
+
+  // Crack calibration and geometry
+  uint16_t crack_len_mm_x100 = 1000; // total gauge length [mm*100]
+  int16_t  crack_r0          = 5;    // ADC raw at mm0
+  int16_t  crack_r1          = 25480;// ADC raw at mm1
+  uint16_t crack_mm0_x100    = 0;    // mm0 * 100
+  uint16_t crack_mm1_x100    = 1000; // mm1 * 100 (default = len)
+
   // LoRa
-  uint8_t  lora_dr  = 3;     // 0..5 (EU868)
-  bool     lora_adr = true;  // ADR auto
-  // Прапорці, лишаємо для сумісності UI (не використовуються без SysTime)
-  bool     ts_enable = false;
-  uint16_t ts_hours  = 24;
+  uint8_t  lora_dr  = LORAWAN_DR_DEFAULT; // 0..5 (EU868)
+  bool     lora_adr = LORAWAN_ADR_DEFAULT;
+
+  // UI compatibility flags (kept even without valid systime)
+  bool     ts_enable    = false;
+  uint16_t ts_hours     = 24;
   bool     align_minute = true;
 } cfg;
 
-void saveKVu(const char* k, uint32_t v){ prefs.begin("uhfb", false); prefs.putUInt(k, v); prefs.end(); }
+// ---------- Small NVS helpers ----------
+void saveKVu   (const char* k, uint32_t v){ prefs.begin("uhfb", false); prefs.putUInt  (k, v); prefs.end(); }
 void saveUShort(const char* k, uint16_t v){ prefs.begin("uhfb", false); prefs.putUShort(k, v); prefs.end(); }
-void saveShort (const char* k, int16_t  v){ prefs.begin("uhfb", false); prefs.putShort(k, v);  prefs.end(); }
-void saveBytes(const char* k, const uint8_t* d, size_t n){ prefs.begin("uhfb", false); prefs.putBytes(k, d, n); prefs.end(); }
-void saveUChar(const char* k, uint8_t v){ prefs.begin("uhfb", false); prefs.putUChar(k, v); prefs.end(); }
-void saveBool (const char* k, bool    v){ prefs.begin("uhfb", false); prefs.putBool (k, v);  prefs.end(); }
+void saveShort (const char* k, int16_t  v){ prefs.begin("uhfb", false); prefs.putShort (k, v); prefs.end(); }
+void saveBytes (const char* k, const uint8_t* d, size_t n){ prefs.begin("uhfb", false); prefs.putBytes(k, d, n); prefs.end(); }
+void saveUChar (const char* k, uint8_t v){ prefs.begin("uhfb", false); prefs.putUChar (k, v); prefs.end(); }
+void saveBool  (const char* k, bool    v){ prefs.begin("uhfb", false); prefs.putBool  (k, v); prefs.end(); }
 
 void loadCfg() {
   prefs.begin("uhfb", true);
@@ -119,33 +152,36 @@ void loadCfg() {
   prefs.getBytes("devEui", cfg.devEui, 8);
   prefs.getBytes("appEui", cfg.appEui, 8);
   prefs.getBytes("appKey", cfg.appKey, 16);
+
   cfg.crack_len_mm_x100 = prefs.getUShort("cr_len_x100", cfg.crack_len_mm_x100);
-  cfg.crack_r0 = prefs.getShort("cr_r0", cfg.crack_r0);
-  cfg.crack_r1 = prefs.getShort("cr_r1", cfg.crack_r1);
-  cfg.crack_mm0_x100 = prefs.getUShort("cr_mm0", cfg.crack_mm0_x100);
-  cfg.crack_mm1_x100 = prefs.getUShort("cr_mm1", cfg.crack_mm1_x100);
+  cfg.crack_r0          = prefs.getShort ("cr_r0",       cfg.crack_r0);
+  cfg.crack_r1          = prefs.getShort ("cr_r1",       cfg.crack_r1);
+  cfg.crack_mm0_x100    = prefs.getUShort("cr_mm0",      cfg.crack_mm0_x100);
+  cfg.crack_mm1_x100    = prefs.getUShort("cr_mm1",      cfg.crack_mm1_x100);
   if (cfg.crack_mm1_x100 == 1000) cfg.crack_mm1_x100 = cfg.crack_len_mm_x100;
-  cfg.lora_dr  = prefs.getUChar("lora_dr",  cfg.lora_dr);
-  cfg.lora_adr = prefs.getBool ("lora_adr", cfg.lora_adr);
-  // зберігаємо для UI
-  cfg.ts_enable    = prefs.getBool ("ts_en",     cfg.ts_enable);
-  cfg.ts_hours     = prefs.getUShort("ts_h",     cfg.ts_hours);
-  cfg.align_minute = prefs.getBool ("align_min", cfg.align_minute);
+
+  cfg.lora_dr           = prefs.getUChar ("lora_dr",  cfg.lora_dr);
+  cfg.lora_adr          = prefs.getBool  ("lora_adr", cfg.lora_adr);
+
+  // kept for UI
+  cfg.ts_enable         = prefs.getBool  ("ts_en",     cfg.ts_enable);
+  cfg.ts_hours          = prefs.getUShort("ts_h",      cfg.ts_hours);
+  cfg.align_minute      = prefs.getBool  ("align_min", cfg.align_minute);
   prefs.end();
 }
 
-// ===== LoRaWAN (глобалы для Heltec LoRaWan_APP) =====
+// ---------- LoRaWAN globals (Heltec LoRaWan_APP expects these) ----------
 uint16_t userChannelsMask[6] = { 0x00FF, 0, 0, 0, 0, 0 };
 LoRaMacRegion_t loraWanRegion = ACTIVE_REGION;
 DeviceClass_t   loraWanClass  = CLASS_A;
 bool overTheAirActivation = true;
 bool loraWanAdr = true;
 bool isTxConfirmed = false;
-uint8_t appPort = 2;
+uint8_t appPort = UPLINK_PORT;
 uint8_t confirmedNbTrials = 1;
 uint32_t appTxDutyCycle = 60000UL * 2;
 
-// <<< символы для линковки >>>
+// Linkage symbols required by Heltec lib
 uint8_t devEui[8]  = {0};
 uint8_t appEui[8]  = {0};
 uint8_t appKey[16] = {0};
@@ -153,7 +189,7 @@ uint8_t nwkSKey[16]= {0};
 uint8_t appSKey[16]= {0};
 uint32_t devAddr   = 0;
 
-// ===== LoRa link metrics =====
+// ---------- LoRa link metrics ----------
 volatile bool     lora_has_rx     = false;
 volatile int16_t  lora_last_rssi  = 0;
 volatile int8_t   lora_last_snr   = 0;
@@ -166,12 +202,20 @@ extern "C" void downLinkDataHandle(McpsIndication_t *mcpsIndication) {
   lora_last_rx_ms = millis();
 }
 
-// ===== OLED marquee (прокрутка AP SSID) =====
-struct OledMarquee { String text; int y=28; int w=0; int x=0; bool active=false; uint32_t last=0; } apScroll;
+// ---------- OLED marquee (scroll AP SSID) ----------
+struct OledMarquee {
+  String text;
+  int y = 28;
+  int w = 0;
+  int x = 0;
+  bool active = false;
+  uint32_t last = 0;
+} apScroll;
+
 void oledMarqueeTick() {
   if (!apScroll.active) return;
   const uint32_t now = millis();
-  if (now - apScroll.last < 40) return;
+  if (now - apScroll.last < MARQUEE_PERIOD_MS) return;
   apScroll.last = now;
 
   OLED_Display.setColor(BLACK);
@@ -188,71 +232,151 @@ void oledMarqueeTick() {
   OLED_Display.display();
 }
 
-// ===== Утиліти =====
-String toHex(const uint8_t* v, size_t n){ char b[3]; String s; s.reserve(n*2); for (size_t i=0;i<n;i++){ sprintf(b,"%02X", v[i]); s+=b; } return s; }
-String toHexLSB(const uint8_t* v, size_t n){ char b[3]; String s; s.reserve(n*2); for (int i=n-1;i>=0;i--){ sprintf(b,"%02X", v[i]); s+=b; } return s; }
-bool parseHex(const String& s, uint8_t* out, size_t n){ if (s.length()!=n*2) return false; for (size_t i=0;i<n;i++){ char b[3]={ (char)s[2*i], (char)s[2*i+1], 0 }; out[i]=(uint8_t)strtoul(b,nullptr,16); } return true; }
+// ---------- Utilities ----------
+String toHex(const uint8_t* v, size_t n){
+  char b[3]; String s; s.reserve(n*2);
+  for (size_t i=0;i<n;i++){ sprintf(b,"%02X", v[i]); s+=b; }
+  return s;
+}
+
+String toHexLSB(const uint8_t* v, size_t n){
+  char b[3]; String s; s.reserve(n*2);
+  for (int i=(int)n-1;i>=0;i--){ sprintf(b,"%02X", v[i]); s+=b; }
+  return s;
+}
+
+bool parseHex(const String& s, uint8_t* out, size_t n){
+  if (s.length()!=n*2) return false;
+  for (size_t i=0;i<n;i++){
+    char b[3]={ (char)s[2*i], (char)s[2*i+1], 0 };
+    out[i]=(uint8_t)strtoul(b,nullptr,16);
+  }
+  return true;
+}
+
 void devEuiFromChip(uint8_t out[8]) {
-  uint64_t mac = ESP.getEfuseMac(); uint8_t m[6];
+  uint64_t mac = ESP.getEfuseMac();
+  uint8_t m[6];
   for (int i=0;i<6;i++) m[i]=(mac>>(8*(5-i)))&0xFF;
   out[0]=m[0]; out[1]=m[1]; out[2]=m[2]; out[3]=0xFF; out[4]=0xFE; out[5]=m[3]; out[6]=m[4]; out[7]=m[5];
 }
-String devEuiSuffix6(){ char buf[7]; sprintf(buf,"%02X%02X%02X", cfg.devEui[5], cfg.devEui[6], cfg.devEui[7]); return String(buf); }
 
-// ===== DS18B20 =====
-bool dsFindFirst(uint8_t addrOut[8]) {
-  if (sensors.getAddress(addrOut, 0)) return true;
-  OneWire ow(ONE_WIRE_BUS); uint8_t addr[8]; ow.reset_search();
-  while (ow.search(addr)) { if (addr[0]==0x28){ memcpy(addrOut, addr, 8); return true; } }
-  return false;
+String devEuiSuffix6(){
+  char buf[7];
+  sprintf(buf,"%02X%02X%02X", cfg.devEui[5], cfg.devEui[6], cfg.devEui[7]);
+  return String(buf);
 }
 
-// ===== Калібрування crack: raw -> мм*100 =====
-static inline uint16_t mapCrackRawToMMx100(int raw) {
-  const int32_t r0=cfg.crack_r0, r1=cfg.crack_r1, y0=cfg.crack_mm0_x100, y1=cfg.crack_mm1_x100;
-  int32_t den = (r1 - r0); if (den==0) return 0;
-  int64_t num = (int64_t)(y1 - y0) * (int64_t)(raw - r0);
-  int64_t y = (int64_t)y0 + (num + (den>0?den/2:-den/2))/den;
-  if (y<0) y=0; if (y>65535) y=65535; return (uint16_t)y;
+// ---------- Sensor power + buses ----------
+static inline void SensorsON(){
+  pinMode(PIN_SENS_EN, OUTPUT);
+  digitalWrite(PIN_SENS_EN, SENS_ACTIVE_HIGH ? HIGH : LOW);
 }
-static inline float mapCrackRawToMM_f(int raw) {
-  const float r0=(float)cfg.crack_r0, r1=(float)cfg.crack_r1;
-  const float mm0=(float)cfg.crack_mm0_x100/100.0f, mm1=(float)cfg.crack_mm1_x100/100.0f;
-  if (r1==r0) return 0.0f;
-  float mm = mm0 + (mm1 - mm0) * ((float)raw - r0) / (r1 - r0);
-  if (mm<0) mm=0; return mm;
+static inline void SensorsOFF(){
+  digitalWrite(PIN_SENS_EN, SENS_ACTIVE_HIGH ? LOW : HIGH);
+  pinMode(PIN_SENS_EN, INPUT);
 }
 
-// ===== Вимірювання =====
-uint16_t readBattery_mV() {
-  const float factor = 1.0f/4096.0f/0.210282997855762f; // R1=390k, R2=100k
-  analogSetAttenuation(ADC_0db);
-  pinMode(ADC_Ctrl, OUTPUT); digitalWrite(ADC_Ctrl, HIGH); delay(2);
-  int raw = analogRead(VBAT_Read); digitalWrite(ADC_Ctrl, LOW);
-  return (uint16_t)(factor * raw * 1000.0f);
+static inline bool crackPresent() {
+  pinMode(PIN_CRACK_PRESENT, INPUT_PULLUP);
+  return digitalRead(PIN_CRACK_PRESENT) == LOW;
 }
-uint16_t readCrack_mm_x100(int* rawOut) {
-  if (!crackPresent()) { if (rawOut) *rawOut = 0; return 0; }
-  int16_t raw = ads.readADC_SingleEnded(0);
-  if (raw<0) raw=0; if (rawOut) *rawOut = raw;
-  return mapCrackRawToMMx100(raw);
+
+void sensorsPowerOn() {
+  SensorsON();
+  delay(12);
+
+  I2C_ADS.begin(I2C_ADS_SDA, I2C_ADS_SCL, I2C_FREQ_HZ);
+  if (ads.begin(ADS1115_ADDR, &I2C_ADS)) {
+    ads.setGain(GAIN_ONE);
+    ads.setDataRate(RATE_ADS1115_128SPS);
+    (void)ads.readADC_SingleEnded(0);
+    delay(2);
+  } else {
+    Serial.println("ADS1115 not found");
+  }
+
+  if (!firstDsFound) {
+    sensors.begin();
+    firstDsFound = sensors.getAddress(firstDs, 0);
+    if (!firstDsFound) {
+      // fallback: scan bus for 0x28 family
+      OneWire ow(PIN_ONE_WIRE); uint8_t addr[8]; ow.reset_search();
+      while (ow.search(addr)) { if (addr[0]==0x28){ memcpy(firstDs, addr, 8); firstDsFound=true; break; } }
+    }
+  }
+  if (firstDsFound) sensors.setResolution(firstDs, DS_RES_BITS);
 }
+
+void sensorsPowerOff() {
+  I2C_ADS.end();
+  pinMode(I2C_ADS_SDA, INPUT);
+  pinMode(I2C_ADS_SCL, INPUT);
+  pinMode(PIN_ONE_WIRE, INPUT);
+  SensorsOFF();
+}
+
+// ---------- DS18B20 helpers ----------
 int16_t readTemp_c_x100() {
+  // Encodes Celsius*100 with +5000 offset (legacy). Invalid also returns 5000.
   if (!firstDsFound) return 5000;
-  sensors.requestTemperaturesByAddress(firstDs); delay(200);
+  sensors.requestTemperaturesByAddress(firstDs);
+  delay(200);
   float tC = sensors.getTempC(firstDs);
   if (tC <= -127.0f || tC >= 125.0f) return 5000;
-  int v = (int)(tC*100.0f) + 5000; if (v<0) v=0; return (int16_t)v;
+  int v = (int)(tC*100.0f) + 5000;
+  if (v<0) v=0;
+  return (int16_t)v;
 }
+
 float readTempOnceC() {
   if (!firstDsFound) return NAN;
-  sensors.requestTemperaturesByAddress(firstDs); delay(200);
+  sensors.requestTemperaturesByAddress(firstDs);
+  delay(200);
   float tC = sensors.getTempC(firstDs);
   if (tC <= -127.0f || tC >= 125.0f) return NAN;
   return tC;
 }
 
-// ===== LoRa DR helpers =====
+// ---------- Crack calibration: raw -> mm and mm*100 ----------
+static inline uint16_t mapCrackRawToMMx100(int raw) {
+  const int32_t r0=cfg.crack_r0, r1=cfg.crack_r1, y0=cfg.crack_mm0_x100, y1=cfg.crack_mm1_x100;
+  int32_t den = (r1 - r0); if (den==0) return 0;
+  int64_t num = (int64_t)(y1 - y0) * (int64_t)(raw - r0);
+  int64_t y = (int64_t)y0 + (num + (den>0?den/2:-den/2))/den; // rounded division
+  if (y<0) y=0; if (y>65535) y=65535; return (uint16_t)y;
+}
+
+static inline float mapCrackRawToMM_f(int raw) {
+  const float r0=(float)cfg.crack_r0, r1=(float)cfg.crack_r1;
+  const float mm0=(float)cfg.crack_mm0_x100/100.0f, mm1=(float)cfg.crack_mm1_x100/100.0f;
+  if (r1==r0) return 0.0f;
+  float mm = mm0 + (mm1 - mm0) * ((float)raw - r0) / (r1 - r0);
+  if (mm<0) mm=0;
+  return mm;
+}
+
+// ---------- Measurements ----------
+uint16_t readBattery_mV() {
+  // Uses ADC_0db attenuation. PIN_ADC_CTRL gates the divider.
+  analogSetAttenuation(ADC_0db);
+  pinMode(PIN_ADC_CTRL, OUTPUT);
+  digitalWrite(PIN_ADC_CTRL, HIGH);
+  delay(2);
+  int raw = analogRead(PIN_VBAT_ADC);
+  digitalWrite(PIN_ADC_CTRL, LOW);
+  return (uint16_t)(VBAT_ADC_FACTOR * raw * 1000.0f);
+}
+
+uint16_t readCrack_mm_x100(int* rawOut) {
+  if (!crackPresent()) { if (rawOut) *rawOut = 0; return 0; }
+  int16_t raw = ads.readADC_SingleEnded(0);
+  if (raw<0) raw=0;
+  if (rawOut) *rawOut = raw;
+  return mapCrackRawToMMx100(raw);
+}
+
+// ---------- LoRa DR helpers ----------
 static inline uint8_t mapDR(uint8_t idx){
   switch(idx){
     case 0: return DR_0;
@@ -265,11 +389,11 @@ static inline uint8_t mapDR(uint8_t idx){
   }
 }
 static inline void applyLoraDataRate(){
-  loraWanAdr = cfg.lora_adr;             // глобальна змінна Heltec
+  loraWanAdr = cfg.lora_adr; // Heltec global
   LoRaWAN.setDefaultDR(mapDR(cfg.lora_dr));
 }
 
-// ===== OLED: splash з логотипом (3 с) =====
+// ---------- OLED: splash with logo (3 s) ----------
 static void oledSplash(){
   OLED_Display.init();
   OLED_Display.clear();
@@ -286,17 +410,16 @@ static void oledSplash(){
   delay(3000);
 }
 
-// ===== OLED: 5 рядків (4 сенсори + RSSI) =====
+// ---------- OLED: 5 lines (4 sensors + RSSI) ----------
 void oledSensorsOnce() {
   sensorsPowerOn();
-  if (!firstDsFound) { sensors.begin(); firstDsFound = dsFindFirst(firstDs); if (firstDsFound) sensors.setResolution(firstDs, DS_RES_BITS); }
-  else sensors.setResolution(firstDs, DS_RES_BITS);
 
   bool present = crackPresent();
   float t = readTempOnceC();
   int adcRaw = 0;
   (void)(present ? readCrack_mm_x100(&adcRaw) : 0);
   uint16_t bat = readBattery_mV();
+
   sensorsPowerOff();
 
   float crack_mm = present ? mapCrackRawToMM_f(adcRaw) : NAN;
@@ -326,7 +449,7 @@ void oledSensorsOnce() {
   OLED_Display.display();
 }
 
-// ===== Web (AP) =====
+// ---------- Web (AP) ----------
 WebServer http(80);
 
 String ipStr() {
@@ -334,6 +457,7 @@ String ipStr() {
   if (WiFi.status() == WL_CONNECTED) return WiFi.localIP().toString();
   return "-";
 }
+
 String contentTypeFor(const String& path) {
   if (path.endsWith(".html")) return "text/html; charset=utf-8";
   if (path.endsWith(".svg"))  return "image/svg+xml";
@@ -342,6 +466,7 @@ String contentTypeFor(const String& path) {
   if (path.endsWith(".js"))   return "application/javascript";
   return "application/octet-stream";
 }
+
 bool streamFileFS(const char* p) {
   if (!LittleFS.exists(p)) return false;
   File f = LittleFS.open(p, "r"); if (!f) return false;
@@ -349,15 +474,13 @@ bool streamFileFS(const char* p) {
 }
 
 void api_state() {
-  StaticJsonDocument<1400> d;
-  d["mode"] = (WiFi.getMode() == WIFI_AP) ? "AP" : "LNS";
-  d["ip"] = ipStr();
-  d["uptime_s"] = (uint32_t)(millis() / 1000);
+  StaticJsonDocument<JSON_STATE_DOC> d;
+  d["mode"]      = (WiFi.getMode() == WIFI_AP) ? "AP" : "LNS";
+  d["ip"]        = ipStr();
+  d["uptime_s"]  = (uint32_t)(millis() / MS_PER_SEC);
   d["heap_free"] = ESP.getFreeHeap();
 
   sensorsPowerOn();
-  if (!firstDsFound) { sensors.begin(); firstDsFound = dsFindFirst(firstDs); if (firstDsFound) sensors.setResolution(firstDs, DS_RES_BITS); }
-  else sensors.setResolution(firstDs, DS_RES_BITS);
 
   bool present = crackPresent();
   int adcRaw = 0;
@@ -369,7 +492,7 @@ void api_state() {
   sensorsPowerOff();
 
   d["crack_present"] = present;
-  d["adc_raw"] = present ? adcRaw : 0;
+  d["adc_raw"]       = present ? adcRaw : 0;
 
   if (present) { d["crack_x100"] = crack; d["crack_mm"] = crack_mm; }
   else         { d["crack_x100"] = nullptr; d["crack_mm"] = nullptr; }
@@ -379,7 +502,7 @@ void api_state() {
 
   JsonObject lj = d.createNestedObject("lora");
   if (lora_has_rx) {
-    const uint32_t age = (millis() - lora_last_rx_ms)/1000;
+    const uint32_t age = (millis() - lora_last_rx_ms)/MS_PER_SEC;
     lj["rssi"]  = lora_last_rssi;
     lj["snr"]   = lora_last_snr;
     lj["age_s"] = age;
@@ -397,9 +520,11 @@ void api_state() {
   c["appEui"]  = toHex(cfg.appEui, 8);
   c["appKey"]  = toHex(cfg.appKey, 16);
   c["crack_len_x100"] = cfg.crack_len_mm_x100;
+
   JsonObject cal = c.createNestedObject("crack_cal");
   cal["r0"] = cfg.crack_r0;  cal["mm0"] = (float)cfg.crack_mm0_x100 / 100.0f;
   cal["r1"] = cfg.crack_r1;  cal["mm1"] = (float)cfg.crack_mm1_x100 / 100.0f;
+
   c["dr"]  = cfg.lora_dr;
   c["adr"] = cfg.lora_adr;
 
@@ -417,15 +542,17 @@ void api_send()  { deviceState = DEVICE_STATE_SEND; http.send(200, "text/plain",
 void api_reset() { http.send(200, "text/plain", "restarting"); delay(200); ESP.restart(); }
 
 void api_cfg_get() {
-  StaticJsonDocument<768> d;
+  StaticJsonDocument<JSON_CFG_DOC> d;
   d["devEui"] = toHex(cfg.devEui, 8);
   d["appEui"] = toHex(cfg.appEui, 8);
   d["appKey"] = toHex(cfg.appKey, 16);
   d["minutes"] = cfg.minutes;
   d["crack_len_x100"] = cfg.crack_len_mm_x100;
+
   JsonObject cal = d.createNestedObject("crack_cal");
   cal["r0"] = cfg.crack_r0;  cal["mm0"] = (float)cfg.crack_mm0_x100 / 100.0f;
   cal["r1"] = cfg.crack_r1;  cal["mm1"] = (float)cfg.crack_mm1_x100 / 100.0f;
+
   d["dr"]  = cfg.lora_dr;
   d["adr"] = cfg.lora_adr;
 
@@ -480,13 +607,13 @@ void api_cfg_lora() {
     int v = d["dr"].as<int>();
     if (v < 0 || v > 5) { http.send(400, "text/plain", "dr range"); return; }
     cfg.lora_dr  = (uint8_t)v;
-    cfg.lora_adr = false; // фіксований DR → ADR off
+    cfg.lora_adr = false; // fixed DR → ADR off
     saveUChar("lora_dr",  cfg.lora_dr);
     saveBool ("lora_adr", cfg.lora_adr);
   }
   if (d.containsKey("adr")) { cfg.lora_adr = d["adr"].as<bool>(); saveBool("lora_adr", cfg.lora_adr); }
 
-  // опції часу лишаємо для сумісності з UI
+  // time options kept for UI compatibility only
   if (d.containsKey("time_sync")) {
     JsonObject ts = d["time_sync"].as<JsonObject>();
     if (ts.containsKey("enabled")) { cfg.ts_enable = ts["enabled"].as<bool>(); saveBool ("ts_en",  cfg.ts_enable); }
@@ -514,6 +641,7 @@ void api_deveui_get() {
   String out; serializeJson(d, out);
   http.send(200, "application/json", out);
 }
+
 void api_deveui_post() {
   if (!http.hasArg("plain")) { http.send(400, "text/plain", "bad json"); return; }
   StaticJsonDocument<128> d;
@@ -546,19 +674,17 @@ void attachHttpFS() {
   http.begin();
 }
 
-// ===== Payload (для LoRaWAN) =====
+// ---------- LoRaWAN payload (8 bytes) ----------
 void prepareTxFrame(uint8_t port) {
   (void)port;
 
   sensorsPowerOn();
-  if (!firstDsFound) { sensors.begin(); firstDsFound = dsFindFirst(firstDs); if (firstDsFound) sensors.setResolution(firstDs, DS_RES_BITS); }
-  else sensors.setResolution(firstDs, DS_RES_BITS);
 
   bool present = crackPresent();
   int16_t adcRaw = present ? ads.readADC_SingleEnded(0) : 0;
   if (adcRaw < 0) adcRaw = 0;
 
-  int16_t  t  = readTemp_c_x100();
+  int16_t  t  = readTemp_c_x100(); // legacy offset encoding
   uint16_t vb = readBattery_mV();
 
   float mm = present ? mapCrackRawToMM_f(adcRaw) : 0.0f;
@@ -574,47 +700,61 @@ void prepareTxFrame(uint8_t port) {
   appData[6] = vb >> 8;       appData[7] = vb;
 }
 
+// ---------- Setup ----------
 void setup() {
   Serial.begin(115200);
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
 
   pinMode(PIN_MODE_OUT, OUTPUT); digitalWrite(PIN_MODE_OUT, LOW);
   pinMode(PIN_MODE_IN, INPUT_PULLUP); delay(5);
-  pinMode(PIN_CRACK_PRES, INPUT_PULLUP);
+  pinMode(PIN_CRACK_PRESENT, INPUT_PULLUP);
+
+  // Read button for AP mode a few times to debounce
   for (int i=0;i<5;i++){ apMode |= (digitalRead(PIN_MODE_IN)==LOW); delay(2); }
 
   analogReadResolution(12);
   loadCfg();
   appTxDutyCycle = 60000UL * cfg.minutes;
 
-  // LoRa налаштування до init
+  // LoRa linkage before init
   loraWanAdr = cfg.lora_adr;
   memcpy(devEui, cfg.devEui, sizeof(devEui));
   memcpy(appEui, cfg.appEui, sizeof(appEui));
   memcpy(appKey, cfg.appKey, sizeof(appKey));
 
   if (apMode) {
-    // --- AP режим (налаштування/екран) ---
-    isTxConfirmed    = true;
-    confirmedNbTrials= 3;
+    // --- AP mode: local config + OLED ---
+    isTxConfirmed     = true;
+    confirmedNbTrials = CONF_TRIALS_AP;
 
     WiFi.mode(WIFI_AP);
     String ssid = "Rissmonitoring-" + devEuiSuffix6();
 
     bool fsOk = LittleFS.begin(true);
-    if (!fsOk) Serial.println("[FS] LittleFS mount failed even after format]");
+    if (!fsOk) Serial.println("[FS] LittleFS mount failed even after format");
     else attachHttpFS();
 
     WiFi.setTxPower(WIFI_POWER_7dBm);
-    WiFi.softAP(ssid.c_str(), "12345678");
+    WiFi.softAP(ssid.c_str(), AP_PSK);
 
-    pinMode(Vext, OUTPUT); digitalWrite(Vext, LOW); // Vext ON для OLED
+    // Vext ON for OLED on Heltec
+    pinMode(Vext, OUTPUT); digitalWrite(Vext, LOW);
+
     oledSplash();
     oledSensorsOnce();
+
+    // enable marquee
+    OLED_Display.setFont(ArialMT_Plain_10);
+    OLED_Display.setTextAlignment(TEXT_ALIGN_LEFT);
+    apScroll.text = "AP SSID: " + ssid;
+    apScroll.w    = OLED_Display.getStringWidth(apScroll.text);
+    apScroll.x    = 0;
+    apScroll.active = true;
+
   } else {
-    // --- Енергозбереження ---
+    // --- Field mode: power-save, LoRa only ---
     isTxConfirmed     = false;
-    confirmedNbTrials = 1;
+    confirmedNbTrials = CONF_TRIALS_FIELD;
 
     WiFi.persistent(false);
     WiFi.disconnect(true, true);
@@ -622,12 +762,14 @@ void setup() {
 #if defined(CONFIG_BT_ENABLED) && CONFIG_BT_ENABLED
     btStop();
 #endif
-    pinMode(Vext, OUTPUT); digitalWrite(Vext, HIGH); // Vext OFF
+    // Vext OFF for OLED
+    pinMode(Vext, OUTPUT); digitalWrite(Vext, HIGH);
   }
 
   deviceState = DEVICE_STATE_INIT;
 }
 
+// ---------- Loop ----------
 void loop() {
   if (apMode) {
     http.handleClient();
@@ -648,20 +790,20 @@ void loop() {
       break;
 
     case DEVICE_STATE_SEND:
-      // Без DeviceTime: одразу шлемо телеметрію
+      // No DeviceTime: transmit immediately
       prepareTxFrame(appPort);
       LoRaWAN.send();
       deviceState = DEVICE_STATE_CYCLE;
       break;
 
     case DEVICE_STATE_CYCLE: {
-      // Вирівнювання по хвилинній «сітці» від часу ввімкнення (millis)
+      // Align to minute grid based on uptime (millis)
       if (cfg.align_minute) {
-        const uint32_t period   = cfg.minutes * 60UL;
+        const uint32_t period   = cfg.minutes * SEC_PER_MIN;
         const uint32_t nowS     = now_sec();
         uint32_t rem            = nowS % period;
         uint32_t waitSec        = (rem==0) ? period : (period - rem);
-        txDutyCycleTime = waitSec * 1000UL;
+        txDutyCycleTime = waitSec * MS_PER_SEC;
       } else {
         txDutyCycleTime = appTxDutyCycle + randr(-APP_TX_DUTYCYCLE_RND, APP_TX_DUTYCYCLE_RND);
       }
