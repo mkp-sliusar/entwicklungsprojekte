@@ -20,6 +20,11 @@
 #include <DallasTemperature.h>
 #include <math.h>
 
+// ---- Time sync stubs (no SysTime) ----
+static inline bool     sysTimeLooksValid(){ return false; }     // немає RTC/DeviceTime
+static inline uint32_t now_sec(){ return millis()/1000UL; }     // uptime в секундах
+static inline bool     loraRequestDeviceTime(){ return false; } // запити DeviceTime вимкнені
+
 // ===== OLED =====
 SSD1306Wire OLED_Display(0x3c, 400000, SDA_OLED, SCL_OLED, GEOMETRY_128_64, RST_OLED);
 
@@ -93,6 +98,10 @@ struct Cfg {
   // LoRa
   uint8_t  lora_dr  = 3;     // 0..5 (EU868)
   bool     lora_adr = true;  // ADR auto
+  // Прапорці, лишаємо для сумісності UI (не використовуються без SysTime)
+  bool     ts_enable = false;
+  uint16_t ts_hours  = 24;
+  bool     align_minute = true;
 } cfg;
 
 void saveKVu(const char* k, uint32_t v){ prefs.begin("uhfb", false); prefs.putUInt(k, v); prefs.end(); }
@@ -118,6 +127,10 @@ void loadCfg() {
   if (cfg.crack_mm1_x100 == 1000) cfg.crack_mm1_x100 = cfg.crack_len_mm_x100;
   cfg.lora_dr  = prefs.getUChar("lora_dr",  cfg.lora_dr);
   cfg.lora_adr = prefs.getBool ("lora_adr", cfg.lora_adr);
+  // зберігаємо для UI
+  cfg.ts_enable    = prefs.getBool ("ts_en",     cfg.ts_enable);
+  cfg.ts_hours     = prefs.getUShort("ts_h",     cfg.ts_hours);
+  cfg.align_minute = prefs.getBool ("align_min", cfg.align_minute);
   prefs.end();
 }
 
@@ -336,7 +349,7 @@ bool streamFileFS(const char* p) {
 }
 
 void api_state() {
-  StaticJsonDocument<1184> d;
+  StaticJsonDocument<1400> d;
   d["mode"] = (WiFi.getMode() == WIFI_AP) ? "AP" : "LNS";
   d["ip"] = ipStr();
   d["uptime_s"] = (uint32_t)(millis() / 1000);
@@ -390,6 +403,12 @@ void api_state() {
   c["dr"]  = cfg.lora_dr;
   c["adr"] = cfg.lora_adr;
 
+  JsonObject ts = c.createNestedObject("time_sync");
+  ts["enabled"] = cfg.ts_enable;
+  ts["hours"]   = cfg.ts_hours;
+  c["align_minute"] = cfg.align_minute;
+  ts["valid"] = sysTimeLooksValid();
+
   String out; serializeJson(d, out);
   http.send(200, "application/json", out);
 }
@@ -398,7 +417,7 @@ void api_send()  { deviceState = DEVICE_STATE_SEND; http.send(200, "text/plain",
 void api_reset() { http.send(200, "text/plain", "restarting"); delay(200); ESP.restart(); }
 
 void api_cfg_get() {
-  StaticJsonDocument<672> d;
+  StaticJsonDocument<768> d;
   d["devEui"] = toHex(cfg.devEui, 8);
   d["appEui"] = toHex(cfg.appEui, 8);
   d["appKey"] = toHex(cfg.appKey, 16);
@@ -410,13 +429,19 @@ void api_cfg_get() {
   d["dr"]  = cfg.lora_dr;
   d["adr"] = cfg.lora_adr;
 
+  JsonObject ts = d.createNestedObject("time_sync");
+  ts["enabled"] = cfg.ts_enable;
+  ts["hours"]   = cfg.ts_hours;
+  d["align_minute"] = cfg.align_minute;
+  ts["valid"] = sysTimeLooksValid();
+
   String out; serializeJson(d, out);
   http.send(200, "application/json", out);
 }
 
 void api_cfg_lora() {
   if (!http.hasArg("plain")) { http.send(400, "text/plain", "bad json"); return; }
-  StaticJsonDocument<384> d;
+  StaticJsonDocument<512> d;
   if (deserializeJson(d, http.arg("plain"))) { http.send(400, "text/plain", "bad json"); return; }
   bool ok = true;
 
@@ -460,6 +485,15 @@ void api_cfg_lora() {
     saveBool ("lora_adr", cfg.lora_adr);
   }
   if (d.containsKey("adr")) { cfg.lora_adr = d["adr"].as<bool>(); saveBool("lora_adr", cfg.lora_adr); }
+
+  // опції часу лишаємо для сумісності з UI
+  if (d.containsKey("time_sync")) {
+    JsonObject ts = d["time_sync"].as<JsonObject>();
+    if (ts.containsKey("enabled")) { cfg.ts_enable = ts["enabled"].as<bool>(); saveBool ("ts_en",  cfg.ts_enable); }
+    if (ts.containsKey("hours"))   { int h = ts["hours"].as<int>(); if (h<1||h>168){ http.send(400,"text/plain","ts hours range"); return; }
+                                     cfg.ts_hours = (uint16_t)h;    saveUShort("ts_h",  cfg.ts_hours); }
+  }
+  if (d.containsKey("align_minute")) { cfg.align_minute = d["align_minute"].as<bool>(); saveBool("align_min", cfg.align_minute); }
 
   if (!ok) { http.send(400, "text/plain", "hex error"); return; }
   saveBytes("devEui", cfg.devEui, 8);
@@ -575,7 +609,6 @@ void setup() {
     WiFi.softAP(ssid.c_str(), "12345678");
 
     pinMode(Vext, OUTPUT); digitalWrite(Vext, LOW); // Vext ON для OLED
-    // Wire для OLED не ініціюємо окремо — display.init зробить сам
     oledSplash();
     oledSensorsOnce();
   } else {
@@ -590,7 +623,6 @@ void setup() {
     btStop();
 #endif
     pinMode(Vext, OUTPUT); digitalWrite(Vext, HIGH); // Vext OFF
-    // Ніяких сканів DS18B20 тут — лише перед відправкою
   }
 
   deviceState = DEVICE_STATE_INIT;
@@ -616,16 +648,27 @@ void loop() {
       break;
 
     case DEVICE_STATE_SEND:
+      // Без DeviceTime: одразу шлемо телеметрію
       prepareTxFrame(appPort);
       LoRaWAN.send();
       deviceState = DEVICE_STATE_CYCLE;
       break;
 
-    case DEVICE_STATE_CYCLE:
-      txDutyCycleTime = appTxDutyCycle + randr(-APP_TX_DUTYCYCLE_RND, APP_TX_DUTYCYCLE_RND);
+    case DEVICE_STATE_CYCLE: {
+      // Вирівнювання по хвилинній «сітці» від часу ввімкнення (millis)
+      if (cfg.align_minute) {
+        const uint32_t period   = cfg.minutes * 60UL;
+        const uint32_t nowS     = now_sec();
+        uint32_t rem            = nowS % period;
+        uint32_t waitSec        = (rem==0) ? period : (period - rem);
+        txDutyCycleTime = waitSec * 1000UL;
+      } else {
+        txDutyCycleTime = appTxDutyCycle + randr(-APP_TX_DUTYCYCLE_RND, APP_TX_DUTYCYCLE_RND);
+      }
       LoRaWAN.cycle(txDutyCycleTime);
       deviceState = DEVICE_STATE_SLEEP;
       break;
+    }
 
     case DEVICE_STATE_SLEEP:
       sensorsPowerOff();

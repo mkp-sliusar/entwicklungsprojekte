@@ -16,9 +16,9 @@ html[data-theme="light"]{
   /* палітра від найсвітлішого до темнішого */
   --g0:#f6f7f8; --g1:#eef0f1; --g2:#e3e5e7; --g3:#d8dadc; --g4:#cdd0d3; --g5:#c2c5c8;
 
-  --bg:var(--g0);        /* фон — найсвітліший */
+  --bg:var(--g0);
   --fg:#111; --border:#ddd; --muted:#556; --field:#fff; --btn:#f3f4f6;
-  --card:var(--g3);      /* запасне значення для картки */
+  --card:var(--g3);
 }
 
 html[data-theme="dark"]{ color-scheme: dark; }
@@ -51,12 +51,8 @@ input,select,textarea{
   background:var(--field);color:var(--fg);
 }
 input:focus,select:focus,textarea:focus{outline:none;box-shadow:0 0 0 2px inset var(--border)}
-/* make native select look like input */
 select{-webkit-appearance:none;-moz-appearance:none;appearance:none}
-/* базово картка бере свій тон із змінної --cardTone */
 .grid > .card{ background:var(--cardTone, var(--card)); }
-
-/* 1..5: від темнішого до світлішого; далі повторюється */
 .grid > .card:nth-of-type(5n+1){ --cardTone:var(--g5) }
 .grid > .card:nth-of-type(5n+2){ --cardTone:var(--g4) }
 .grid > .card:nth-of-type(5n+3){ --cardTone:var(--g3) }
@@ -94,7 +90,6 @@ small{color:var(--muted)}
 
 /* LoRa layout: label | input */
 .card:has(#i_lora) .field{display:grid;grid-template-columns:120px minmax(0,1fr);column-gap:6px;row-gap:8px}
-/* статус над кнопками */
 .status{display:block;min-height:1.2em;margin-bottom:6px;color:var(--muted);word-break:break-word;white-space:pre-line}
 
 /* Tablet */
@@ -147,8 +142,6 @@ small{color:var(--muted)}
     <div>
       <span class="k" id="i_ds_k">DS18B20</span>:
       <span id="ds">-</span><span id="ds_unit"> °C</span>
-
-
     </div>
 
     <div><span class="k" id="i_adc_k">Crack ADC</span>: <b id="adc">-</b></div>
@@ -214,6 +207,23 @@ small{color:var(--muted)}
       </select>
     </div>
 
+    <!-- Time sync -->
+    <div class="field">
+      <label for="syncField" id="i_sync_k">Time sync</label>
+      <select id="syncField">
+        <option value="off">Off</option>
+        <option value="1">1 h</option>
+        <option value="2">2 h</option>
+        <option value="3">3 h</option>
+        <option value="6">6 h</option>
+        <option value="12">12 h</option>
+        <option value="24">24 h</option>
+        <option value="48">2 d</option>
+        <option value="72">3 d</option>
+        <option value="168">1 w</option>
+      </select>
+    </div>
+
     <div class="actions">
       <button id="btnSaveLoRa" class="btn btn-block">Save all LoRa settings</button>
       <small id="devEuiMsg"></small>
@@ -272,7 +282,6 @@ async function q(url,opts){const r=await fetch(url,opts);if(!r.ok)throw new Erro
 function applyI18n(){
   const t = I18N[CURR_LANG] || I18N['en'] || {};
 
-  // Заголовки/лейбли
   byId('i_title').textContent = t.title || 'LoRa Crack Monitoring';
   byId('t_title').textContent = t.title || 'LoRa Crack Monitoring';
   byId('i_sensors').textContent = t.sensors || 'Sensors';
@@ -303,29 +312,12 @@ function applyI18n(){
   byId('i_r1_k').textContent = t.r1 || 'ADC r1';
   byId('i_mm1_k').textContent = t.mm1 || 'mm1';
   byId('i_dr_k').textContent = t.drate || 'DataRate (EU868)';
+  byId('i_sync_k').textContent = t.time_sync || 'Time sync';
 
-  // Кнопки
-  byId('btnSend').textContent       = t.send || 'Manual LoRa send';
-  byId('btnReset').textContent      = t.reboot || 'Reboot';
-  byId('i_lora').textContent        = t.lora || 'LoRa';
-  byId('btnReadChip').textContent   = t.read_chip || 'Read DevEUI from chip';
-  byId('btnSaveChip').textContent   = t.use_chip || 'Use chip DevEUI';
-  byId('btnSaveLoRa').textContent   = t.save_all_lora || 'Save all LoRa settings';
-  byId('btnSaveCalAll').textContent = t.save_cal_all || 'Save crack calibration';
-
-  // Плейсхолдери
-  byId('devEuiField').placeholder  = t.ph_deveui  || 'DevEUI MSB e.g. 0011223344556677';
-  byId('appEuiField').placeholder  = t.ph_appeui  || 'AppEUI MSB';
-  byId('appKeyField').placeholder  = t.ph_appkey  || 'AppKey MSB';
-  byId('minutesField').placeholder = t.ph_minutes || 'Interval, min';
-
-  // Select DR: пункт Auto
   const optAuto = byId('opt_dr_auto'); if (optAuto) optAuto.textContent = t.auto || 'Auto';
 
-  // Кнопка перемикання мови
   byId('langBtn').textContent = CURR_LANG.toUpperCase();
 }
-
 
 document.addEventListener('DOMContentLoaded',()=>{
   const savedTheme=localStorage.getItem(THEME_KEY);
@@ -376,12 +368,12 @@ async function load(){
     const s=await q('/api/state');
     byId('t').textContent=fmtTime();
 
-    // DS18B20: "-", "N/C", або температура
+    // DS18B20
     const vRaw = s.DS18B20_Temp;
     const vNum = Number(vRaw);
     const dsHasValue =
       vRaw !== null && vRaw !== undefined &&
-      Number.isFinite(vNum) && vNum > -100 && vNum < 125; // фільтрує -127 та абсурд
+      Number.isFinite(vNum) && vNum > -100 && vNum < 125;
 
     if (dsHasValue) {
       byId('ds').textContent = vNum.toFixed(1);
@@ -390,10 +382,9 @@ async function load(){
     } else {
       const t = I18N[CURR_LANG] || I18N['en'] || {};
       byId('ds').textContent = t.nc || 'N/C';
-      byId('ds').classList.add('badge','err'); // той самий стиль, що і Crack sensor N/C
+      byId('ds').classList.add('badge','err');
       byId('ds_unit').textContent = '';
     }
-
 
     const present=!!s.crack_present;
 
@@ -428,6 +419,15 @@ async function load(){
         if(s.cfg.adr===true) drSel.value='auto';
         else if(s.cfg.dr!=null && s.cfg.dr>=0 && s.cfg.dr<=5) drSel.value=String(s.cfg.dr);
         else drSel.value='auto';
+      }
+
+      // Time sync select
+      const syncSel = byId('syncField');
+      if (syncSel){
+        const ts = (s.cfg.time_sync)||{};
+        const v = (ts.enabled===false) ? 'off' : String(ts.hours||'off');
+        const allowed = ['off','1','2','3','6','12','24','48','72','168'];
+        syncSel.value = allowed.includes(v) ? v : 'off';
       }
 
       if(s.cfg.crack_cal){
@@ -471,10 +471,21 @@ async function saveLoRaAll(){
     devEui:byId('devEuiField').value.trim(),
     appEui:byId('appEuiField').value.trim(),
     appKey:byId('appKeyField').value.trim(),
-    minutes:parseInt(byId('minutesField').value||'15')
+    minutes:parseInt(byId('minutesField').value||'15',10)
   };
   if(sel==='auto'){ payload.adr=true; }
-  else { payload.dr=parseInt(sel); payload.adr=false; }
+  else { payload.dr=parseInt(sel,10); payload.adr=false; }
+
+  // Time sync + align only when sync ON
+  const syncVal = byId('syncField') ? byId('syncField').value : 'off';
+  if (syncVal === 'off') {
+    payload.time_sync = { enabled:false, hours:24 };
+    payload.align_minute = false;
+  } else {
+    const h = parseInt(syncVal,10) || 24;
+    payload.time_sync = { enabled:true, hours:h };
+    payload.align_minute = true;
+  }
 
   const t=I18N[CURR_LANG]||I18N['en']||{};
   try{
@@ -484,8 +495,8 @@ async function saveLoRaAll(){
 }
 
 async function saveCrackCalAll(){
-  const r0=parseInt(byId('r0Field').value);
-  const r1=parseInt(byId('r1Field').value);
+  const r0=parseInt(byId('r0Field').value,10);
+  const r1=parseInt(byId('r1Field').value,10);
   const mm0=parseFloat(byId('mm0Field').value);
   const mm1=parseFloat(byId('mm1Field').value);
   const t=I18N[CURR_LANG]||I18N['en']||{};
@@ -497,7 +508,6 @@ async function saveCrackCalAll(){
     byId('calMsg').textContent=t.msg_saved_reboot||'Saved; rebooting…';
   }catch(e){byId('calMsg').textContent=t.msg_save_error||'Save error'}
 }
-
 
 async function saveChipDevEUI(){
   const t=I18N[CURR_LANG]||I18N['en']||{};
