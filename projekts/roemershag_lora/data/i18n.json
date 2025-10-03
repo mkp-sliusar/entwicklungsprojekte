@@ -52,7 +52,19 @@
     "msg_reset_forbidden": "Reset forbidden",
     "chip_msb": "chip MSB",
     "chip_lsb": "LSB",
-    "stored_msb": "stored"
+    "stored_msb": "stored",
+
+    "time_sync": "Time sync",
+    "sync_off": "Off",
+    "sync_1h": "1 h",
+    "sync_2h": "2 h",
+    "sync_3h": "3 h",
+    "sync_6h": "6 h",
+    "sync_12h": "12 h",
+    "sync_24h": "24 h",
+    "sync_2d": "2 d",
+    "sync_3d": "3 d",
+    "sync_1w": "1 w"
   },
   "de": {
     "title": "LoRa Rissüberwachung",
@@ -107,7 +119,19 @@
     "msg_reset_forbidden": "Zurücksetzen verboten",
     "chip_msb": "Chip-MSB",
     "chip_lsb": "LSB",
-    "stored_msb": "gespeichert"
+    "stored_msb": "gespeichert",
+
+    "time_sync": "Zeitsynchronisierung",
+    "sync_off": "Aus",
+    "sync_1h": "1 h",
+    "sync_2h": "2 h",
+    "sync_3h": "3 h",
+    "sync_6h": "6 h",
+    "sync_12h": "12 h",
+    "sync_24h": "24 h",
+    "sync_2d": "2 d",
+    "sync_3d": "3 d",
+    "sync_1w": "1 w"
   },
   "uk": {
     "title": "Моніторинг тріщин LoRa",
@@ -162,6 +186,18 @@
     "msg_reset_forbidden": "Перезапуск заборонено",
     "chip_msb": "чип MSB",
     "chip_lsb": "LSB",
-    "stored_msb": "збережено"
+    "stored_msb": "збережено",
+
+    "time_sync": "Синхронізація часу",
+    "sync_off": "Вимкнено",
+    "sync_1h": "1 год",
+    "sync_2h": "2 год",
+    "sync_3h": "3 год",
+    "sync_6h": "6 год",
+    "sync_12h": "12 год",
+    "sync_24h": "24 год",
+    "sync_2d": "2 дні",
+    "sync_3d": "3 дні",
+    "sync_1w": "1 тиж"
   }
 }
