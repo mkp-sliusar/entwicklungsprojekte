@@ -90,8 +90,9 @@ small{color:var(--muted)}
 .footer a:hover{text-decoration:underline}
 
 /* LoRa layout: label | input grid */
-.card:has(#i_lora) .field{display:grid;grid-template-columns:minmax(132px,220px) minmax(0,1fr);column-gap:8px;row-gap:10px;align-items:start}
-.card:has(#i_lora) .field label{white-space:normal;word-break:break-word;hyphens:auto;line-height:1.25}
+.card:has(#i_lora) .field{display:grid;grid-template-columns:140px 1fr;column-gap:12px;row-gap:12px;align-items:center}
+.card:has(#i_lora) .field input,.card:has(#i_lora) .field select{width:100%}
+
 .status{display:block;min-height:1.2em;margin-bottom:6px;color:var(--muted);word-break:break-word;white-space:pre-line}
 
 /* Tablet */

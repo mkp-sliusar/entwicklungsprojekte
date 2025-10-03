@@ -1,14 +1,29 @@
 /*
- * Heltec ESP32-S3 (LoRa V3) crack monitoring node
- * - ADS1115 on secondary I2C
- * - DS18B20 on OneWire
- * - SSD1306 OLED
- * - Optional Wi-Fi AP for local config UI (LittleFS)
- * - LoRaWAN uplink with fixed payload format (8 bytes)
+ * =====================================================================
+ *  Heltec ESP32-S3 (LoRa V3) Crack Monitoring Node
+ * ---------------------------------------------------------------------
+ *  - ADS1115 on secondary I2C
+ *  - DS18B20 on OneWire
+ *  - SSD1306 OLED
+ *  - Optional Wi-Fi AP for local config UI (LittleFS)
+ *  - LoRaWAN uplink with fixed payload format (8 bytes)
  *
- * Notes:
- * - Time sync is stubbed out (no RTC/DeviceTime).
- * - Payload format preserved for compatibility.
+ *  Notes:
+ *  - Time sync is stubbed out (no RTC/DeviceTime).
+ *  - Payload format preserved for compatibility.
+ * =====================================================================
+ *
+ *  Version:   1.1.0
+ *  Date:      2025-10-03
+ *
+ *  Contributors:
+ *  -------------------------------------------------------------------
+ *   • Bernd Schinköthe
+ *   • Roman Sliusar
+ *   • Evgenij Koloda
+ *   • Marx Krontal Partner, Weimar / Dresden
+ *
+ * =====================================================================
  */
 
 #include "LoRaWan_APP.h"
