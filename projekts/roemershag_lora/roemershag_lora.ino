@@ -1,15 +1,19 @@
 /*
  * =====================================================================
- *  Heltec ESP32-S3 (LoRa V3) Crack Monitoring Node
+ *  Heltec ESP32-S3 (LoRa V3) Crack Monitoring Node — ratio mode
  * ---------------------------------------------------------------------
- *  - ADS1115 on secondary I2C
- *  - DS18B20 on OneWire
+ *  - ADS1115 (I2C1)
+ *  - DS18B20 (OneWire)
  *  - SSD1306 OLED
- *  - Optional Wi-Fi AP for local config UI (LittleFS)
- *  - LoRaWAN uplink with fixed payload format (8 bytes)
+ *  - AP-конфіг сторінка (LittleFS)
+ *  - LoRaWAN uplink 8 байт (сумісний формат)
+ *  - Довжина тріщини за відношенням: L = Lfull * CH0 / CH1
+ *    CH0 = датчик (потенціометр), CH1 = опорна з того ж Vee
+ *    Якщо CH1 недоступний → лінійна мапа як запасний варіант
  * =====================================================================
- *  Version:   1.1.1
- *  Date:      2025-10-06
+ *  Version:   1.2.1
+ *  Date:      2025-10-09
+ *  Contributors: Bernd Schinköthe, Roman Sliusar, Evgenij Koloda
  * =====================================================================
  */
 
@@ -61,8 +65,8 @@ static constexpr uint8_t  DS_RES_BITS          = 10;
 static constexpr float VBAT_ADC_FACTOR         = 1.0f/4096.0f/0.210282997855762f;
 
 static constexpr char   AP_PSK[]               = "12345678";
-static constexpr size_t JSON_STATE_DOC         = 1400;
-static constexpr size_t JSON_CFG_DOC           = 768;
+static constexpr size_t JSON_STATE_DOC         = 1500;
+static constexpr size_t JSON_CFG_DOC           = 800;
 
 static constexpr uint32_t MS_PER_SEC           = 1000UL;
 static constexpr uint32_t SEC_PER_MIN          = 60UL;
@@ -73,10 +77,16 @@ static constexpr uint8_t  UPLINK_PORT          = 2;
 static constexpr uint8_t  CONF_TRIALS_AP       = 3;
 static constexpr uint8_t  CONF_TRIALS_FIELD    = 1;
 
+static constexpr uint8_t  RATIO_SAMPLES        = 8;   // усереднень на точку
+
 // ---------- Time stubs ----------
 static inline bool     sysTimeLooksValid()     { return false; }
 static inline uint32_t now_sec()               { return millis()/MS_PER_SEC; }
 static inline bool     loraRequestDeviceTime() { return false; }
+
+// ---- fix for Arduino auto-prototype ----
+struct CrackRatio;          // forward declare the struct
+CrackRatio readCrack_ratio(); // forward declare the function
 
 // ---------- OLED ----------
 SSD1306Wire OLED_Display(OLED_ADDR, I2C_FREQ_HZ, SDA_OLED, SCL_OLED, GEOMETRY_128_64, RST_OLED);
@@ -101,9 +111,12 @@ struct Cfg {
   uint8_t devEui[8]  = {0};
   uint8_t appEui[8]  = {0};
   uint8_t appKey[16] = {0};
-  uint32_t minutes   = 2;
+  uint32_t minutes   = 15;
 
-  uint16_t crack_len_mm_x100 = 1000;
+  // Повний хід тріщиноміра для ratio-режиму
+  uint16_t crack_len_mm_x100 = 1000;  // 10.00 мм за замовч.
+
+  // Запасна лінійна калібровка (коли CH1 = 0)
   int16_t  crack_r0          = 5;
   int16_t  crack_r1          = 25480;
   uint16_t crack_mm0_x100    = 0;
@@ -222,13 +235,20 @@ static inline void SensorsON(){ pinMode(PIN_SENS_EN, OUTPUT); digitalWrite(PIN_S
 static inline void SensorsOFF(){ digitalWrite(PIN_SENS_EN, SENS_ACTIVE_HIGH?LOW:HIGH); pinMode(PIN_SENS_EN, INPUT); }
 static inline bool crackPresent(){ pinMode(PIN_CRACK_PRESENT, INPUT_PULLUP); return digitalRead(PIN_CRACK_PRESENT)==LOW; }
 
+// ADS helpers
+static inline void adsInitOnce(){
+  ads.setGain(GAIN_ONE);              // ±4.096 V FS
+  ads.setDataRate(RATE_ADS1115_128SPS);
+  (void)ads.readADC_SingleEnded(0); delay(2);
+}
+
+// Power sequencing
 void sensorsPowerOn() {
   SensorsON(); delay(12);
   I2C_ADS.begin(I2C_ADS_SDA, I2C_ADS_SCL, I2C_FREQ_HZ);
-  if (ads.begin(ADS1115_ADDR, &I2C_ADS)) {
-    ads.setGain(GAIN_ONE); ads.setDataRate(RATE_ADS1115_128SPS);
-    (void)ads.readADC_SingleEnded(0); delay(2);
-  } else { Serial.println("ADS1115 not found"); }
+  if (ads.begin(ADS1115_ADDR, &I2C_ADS)) adsInitOnce();
+  else Serial.println("ADS1115 not found");
+
   if (!firstDsFound) {
     sensors.begin(); firstDsFound = sensors.getAddress(firstDs, 0);
     if (!firstDsFound) { OneWire ow(PIN_ONE_WIRE); uint8_t addr[8]; ow.reset_search();
@@ -244,7 +264,7 @@ int16_t readTemp_c_x100(){ if(!firstDsFound) return 5000; sensors.requestTempera
 float readTempOnceC(){ if(!firstDsFound) return NAN; sensors.requestTemperaturesByAddress(firstDs); delay(200);
   float tC=sensors.getTempC(firstDs); if(tC<=-127.0f||tC>=125.0f) return NAN; return tC; }
 
-// Crack mapping
+// Crack mapping (fallback)
 static inline uint16_t mapCrackRawToMMx100(int raw){
   const int32_t r0=cfg.crack_r0, r1=cfg.crack_r1, y0=cfg.crack_mm0_x100, y1=cfg.crack_mm1_x100;
   int32_t den=(r1-r0); if(den==0) return 0;
@@ -260,6 +280,40 @@ static inline float mapCrackRawToMM_f(int raw){
   if(mm<0) mm=0; return mm;
 }
 
+// ---------- Ratio measurement ----------
+struct CrackRatio {
+  bool    present;
+  int16_t raw_meas;   // CH0
+  int16_t raw_ref;    // CH1
+  float   mm;         // довжина, мм
+  bool    used_ratio; // true, якщо використано відношення
+};
+
+CrackRatio readCrack_ratio(){
+  CrackRatio r{false,0,0,0.0f,false};
+  r.present = crackPresent();
+  if(!r.present) return r;
+
+  int32_t sumM=0, sumR=0;
+  for(uint8_t i=0;i<RATIO_SAMPLES;i++){
+    int16_t rm = ads.readADC_SingleEnded(0); if(rm<0) rm=0; sumM += rm;
+    int16_t rr = ads.readADC_SingleEnded(1); if(rr<0) rr=0; sumR += rr;
+  }
+  r.raw_meas = (int16_t)(sumM / RATIO_SAMPLES);
+  r.raw_ref  = (int16_t)(sumR / RATIO_SAMPLES);
+
+  if(r.raw_ref>0){
+    float Lfull = (float)cfg.crack_len_mm_x100 / 100.0f;  // напр. 10.00 мм
+    r.mm = Lfull * (float)r.raw_meas / (float)r.raw_ref;
+    r.used_ratio = true;
+  } else {
+    r.mm = mapCrackRawToMM_f(r.raw_meas);
+    r.used_ratio = false;
+  }
+  if(r.mm < 0) r.mm = 0; if(r.mm > 65.535f) r.mm = 65.535f;
+  return r;
+}
+
 // Measurements
 uint16_t readBattery_mV(){
   analogSetAttenuation(ADC_0db);
@@ -267,11 +321,6 @@ uint16_t readBattery_mV(){
   int raw=analogRead(PIN_VBAT_ADC);
   digitalWrite(PIN_ADC_CTRL, LOW);
   return (uint16_t)(VBAT_ADC_FACTOR * raw * 1000.0f);
-}
-uint16_t readCrack_mm_x100(int* rawOut){
-  if(!crackPresent()){ if(rawOut)*rawOut=0; return 0; }
-  int16_t raw=ads.readADC_SingleEnded(0); if(raw<0) raw=0;
-  if(rawOut) *rawOut=raw; return mapCrackRawToMMx100(raw);
 }
 
 // DR helpers
@@ -301,21 +350,18 @@ static void oledShowSSID(const String& ssid){
   apScroll.text   = "AP SSID: " + ssid;
   apScroll.w      = OLED_Display.getStringWidth(apScroll.text);
   apScroll.x      = 0;
-  apScroll.y      = 52;      // рядок унизу
+  apScroll.y      = 52;
   apScroll.active = true;
 }
 
 void oledSensorsOnce() {
   sensorsPowerOn();
 
-  bool present = crackPresent();
+  CrackRatio cr = readCrack_ratio();
   float t = readTempOnceC();
-  int adcRaw = 0; (void)(present ? readCrack_mm_x100(&adcRaw) : 0);
   uint16_t bat = readBattery_mV();
 
   sensorsPowerOff();
-
-  float crack_mm = present ? mapCrackRawToMM_f(adcRaw) : NAN;
 
   OLED_Display.clear();
   OLED_Display.setFont(ArialMT_Plain_10);
@@ -325,12 +371,13 @@ void oledSensorsOnce() {
   if (isfinite(t)) OLED_Display.drawString(0, y,   String("DS18B20  ")+String(t,1)+" C");
   else             OLED_Display.drawString(0, y,   "DS18B20  N/C"); y += dy;
 
-  OLED_Display.drawString(0, y, String("ADC      ")+(present?String(adcRaw):String("N/C"))); y += dy;
+  OLED_Display.drawString(0, y, String("ADC M   ")+(cr.present?String(cr.raw_meas):String("N/C"))); y += dy;
+  OLED_Display.drawString(0, y, String("ADC R   ")+(cr.present?String(cr.raw_ref ):String("N/C"))); y += dy;
 
-  if (present) OLED_Display.drawString(0, y, String("Crack    ")+String(crack_mm,3)+" mm");
-  else         OLED_Display.drawString(0, y, "Crack    N/C"); y += dy;
+  if (cr.present) OLED_Display.drawString(0, y, String("Crack   ")+String(cr.mm,3)+" mm"+(cr.used_ratio?" (R)":" (L)"));
+  else            OLED_Display.drawString(0, y, "Crack   N/C"); y += dy;
 
-  OLED_Display.drawString(0, y, String("Battery  ")+String(bat)+" mV"); y += dy;
+  OLED_Display.drawString(0, y, String("Battery ")+String(bat)+" mV"); y += dy;
 
   if (lora_has_rx) OLED_Display.drawString(0, y, String("RSSI ")+String(lora_last_rssi)+"  SNR "+String(lora_last_snr));
   else             OLED_Display.drawString(0, y, "RSSI  —");
@@ -360,18 +407,16 @@ void api_state() {
   d["heap_free"] = ESP.getFreeHeap();
 
   sensorsPowerOn();
-  bool present = crackPresent();
-  int adcRaw = 0;
-  uint16_t crack = present ? readCrack_mm_x100(&adcRaw) : 0;
+  CrackRatio cr = readCrack_ratio();
   uint16_t batmV = readBattery_mV();
   float tC = readTempOnceC();
-  float crack_mm = present ? mapCrackRawToMM_f(adcRaw) : 0.0f;
   sensorsPowerOff();
 
-  d["crack_present"] = present;
-  d["adc_raw"]       = present ? adcRaw : 0;
-  if (present) { d["crack_x100"] = crack; d["crack_mm"] = crack_mm; }
-  else         { d["crack_x100"] = nullptr; d["crack_mm"] = nullptr; }
+  d["crack_present"] = cr.present;
+  d["adc_raw"]       = cr.present ? cr.raw_meas : 0;
+  d["adc_ref"]       = cr.present ? cr.raw_ref  : 0;
+  if (cr.present) { d["crack_mm"] = cr.mm; d["ratio"] = cr.used_ratio; }
+  else            { d["crack_mm"] = nullptr; d["ratio"] = nullptr; }
 
   d["batt_mV"] = batmV;
   if (isfinite(tC)) d["DS18B20_Temp"] = tC; else d["DS18B20_Temp"] = nullptr;
@@ -554,18 +599,14 @@ void prepareTxFrame(uint8_t port) {
   (void)port;
   sensorsPowerOn();
 
-  bool present = crackPresent();
-  int16_t adcRaw = present ? ads.readADC_SingleEnded(0) : 0;
-  if (adcRaw < 0) adcRaw = 0;
-
+  CrackRatio cr = readCrack_ratio();
   int16_t  t  = readTemp_c_x100();
   uint16_t vb = readBattery_mV();
 
-  float mm = present ? mapCrackRawToMM_f(adcRaw) : 0.0f;
-  if (mm < 0) mm = 0; if (mm > 65.535f) mm = 65.535f;
-  uint16_t cr1000 = (uint16_t)lrintf(mm * 1000.0f);
-
   sensorsPowerOff();
+
+  uint16_t cr1000 = (uint16_t)lrintf(cr.mm * 1000.0f);
+  int16_t  adcRaw = cr.present ? cr.raw_meas : 0;
 
   appDataSize = 8;
   appData[0] = t >> 8;        appData[1] = t;
@@ -618,7 +659,7 @@ void setup() {
     oledSplash();                               // 3s
     oledPhase       = OLED_SSID;
     oledPhaseStart  = millis();
-    oledShowSSID(ssid);                          // 3s SSID екран
+    oledShowSSID(ssid);                          // SSID screen
 
   } else {
     isTxConfirmed     = false;
@@ -643,13 +684,12 @@ void loop() {
     oledMarqueeTick();
 
     if (oledPhase == OLED_SSID && millis() - oledPhaseStart >= 3000) {
-      apScroll.active = false;              
+      apScroll.active = false;
       oledPhase = OLED_SENS;
       oledPhaseStart = millis();
-      oledSensorsOnce();                     
+      oledSensorsOnce();
     }
 
-    // періодичне оновлення сенсорів
     static uint32_t tmr=0;
     if (oledPhase == OLED_SENS && millis()-tmr>1000) { tmr=millis(); oledSensorsOnce(); }
   }
