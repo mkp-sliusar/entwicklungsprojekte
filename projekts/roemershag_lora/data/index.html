@@ -5,9 +5,6 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title id="t_title">LoRa Crack Monitoring</title>
 <style>
-/* =========================
-   Theme and base styling
-   ========================= */
 :root{
   --bg:#111; --fg:#eee; --card:#1a1a1a; --border:#333; --muted:#9aa; --field:#222; --btn:#222;
   --ff:system-ui,Arial,sans-serif; --fs:14px; --lh:1.35;
@@ -33,14 +30,10 @@ h1,h3{font-family:var(--ff);line-height:1.2}
 h1{font-weight:700} h3{font-weight:600}
 .k,small,label{font:inherit}
 
-/* Responsive grid of cards */
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
-
-/* Cards */
 .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px;display:flex;flex-direction:column}
 .hr{height:1px;background:var(--border);margin:10px 0}
 
-/* Controls */
 button,input,select,textarea{font:inherit;line-height:inherit;color:inherit}
 input,select,textarea{
   font-size:var(--in-fs);line-height:var(--in-lh);
@@ -51,7 +44,6 @@ input,select,textarea{
 input:focus,select:focus,textarea:focus{outline:none;box-shadow:0 0 0 2px inset var(--border)}
 select{-webkit-appearance:none;-moz-appearance:none;appearance:none}
 
-/* subtle tone variation across cards */
 .grid > .card{ background:var(--cardTone, var(--card)); }
 .grid > .card:nth-of-type(5n+1){ --cardTone:var(--g5) }
 .grid > .card:nth-of-type(5n+2){ --cardTone:var(--g4) }
@@ -59,23 +51,19 @@ select{-webkit-appearance:none;-moz-appearance:none;appearance:none}
 .grid > .card:nth-of-type(5n+4){ --cardTone:var(--g2) }
 .grid > .card:nth-of-type(5n+5){ --cardTone:var(--g1) }
 
-/* Field layout */
 .field{display:flex;gap:4px;align-items:center;margin-top:8px}
 .field input,.field select{flex:1;min-width:0}
 .field label{min-width:120px;font-size:16px}
 
-/* Buttons */
 .btn{padding:8px 12px;border:1px solid var(--border);border-radius:10px;background:var(--field);color:var(--fg);font-weight:600;margin-top:8px}
 .btn:hover{background:var(--btn)}
 .btn-block{display:block;width:100%}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .actions{margin-top:auto}
 
-/* LoRa card: two equal-width buttons */
 .card:has(#i_lora) .row{display:flex;gap:12px}
 .card:has(#i_lora) .row .btn{flex:1 1 0;min-width:0;height:48px;display:flex;align-items:center;justify-content:center}
 
-/* Badges */
 .badge{display:inline-block;padding:2px 8px;border:1px solid var(--border);border-radius:999px;font-size:12px;background:var(--btn)}
 .badge.ok{outline:1px solid #2c7}
 .badge.err{outline:1px solid #e55}
@@ -83,18 +71,15 @@ select{-webkit-appearance:none;-moz-appearance:none;appearance:none}
 small{color:var(--muted)}
 #themeBtn,#langBtn{font-size:14px;line-height:1;padding:6px 10px}
 
-/* Footer */
 .footer{margin-top:16px;padding-top:12px;border-top:1px solid var(--border);font-size:12px;color:var(--muted);display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:center}
 .footer a{color:inherit;text-decoration:none}
 .footer a:hover{text-decoration:underline}
 
-/* LoRa layout: label | input grid */
 .card:has(#i_lora) .field{display:grid;grid-template-columns:140px 1fr;column-gap:12px;row-gap:12px;align-items:center}
 .card:has(#i_lora) .field input,.card:has(#i_lora) .field select{width:100%}
 
 .status{display:block;min-height:1.2em;margin-bottom:6px;color:var(--muted);word-break:break-word;white-space:pre-line}
 
-/* Tablet */
 @media (max-width:900px){
   body{margin:10px}
   .main{max-height:none;overflow:auto}
@@ -102,8 +87,6 @@ small{color:var(--muted)}
   h1{flex-wrap:wrap;gap:8px}
   .row{flex-wrap:wrap;gap:6px}
 }
-
-/* Phones */
 @media (max-width:640px){
   body{margin:8px}
   h1{flex-direction:column;align-items:flex-start}
@@ -114,8 +97,6 @@ small{color:var(--muted)}
   .row{width:100%}
   .card:has(#i_lora) .field{grid-template-columns:1fr}
 }
-
-/* Very narrow phones */
 @media (max-width:360px){
   .grid{grid-template-columns:1fr}
   h1 img{height:22px}
@@ -207,7 +188,6 @@ small{color:var(--muted)}
       </select>
     </div>
 
-    <!-- Time sync visual control (UI-only; device has stubs) -->
     <div class="field">
       <label for="syncField" id="i_sync_k">Time sync</label>
       <select id="syncField">
@@ -221,6 +201,14 @@ small{color:var(--muted)}
         <option value="48">2 d</option>
         <option value="72">3 d</option>
         <option value="168">1 w</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="refModeField" id="i_ref_src_k">Reference (CH1)</label>
+      <select id="refModeField">
+        <option value="auto" id="i_ref_auto">Auto (ADS1115 CH1)</option>
+        <option value="manual" id="i_ref_manual">Manual (fixed R1)</option>
       </select>
     </div>
 
@@ -267,9 +255,6 @@ small{color:var(--muted)}
 </footer>
 
 <script>
-// =========================
-// Constants and helpers
-// =========================
 const THEME_KEY='theme';
 const LANG_KEY='lang';
 const LANGS=['en','de','uk'];
@@ -280,7 +265,6 @@ function byId(id){ return document.getElementById(id); }
 function setText(id, val){ const el=byId(id); if(el) el.textContent=val; }
 function fmtTime(){ const d=new Date(),p=n=>String(n).padStart(2,'0'); return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`; }
 
-// Safe fetch wrapper: auto-parse JSON when content-type matches
 async function q(url,opts){
   const r = await fetch(url,opts);
   if(!r.ok) throw new Error(await r.text());
@@ -288,7 +272,7 @@ async function q(url,opts){
   return ct.includes('application/json') ? r.json() : r.text();
 }
 
-// ===== NEW: input safety helpers =====
+// input safety
 function markDirty(el){ if(el) el.dataset.dirty = "1"; }
 function clearDirty(el){ if(el) delete el.dataset.dirty; }
 function bindDirty(id){
@@ -306,18 +290,14 @@ function setInputIfIdle(id, val){
   }
 }
 
-// =========================
-// Theming
-// =========================
+// theme
 function setTheme(t){
   document.documentElement.dataset.theme=t;
   setText('themeBtn', t==='dark' ? '☀️' : '🌙');
   localStorage.setItem(THEME_KEY,t);
 }
 
-// =========================
-// I18n
-// =========================
+// i18n
 function applyI18n(){
   const t = I18N[CURR_LANG] || I18N['en'] || {};
   setText('i_title',       t.title || 'LoRa Crack Monitoring');
@@ -351,7 +331,9 @@ function applyI18n(){
   setText('i_mm1_k',       t.mm1 || 'mm1');
   setText('i_dr_k',        t.drate || 'DataRate (EU868)');
   setText('i_sync_k',      t.time_sync || 'Time sync');
-  const optAuto = byId('opt_dr_auto'); if (optAuto) optAuto.textContent = t.auto || 'Auto';
+  setText('i_ref_src_k',   (t.ref_src)||'Reference (CH1)');
+  const optAuto = byId('i_ref_auto'); if (optAuto) optAuto.textContent = (t.ref_auto)||'Auto (ADS1115 CH1)';
+  const optMan  = byId('i_ref_manual'); if (optMan)  optMan.textContent  = (t.ref_manual)||'Manual (fixed R1)';
   setText('langBtn', CURR_LANG.toUpperCase());
 }
 
@@ -362,26 +344,12 @@ async function initI18n(){
   applyI18n();
 }
 
-// =========================
-// Sensor UI bindings
-// =========================
-function setCrackStatus(present){
-  const t = I18N[CURR_LANG] || I18N['en'] || {};
-  const el = byId('cr_status');
-  if(!el) return;
-  if(present){ el.textContent = t.ok || 'OK'; el.classList.remove('err'); el.classList.add('ok'); }
-  else{ el.textContent = t.nc || 'N/C'; el.classList.remove('ok'); el.classList.add('err'); }
-}
-
-// =========================
-// API data load and form fill
-// =========================
+// state load
 async function load(){
   try{
     const s = await q('/api/state');
     setText('t', fmtTime());
 
-    // DS18B20 value
     const vRaw = s.DS18B20_Temp;
     const vNum = Number(vRaw);
     const hasVal = vRaw !== null && vRaw !== undefined && Number.isFinite(vNum) && vNum > -100 && vNum < 125;
@@ -417,7 +385,6 @@ async function load(){
     setText('snr',  (L.snr!=null)?L.snr:'—');
     setText('dlage',(L.age_s!=null)?L.age_s:'—');
 
-    // ----- Safe populate config (no overwrite while typing) -----
     if(s.cfg){
       setInputIfIdle('devEuiField', s.cfg.devEui || '');
       setInputIfIdle('appEuiField', s.cfg.appEui || '');
@@ -448,6 +415,14 @@ async function load(){
         setInputIfIdle('r1Field',  cc.r1);
         setInputIfIdle('mm1Field', (cc.mm1!=null)?(+cc.mm1).toFixed(2):'');
       }
+
+      if (s.cfg.ref){
+        const refSel = byId('refModeField');
+        if(refSel && refSel.dataset.dirty!=="1" && document.activeElement!==refSel){
+          refSel.value = (s.cfg.ref.mode==='manual') ? 'manual' : 'auto';
+          refSel.dataset.inited="1";
+        }
+      }
     }
   }catch(e){
     const t = I18N[CURR_LANG] || I18N['en'] || {};
@@ -455,9 +430,15 @@ async function load(){
   }
 }
 
-// =========================
-// Actions
-// =========================
+function setCrackStatus(present){
+  const t = I18N[CURR_LANG] || I18N['en'] || {};
+  const el = byId('cr_status');
+  if(!el) return;
+  if(present){ el.textContent = t.ok || 'OK'; el.classList.remove('err'); el.classList.add('ok'); }
+  else{ el.textContent = t.nc || 'N/C'; el.classList.remove('ok'); el.classList.add('err'); }
+}
+
+// actions
 async function readDevEUI(){
   try{
     const j = await q('/api/deveui');
@@ -492,7 +473,6 @@ async function saveLoRaAll(){
   if(sel==='auto'){ payload.adr=true; }
   else { payload.dr=parseInt(sel,10); payload.adr=false; }
 
-  // Time sync and align flags: UI preference only
   const syncVal = byId('syncField') ? byId('syncField').value : 'off';
   if (syncVal === 'off') {
     payload.time_sync = { enabled:false, hours:24 };
@@ -503,11 +483,19 @@ async function saveLoRaAll(){
     payload.align_minute = true;
   }
 
+  // Reference: use single r1Field when manual
+  const refMode = (byId('refModeField')?.value==='manual') ? 'manual' : 'auto';
+  payload.ref = { mode: refMode };
+  if (refMode==='manual') {
+    const r1 = parseInt(byId('r1Field')?.value||'0',10);
+    if (Number.isFinite(r1) && r1>0) payload.ref.r1 = r1;
+  }
+
   const t = I18N[CURR_LANG] || I18N['en'] || {};
   try{
     await fetch('/api/config/lora',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     setText('devEuiMsg', t.msg_saved_reboot || 'Saved; rebooting…');
-    ['devEuiField','appEuiField','appKeyField','minutesField','drField','syncField']
+    ['devEuiField','appEuiField','appKeyField','minutesField','drField','syncField','refModeField']
       .forEach(id=>clearDirty(byId(id)));
   }catch(e){ setText('devEuiMsg', t.msg_save_error || 'Save error'); }
 }
@@ -528,7 +516,7 @@ async function saveCrackCalAll(){
   }catch(e){ setText('calMsg', t.msg_save_error||'Save error'); }
 }
 
-// Manual LoRa send and reboot
+// buttons
 byId('btnSend').onclick=async()=>{
   const t=I18N[CURR_LANG]||I18N['en']||{};
   try{
@@ -544,42 +532,32 @@ byId('btnReset').onclick=async()=>{
   }catch(e){ setText('msg', t.msg_save_error||'Save error'); }
 };
 
-// =========================
-// DevEUI chip helpers
-// =========================
+// chip helpers
 byId('btnReadChip').onclick=readDevEUI;
 byId('btnSaveChip').onclick=saveChipDevEUI;
 byId('btnSaveLoRa').onclick=saveLoRaAll;
 byId('btnSaveCalAll').onclick=saveCrackCalAll;
 
-// ===== NEW: mark inputs as user-edited while typing =====
+// mark-dirty
 ['devEuiField','appEuiField','appKeyField','minutesField',
- 'r0Field','mm0Field','r1Field','mm1Field','drField','syncField'
-].forEach(bindDirty);
+ 'r0Field','mm0Field','r1Field','mm1Field','drField','syncField','refModeField']
+ .forEach(bindDirty);
 
-// =========================
-// App bootstrap
-// =========================
+// bootstrap
 document.addEventListener('DOMContentLoaded',()=>{
-  // theme init
   const savedTheme=localStorage.getItem(THEME_KEY);
   const initTheme=savedTheme||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
   setTheme(initTheme);
   byId('themeBtn').onclick=()=>setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark');
 
-  // year in footer
   const y=byId('yr'); if(y) y.textContent=new Date().getFullYear();
 
-  // language switch cycles through whitelist
   byId('langBtn').onclick=()=>{
     const idx=LANGS.indexOf(CURR_LANG); CURR_LANG=LANGS[(idx+1)%LANGS.length];
     localStorage.setItem(LANG_KEY,CURR_LANG); applyI18n();
   };
 
-  // i18n load and first render
   initI18n();
-
-  // periodic state refresh
   setInterval(load,2000); load();
 });
 </script>

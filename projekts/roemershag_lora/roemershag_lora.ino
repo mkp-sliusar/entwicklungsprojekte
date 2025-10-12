@@ -9,10 +9,11 @@
  *  - LoRaWAN uplink 8 bytes (compatible format)
  *  - Crack length by ratio: L = Lfull * CH0 / CH1
  *    CH0 = sensor (pot), CH1 = reference from same Vee
- *    If CH1 == 0 → linear map fallback
+ *    Якщо ref.mode=manual → CH1 = fixed r1 (одне поле ADC r1)
+ *    Якщо CH1 == 0 → лінійний fallback
  * =====================================================================
- *  Version:   1.2.2
- *  Date:      2025-10-10
+ *  Version:   1.3.0
+ *  Date:      2025-10-12
  *  Contributors: Bernd Schinköthe, Roman Sliusar, Evgenij Koloda
  * =====================================================================
  */
@@ -66,7 +67,7 @@ static constexpr float VBAT_ADC_FACTOR         = 1.0f/4096.0f/0.210282997855762f
 
 static constexpr char   AP_PSK[]               = "12345678";
 static constexpr size_t JSON_STATE_DOC         = 1500;
-static constexpr size_t JSON_CFG_DOC           = 800;
+static constexpr size_t JSON_CFG_DOC           = 900;
 
 static constexpr uint32_t MS_PER_SEC           = 1000UL;
 static constexpr uint32_t SEC_PER_MIN          = 60UL;
@@ -106,6 +107,8 @@ bool apMode = false;
 // ---------- NVS ----------
 Preferences prefs;
 
+enum RefMode : uint8_t { REF_AUTO=0, REF_MANUAL=1 };
+
 struct Cfg {
   String ssid, wifi_pw;
   uint8_t devEui[8]  = {0};   // stored LSB (LoRaMac expects LSB)
@@ -113,14 +116,18 @@ struct Cfg {
   uint8_t appKey[16] = {0};   // stored MSB
   uint32_t minutes   = 15;
 
-  // Full travel for ratio mode
+  // Повний хід для ratio
   uint16_t crack_len_mm_x100 = 1000;  // 10.00 mm
 
-  // Linear fallback calibration
+  // Лінійний fallback калібрування
   int16_t  crack_r0          = 5;
   int16_t  crack_r1          = 25480;
   uint16_t crack_mm0_x100    = 0;
   uint16_t crack_mm1_x100    = 1000;
+
+  // Reference source for ratio
+  uint8_t  ref_mode       = REF_AUTO; // 0=auto(ADS CH1), 1=manual
+  uint16_t ref_r1_adc     = 0;        // fixed ADC for CH1 when manual; якщо 0 → беремо crack_r1
 
   uint8_t  lora_dr  = LORAWAN_DR_DEFAULT;
   bool     lora_adr = LORAWAN_ADR_DEFAULT;
@@ -152,6 +159,9 @@ void loadCfg() {
   cfg.crack_mm0_x100    = prefs.getUShort("cr_mm0",      cfg.crack_mm0_x100);
   cfg.crack_mm1_x100    = prefs.getUShort("cr_mm1",      cfg.crack_mm1_x100);
   if (cfg.crack_mm1_x100 == 1000) cfg.crack_mm1_x100 = cfg.crack_len_mm_x100;
+
+  cfg.ref_mode   = prefs.getUChar ("ref_mode", cfg.ref_mode);
+  cfg.ref_r1_adc = prefs.getUShort("ref_r1",   cfg.ref_r1_adc);
 
   cfg.lora_dr  = prefs.getUChar ("lora_dr",  cfg.lora_dr);
   cfg.lora_adr = prefs.getBool  ("lora_adr", cfg.lora_adr);
@@ -298,6 +308,13 @@ struct CrackRatio {
   bool    used_ratio; // true if ratio used
 };
 
+static inline int16_t fixedRefADC(){
+  // Якщо ref_r1_adc==0 → підставити crack_r1 з калібрування; захист від 0
+  uint16_t v = (cfg.ref_r1_adc ? cfg.ref_r1_adc : (uint16_t)max(1,(int)cfg.crack_r1));
+  if (v==0) v=1;
+  return (int16_t)v;
+}
+
 CrackRatio readCrack_ratio(){
   CrackRatio r{false,0,0,0.0f,false};
   r.present = crackPresent();
@@ -306,13 +323,21 @@ CrackRatio readCrack_ratio(){
   int32_t sumM=0, sumR=0;
   for(uint8_t i=0;i<RATIO_SAMPLES;i++){
     int16_t rm = ads.readADC_SingleEnded(0); if(rm<0) rm=0; sumM += rm;
-    int16_t rr = ads.readADC_SingleEnded(1); if(rr<0) rr=0; sumR += rr;
+
+    int16_t rr;
+    if (cfg.ref_mode == REF_MANUAL) {
+      rr = fixedRefADC(); // фіксоване значення
+    } else {
+      rr = ads.readADC_SingleEnded(1);
+      if(rr<0) rr=0;
+    }
+    sumR += rr;
   }
   r.raw_meas = (int16_t)(sumM / RATIO_SAMPLES);
-  r.raw_ref  = (int16_t)(sumR / RATIO_SAMPLES);
+  r.raw_ref  = (cfg.ref_mode==REF_MANUAL) ? fixedRefADC() : (int16_t)(sumR / RATIO_SAMPLES);
 
   if(r.raw_ref>0){
-    float Lfull = (float)cfg.crack_len_mm_x100 / 100.0f;  // e.g. 10.00 mm
+    const float Lfull = (float)cfg.crack_len_mm_x100 / 100.0f;  // e.g. 10.00 mm
     r.mm = Lfull * (float)r.raw_meas / (float)r.raw_ref;
     r.used_ratio = true;
   } else {
@@ -383,8 +408,13 @@ void oledSensorsOnce() {
   OLED_Display.drawString(0, y, String("ADC M   ")+(cr.present?String(cr.raw_meas):String("N/C"))); y += dy;
   OLED_Display.drawString(0, y, String("ADC R   ")+(cr.present?String(cr.raw_ref ):String("N/C"))); y += dy;
 
-  if (cr.present) OLED_Display.drawString(0, y, String("Crack   ")+String(cr.mm,3)+" mm"+(cr.used_ratio?" (R)":" (L)"));
-  else            OLED_Display.drawString(0, y, "Crack   N/C"); y += dy;
+  if (cr.present) {
+    const char* tag = cr.used_ratio ? (cfg.ref_mode==REF_MANUAL ? " (R,M)" : " (R)") : " (L)";
+    OLED_Display.drawString(0, y, String("Crack   ")+String(cr.mm,3)+" mm"+tag);
+  } else {
+    OLED_Display.drawString(0, y, "Crack   N/C");
+  }
+  y += dy;
 
   OLED_Display.drawString(0, y, String("Battery ")+String(bat)+" mV"); y += dy;
 
@@ -465,6 +495,10 @@ void api_state() {
   c["align_minute"] = cfg.align_minute;
   ts["valid"] = sysTimeLooksValid();
 
+  JsonObject ref = c.createNestedObject("ref");
+  ref["mode"] = (cfg.ref_mode==REF_MANUAL) ? "manual" : "auto";
+  if (cfg.ref_mode==REF_MANUAL) ref["r1"] = (int)fixedRefADC();
+
   String out; serializeJson(d, out);
   http.send(200, "application/json", out);
 }
@@ -493,6 +527,10 @@ void api_cfg_get() {
   ts["hours"]   = cfg.ts_hours;
   d["align_minute"] = cfg.align_minute;
   ts["valid"] = sysTimeLooksValid();
+
+  JsonObject ref = d.createNestedObject("ref");
+  ref["mode"] = (cfg.ref_mode==REF_MANUAL) ? "manual" : "auto";
+  if (cfg.ref_mode==REF_MANUAL) ref["r1"] = (int)fixedRefADC();
 
   String out; serializeJson(d, out);
   http.send(200, "application/json", out);
@@ -553,6 +591,24 @@ void api_cfg_lora() {
                                      cfg.ts_hours = (uint16_t)h; saveUShort("ts_h",  cfg.ts_hours); }
   }
   if (d.containsKey("align_minute")) { cfg.align_minute = d["align_minute"].as<bool>(); saveBool("align_min", cfg.align_minute); }
+
+  // NEW: reference block (одне поле r1 з UI, або беремо з калібрування)
+  if (d.containsKey("ref")) {
+    JsonObject rj = d["ref"].as<JsonObject>();
+    String m = rj["mode"] | "auto";
+    if (m == "manual") {
+      cfg.ref_mode = REF_MANUAL;  saveUChar("ref_mode", cfg.ref_mode);
+      if (rj.containsKey("r1")) {
+        int v = rj["r1"].as<int>();
+        if (v < 1 || v > 32767) { http.send(400,"text/plain","ref r1 range"); return; }
+        cfg.ref_r1_adc = (uint16_t)v; saveUShort("ref_r1", cfg.ref_r1_adc);
+      } else {
+        cfg.ref_r1_adc = (uint16_t)max(1, (int)cfg.crack_r1); saveUShort("ref_r1", cfg.ref_r1_adc);
+      }
+    } else {
+      cfg.ref_mode = REF_AUTO;    saveUChar("ref_mode", cfg.ref_mode);
+    }
+  }
 
   if (!ok) { http.send(400, "text/plain", "hex error"); return; }
   saveBytes("devEui", cfg.devEui, 8);
