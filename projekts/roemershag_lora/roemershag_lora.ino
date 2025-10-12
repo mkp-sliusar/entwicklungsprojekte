@@ -1,18 +1,18 @@
 /*
  * =====================================================================
- *  Heltec ESP32-S3 (LoRa V3) Crack Monitoring Node — ratio mode
+ *  Heltec ESP32-S3 (LoRa V3) Crack Monitoring Node — ratio (CH0/CH1)
  * ---------------------------------------------------------------------
  *  - ADS1115 (I2C1)
  *  - DS18B20 (OneWire)
  *  - SSD1306 OLED
- *  - AP-конфіг сторінка (LittleFS)
- *  - LoRaWAN uplink 8 байт (сумісний формат)
- *  - Довжина тріщини за відношенням: L = Lfull * CH0 / CH1
- *    CH0 = датчик (потенціометр), CH1 = опорна з того ж Vee
- *    Якщо CH1 недоступний → лінійна мапа як запасний варіант
+ *  - AP config page (LittleFS)
+ *  - LoRaWAN uplink 8 bytes (compatible format)
+ *  - Crack length by ratio: L = Lfull * CH0 / CH1
+ *    CH0 = sensor (pot), CH1 = reference from same Vee
+ *    If CH1 == 0 → linear map fallback
  * =====================================================================
- *  Version:   1.2.1
- *  Date:      2025-10-09
+ *  Version:   1.2.2
+ *  Date:      2025-10-10
  *  Contributors: Bernd Schinköthe, Roman Sliusar, Evgenij Koloda
  * =====================================================================
  */
@@ -77,7 +77,7 @@ static constexpr uint8_t  UPLINK_PORT          = 2;
 static constexpr uint8_t  CONF_TRIALS_AP       = 3;
 static constexpr uint8_t  CONF_TRIALS_FIELD    = 1;
 
-static constexpr uint8_t  RATIO_SAMPLES        = 8;   // усереднень на точку
+static constexpr uint8_t  RATIO_SAMPLES        = 8;   // averaging
 
 // ---------- Time stubs ----------
 static inline bool     sysTimeLooksValid()     { return false; }
@@ -85,8 +85,8 @@ static inline uint32_t now_sec()               { return millis()/MS_PER_SEC; }
 static inline bool     loraRequestDeviceTime() { return false; }
 
 // ---- fix for Arduino auto-prototype ----
-struct CrackRatio;          // forward declare the struct
-CrackRatio readCrack_ratio(); // forward declare the function
+struct CrackRatio;              // fwd
+CrackRatio readCrack_ratio();   // fwd
 
 // ---------- OLED ----------
 SSD1306Wire OLED_Display(OLED_ADDR, I2C_FREQ_HZ, SDA_OLED, SCL_OLED, GEOMETRY_128_64, RST_OLED);
@@ -108,15 +108,15 @@ Preferences prefs;
 
 struct Cfg {
   String ssid, wifi_pw;
-  uint8_t devEui[8]  = {0};
-  uint8_t appEui[8]  = {0};
-  uint8_t appKey[16] = {0};
+  uint8_t devEui[8]  = {0};   // stored LSB (LoRaMac expects LSB)
+  uint8_t appEui[8]  = {0};   // stored LSB
+  uint8_t appKey[16] = {0};   // stored MSB
   uint32_t minutes   = 15;
 
-  // Повний хід тріщиноміра для ratio-режиму
-  uint16_t crack_len_mm_x100 = 1000;  // 10.00 мм за замовч.
+  // Full travel for ratio mode
+  uint16_t crack_len_mm_x100 = 1000;  // 10.00 mm
 
-  // Запасна лінійна калібровка (коли CH1 = 0)
+  // Linear fallback calibration
   int16_t  crack_r0          = 5;
   int16_t  crack_r1          = 25480;
   uint16_t crack_mm0_x100    = 0;
@@ -173,9 +173,9 @@ uint8_t  appPort = UPLINK_PORT;
 uint8_t  confirmedNbTrials = 1;
 uint32_t appTxDutyCycle = 60000UL * 2;
 
-uint8_t  devEui[8]  = {0};
-uint8_t  appEui[8]  = {0};
-uint8_t  appKey[16] = {0};
+uint8_t  devEui[8]  = {0};   // passed into LoRaWAN (LSB)
+uint8_t  appEui[8]  = {0};   // (LSB)
+uint8_t  appKey[16] = {0};   // (MSB)
 uint8_t  nwkSKey[16]= {0};
 uint8_t  appSKey[16]= {0};
 uint32_t devAddr    = 0;
@@ -222,11 +222,20 @@ void oledMarqueeTick() {
 String toHex(const uint8_t* v, size_t n){ char b[3]; String s; s.reserve(n*2); for(size_t i=0;i<n;i++){ sprintf(b,"%02X",v[i]); s+=b; } return s; }
 String toHexLSB(const uint8_t* v, size_t n){ char b[3]; String s; s.reserve(n*2); for(int i=(int)n-1;i>=0;i--){ sprintf(b,"%02X",v[i]); s+=b; } return s; }
 bool parseHex(const String& s, uint8_t* out, size_t n){ if(s.length()!=n*2) return false; for(size_t i=0;i<n;i++){ char b[3]={ (char)s[2*i], (char)s[2*i+1], 0 }; out[i]=(uint8_t)strtoul(b,nullptr,16);} return true; }
+// parse MSB hex string into LSB array (reverse)
+bool parseHexRev(const String& msb, uint8_t* out, size_t n){
+  if(msb.length()!=n*2) return false;
+  for(size_t i=0;i<n;i++){
+    char b[3]={ (char)msb[2*i], (char)msb[2*i+1], 0 };
+    out[n-1-i]=(uint8_t)strtoul(b,nullptr,16);
+  }
+  return true;
+}
 
-void devEuiFromChip(uint8_t out[8]) {
+void devEuiFromChip(uint8_t outMSB[8]) {
   uint64_t mac = ESP.getEfuseMac(); uint8_t m[6];
   for (int i=0;i<6;i++) m[i]=(mac>>(8*(5-i)))&0xFF;
-  out[0]=m[0]; out[1]=m[1]; out[2]=m[2]; out[3]=0xFF; out[4]=0xFE; out[5]=m[3]; out[6]=m[4]; out[7]=m[5];
+  outMSB[0]=m[0]; outMSB[1]=m[1]; outMSB[2]=m[2]; outMSB[3]=0xFF; outMSB[4]=0xFE; outMSB[5]=m[3]; outMSB[6]=m[4]; outMSB[7]=m[5];
 }
 String devEuiSuffix6(){ char buf[7]; sprintf(buf,"%02X%02X%02X", cfg.devEui[5], cfg.devEui[6], cfg.devEui[7]); return String(buf); }
 
@@ -285,8 +294,8 @@ struct CrackRatio {
   bool    present;
   int16_t raw_meas;   // CH0
   int16_t raw_ref;    // CH1
-  float   mm;         // довжина, мм
-  bool    used_ratio; // true, якщо використано відношення
+  float   mm;         // mm
+  bool    used_ratio; // true if ratio used
 };
 
 CrackRatio readCrack_ratio(){
@@ -303,7 +312,7 @@ CrackRatio readCrack_ratio(){
   r.raw_ref  = (int16_t)(sumR / RATIO_SAMPLES);
 
   if(r.raw_ref>0){
-    float Lfull = (float)cfg.crack_len_mm_x100 / 100.0f;  // напр. 10.00 мм
+    float Lfull = (float)cfg.crack_len_mm_x100 / 100.0f;  // e.g. 10.00 mm
     r.mm = Lfull * (float)r.raw_meas / (float)r.raw_ref;
     r.used_ratio = true;
   } else {
@@ -437,9 +446,10 @@ void api_state() {
 
   JsonObject c = d.createNestedObject("cfg");
   c["minutes"] = cfg.minutes;
-  c["devEui"]  = toHex(cfg.devEui, 8);
-  c["appEui"]  = toHex(cfg.appEui, 8);
-  c["appKey"]  = toHex(cfg.appKey, 16);
+  // expose DevEUI/AppEUI in MSB for UI
+  c["devEui"]  = toHexLSB(cfg.devEui, 8);
+  c["appEui"]  = toHexLSB(cfg.appEui, 8);
+  c["appKey"]  = toHex(cfg.appKey, 16);   // MSB as-is
   c["crack_len_x100"] = cfg.crack_len_mm_x100;
 
   JsonObject cal = c.createNestedObject("crack_cal");
@@ -464,8 +474,9 @@ void api_reset() { http.send(200, "text/plain", "restarting"); delay(200); ESP.r
 
 void api_cfg_get() {
   StaticJsonDocument<JSON_CFG_DOC> d;
-  d["devEui"] = toHex(cfg.devEui, 8);
-  d["appEui"] = toHex(cfg.appEui, 8);
+  // expose MSB for UI
+  d["devEui"] = toHexLSB(cfg.devEui, 8);
+  d["appEui"] = toHexLSB(cfg.appEui, 8);
   d["appKey"] = toHex(cfg.appKey, 16);
   d["minutes"] = cfg.minutes;
   d["crack_len_x100"] = cfg.crack_len_mm_x100;
@@ -493,9 +504,10 @@ void api_cfg_lora() {
   if (deserializeJson(d, http.arg("plain"))) { http.send(400, "text/plain", "bad json"); return; }
   bool ok = true;
 
-  if (d.containsKey("devEui")) ok &= parseHex((const char*)d["devEui"], cfg.devEui, 8);
-  if (d.containsKey("appEui")) ok &= parseHex((const char*)d["appEui"], cfg.appEui, 8);
-  if (d.containsKey("appKey")) ok &= parseHex((const char*)d["appKey"], cfg.appKey,16);
+  // UI sends MSB strings → parse into LSB arrays for LoRa stack
+  if (d.containsKey("devEui")) ok &= parseHexRev((const char*)d["devEui"], cfg.devEui, 8); // LSB
+  if (d.containsKey("appEui")) ok &= parseHexRev((const char*)d["appEui"], cfg.appEui, 8); // LSB
+  if (d.containsKey("appKey")) ok &= parseHex   ((const char*)d["appKey"], cfg.appKey,16); // MSB
 
   if (d.containsKey("minutes")) { cfg.minutes = d["minutes"].as<uint32_t>(); saveKVu("minutes", cfg.minutes); }
 
@@ -553,11 +565,12 @@ void api_cfg_lora() {
 }
 
 void api_deveui_get() {
-  uint8_t chip[8]; devEuiFromChip(chip);
+  uint8_t chipMSB[8]; devEuiFromChip(chipMSB);
   StaticJsonDocument<256> d;
-  d["chip_devEui_msb"]   = toHex(chip, 8);
-  d["chip_devEui_lsb"]   = toHexLSB(chip, 8);
-  d["stored_devEui_msb"] = toHex(cfg.devEui, 8);
+  d["chip_devEui_msb"]   = toHex(chipMSB, 8);
+  d["chip_devEui_lsb"]   = toHexLSB(chipMSB, 8);
+  // show stored as MSB for UI
+  d["stored_devEui_msb"] = toHexLSB(cfg.devEui, 8);
   String out; serializeJson(d, out);
   http.send(200, "application/json", out);
 }
@@ -567,12 +580,15 @@ void api_deveui_post() {
   StaticJsonDocument<128> d;
   if (deserializeJson(d, http.arg("plain"))) { http.send(400, "text/plain", "bad json"); return; }
   if (d.containsKey("use") && String((const char*)d["use"])=="chip") {
-    devEuiFromChip(cfg.devEui); saveBytes("devEui", cfg.devEui, 8);
+    uint8_t chipMSB[8]; devEuiFromChip(chipMSB);
+    // store as LSB
+    for (int i=0;i<8;i++) cfg.devEui[i]=chipMSB[7-i];
+    saveBytes("devEui", cfg.devEui, 8);
     http.send(200, "text/plain", "ok"); delay(200); ESP.restart(); return;
   }
   if (d.containsKey("devEui")) {
-    String h = d["devEui"].as<String>();
-    if (!parseHex(h, cfg.devEui, 8)) { http.send(400, "text/plain", "hex error"); return; }
+    String h = d["devEui"].as<String>();  // MSB from UI
+    if (!parseHexRev(h, cfg.devEui, 8)) { http.send(400, "text/plain", "hex error"); return; } // store LSB
     saveBytes("devEui", cfg.devEui, 8);
     http.send(200, "text/plain", "ok"); delay(200); ESP.restart(); return;
   }
