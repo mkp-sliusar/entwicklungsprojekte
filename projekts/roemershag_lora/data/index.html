@@ -18,7 +18,6 @@ html[data-theme="light"]{
   --card:var(--g3);
 }
 html[data-theme="dark"]{ color-scheme: dark; }
-
 *{box-sizing:border-box}
 html,body{height:100%}
 html,body{font-family:var(--ff);font-size:var(--fs);line-height:var(--lh)}
@@ -26,14 +25,12 @@ body{margin:16px;background:var(--bg);color:var(--fg);display:flex;flex-directio
 .main{flex:1;max-height:85vh;overflow:hidden}
 h1{font-size:20px;margin:0 0 12px;display:flex;align-items:center;justify-content:space-between;gap:8px}
 h3{margin:0 0 8px}
-h1,h3{font-family:var(--ff);line-height:1.2}
+h1,h3{line-height:1.2}
 h1{font-weight:700} h3{font-weight:600}
 .k,small,label{font:inherit}
-
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
 .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px;display:flex;flex-direction:column}
 .hr{height:1px;background:var(--border);margin:10px 0}
-
 button,input,select,textarea{font:inherit;line-height:inherit;color:inherit}
 input,select,textarea{
   font-size:var(--in-fs);line-height:var(--in-lh);
@@ -43,43 +40,33 @@ input,select,textarea{
 }
 input:focus,select:focus,textarea:focus{outline:none;box-shadow:0 0 0 2px inset var(--border)}
 select{-webkit-appearance:none;-moz-appearance:none;appearance:none}
-
 .grid > .card{ background:var(--cardTone, var(--card)); }
 .grid > .card:nth-of-type(5n+1){ --cardTone:var(--g5) }
 .grid > .card:nth-of-type(5n+2){ --cardTone:var(--g4) }
 .grid > .card:nth-of-type(5n+3){ --cardTone:var(--g3) }
 .grid > .card:nth-of-type(5n+4){ --cardTone:var(--g2) }
 .grid > .card:nth-of-type(5n+5){ --cardTone:var(--g1) }
-
 .field{display:flex;gap:4px;align-items:center;margin-top:8px}
 .field input,.field select{flex:1;min-width:0}
 .field label{min-width:120px;font-size:16px}
-
 .btn{padding:8px 12px;border:1px solid var(--border);border-radius:10px;background:var(--field);color:var(--fg);font-weight:600;margin-top:8px}
 .btn:hover{background:var(--btn)}
 .btn-block{display:block;width:100%}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .actions{margin-top:auto}
-
 .card:has(#i_lora) .row{display:flex;gap:12px}
 .card:has(#i_lora) .row .btn{flex:1 1 0;min-width:0;height:48px;display:flex;align-items:center;justify-content:center}
-
 .badge{display:inline-block;padding:2px 8px;border:1px solid var(--border);border-radius:999px;font-size:12px;background:var(--btn)}
 .badge.ok{outline:1px solid #2c7}
 .badge.err{outline:1px solid #e55}
-
 small{color:var(--muted)}
 #themeBtn,#langBtn{font-size:14px;line-height:1;padding:6px 10px}
-
 .footer{margin-top:16px;padding-top:12px;border-top:1px solid var(--border);font-size:12px;color:var(--muted);display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:center}
 .footer a{color:inherit;text-decoration:none}
 .footer a:hover{text-decoration:underline}
-
 .card:has(#i_lora) .field{display:grid;grid-template-columns:140px 1fr;column-gap:12px;row-gap:12px;align-items:center}
 .card:has(#i_lora) .field input,.card:has(#i_lora) .field select{width:100%}
-
 .status{display:block;min-height:1.2em;margin-bottom:6px;color:var(--muted);word-break:break-word;white-space:pre-line}
-
 @media (max-width:900px){
   body{margin:10px}
   .main{max-height:none;overflow:auto}
@@ -118,20 +105,16 @@ small{color:var(--muted)}
 
 <main class="main">
 <div class="grid">
-  <!-- Sensors card -->
   <div class="card">
     <h3 id="i_sensors">Sensors</h3>
     <div><span class="k" id="i_time_k">Time</span>: <b id="t" aria-live="polite">--:--:--</b></div>
-    <div>
-      <span class="k" id="i_ds_k">DS18B20</span>: <span id="ds">-</span><span id="ds_unit"> °C</span>
-    </div>
+    <div><span class="k" id="i_ds_k">DS18B20</span>: <span id="ds">-</span><span id="ds_unit"> °C</span></div>
     <div><span class="k" id="i_adc_k">Crack ADC</span>: <b id="adc">-</b></div>
     <div><span class="k" id="i_crack_status_k">Crack sensor</span>: <span id="cr_status" class="badge">—</span></div>
     <div><span class="k" id="i_crack_k">Crack</span>: <b id="crk">-</b> <span id="i_mm">mm</span></div>
     <div><span class="k" id="i_bat_k">Battery</span>: <b id="bat">-</b> <span id="i_mv">mV</span></div>
   </div>
 
-  <!-- Controller card -->
   <div class="card">
     <h3 id="i_controller">Controller</h3>
     <div><span class="k" id="i_mode_k">Mode</span>: <b id="mode">-</b></div>
@@ -151,21 +134,19 @@ small{color:var(--muted)}
     </div>
   </div>
 
-  <!-- LoRa settings card -->
   <div class="card">
     <h3 id="i_lora">LoRa</h3>
     <div class="row">
       <button id="btnReadChip" class="btn" type="button">Read DevEUI from chip</button>
       <button id="btnSaveChip" class="btn" type="button">Use chip DevEUI</button>
     </div>
-
     <div class="field">
       <label for="devEuiField" id="i_deveui_k">DevEUI</label>
-      <input id="devEuiField" inputmode="latin" autocomplete="off" placeholder="DevEUI MSB e.g. 0011223344556677">
+      <input id="devEuiField" inputmode="latin" autocomplete="off" placeholder="DevEUI LSB e.g. 7766554433221100">
     </div>
     <div class="field">
       <label for="appEuiField" id="i_appeui_k">AppEUI</label>
-      <input id="appEuiField" inputmode="latin" autocomplete="off" placeholder="AppEUI MSB">
+      <input id="appEuiField" inputmode="latin" autocomplete="off" placeholder="AppEUI LSB">
     </div>
     <div class="field">
       <label for="appKeyField" id="i_appkey_k">AppKey</label>
@@ -187,7 +168,6 @@ small{color:var(--muted)}
         <option value="5">DR5 (SF7  / 125kHz)</option>
       </select>
     </div>
-
     <div class="field">
       <label for="syncField" id="i_sync_k">Time sync</label>
       <select id="syncField">
@@ -203,7 +183,6 @@ small{color:var(--muted)}
         <option value="168">1 w</option>
       </select>
     </div>
-
     <div class="field">
       <label for="refModeField" id="i_ref_src_k">Reference (CH1)</label>
       <select id="refModeField">
@@ -211,14 +190,12 @@ small{color:var(--muted)}
         <option value="manual" id="i_ref_manual">Manual (fixed R1)</option>
       </select>
     </div>
-
     <div class="actions">
       <button id="btnSaveLoRa" class="btn btn-block" type="button">Save all LoRa settings</button>
       <small id="devEuiMsg" aria-live="polite"></small>
     </div>
   </div>
 
-  <!-- Crack calibration card -->
   <div class="card">
     <h3 id="i_crcal">Crack calibration</h3>
     <div class="field">
@@ -237,7 +214,6 @@ small{color:var(--muted)}
       <label for="mm1Field" id="i_mm1_k">mm1</label>
       <input id="mm1Field" type="number" step="0.01" min="0" placeholder="e.g. 10">
     </div>
-
     <div class="actions">
       <button id="btnSaveCalAll" class="btn btn-block" type="button">Save crack calibration</button>
       <small id="calMsg" aria-live="polite"></small>
@@ -272,7 +248,6 @@ async function q(url,opts){
   return ct.includes('application/json') ? r.json() : r.text();
 }
 
-// input safety
 function markDirty(el){ if(el) el.dataset.dirty = "1"; }
 function clearDirty(el){ if(el) delete el.dataset.dirty; }
 function bindDirty(id){
@@ -290,14 +265,12 @@ function setInputIfIdle(id, val){
   }
 }
 
-// theme
 function setTheme(t){
   document.documentElement.dataset.theme=t;
   setText('themeBtn', t==='dark' ? '☀️' : '🌙');
   localStorage.setItem(THEME_KEY,t);
 }
 
-// i18n
 function applyI18n(){
   const t = I18N[CURR_LANG] || I18N['en'] || {};
   setText('i_title',       t.title || 'LoRa Crack Monitoring');
@@ -344,7 +317,6 @@ async function initI18n(){
   applyI18n();
 }
 
-// state load
 async function load(){
   try{
     const s = await q('/api/state');
@@ -386,9 +358,9 @@ async function load(){
     setText('dlage',(L.age_s!=null)?L.age_s:'—');
 
     if(s.cfg){
-      setInputIfIdle('devEuiField', s.cfg.devEui || '');
-      setInputIfIdle('appEuiField', s.cfg.appEui || '');
-      setInputIfIdle('appKeyField', s.cfg.appKey || '');
+      setInputIfIdle('devEuiField', s.cfg.devEui_lsb || '');
+      setInputIfIdle('appEuiField', s.cfg.appEui_lsb || '');
+      setInputIfIdle('appKeyField', s.cfg.appKey_msb || '');
       setInputIfIdle('minutesField', s.cfg.minutes ?? 15);
 
       const drSel = byId('drField');
@@ -438,13 +410,17 @@ function setCrackStatus(present){
   else{ el.textContent = t.nc || 'N/C'; el.classList.remove('ok'); el.classList.add('err'); }
 }
 
-// actions
 async function readDevEUI(){
   try{
     const j = await q('/api/deveui');
-    byId('devEuiField').value = j.chip_devEui_msb || '';
+    byId('devEuiField').value = j.chip_devEui_lsb || '';
     const t = I18N[CURR_LANG] || I18N['en'] || {};
-    setText('devEuiMsg', `${(t.chip_msb||'chip MSB')}=${j.chip_devEui_msb}  ${(t.chip_lsb||'LSB')}=${j.chip_devEui_lsb}  ${(t.stored_msb||'stored')}=${j.stored_devEui_msb}`);
+    setText('devEuiMsg',
+      `${(t.chip_msb||'chip MSB')}=${j.chip_devEui_msb}  ` +
+      `${(t.chip_lsb||'LSB')}=${j.chip_devEui_lsb}  ` +
+      `${(t.stored_lsb||'stored LSB')}=${j.stored_devEui_lsb}`
+    );
+    clearDirty(byId('devEuiField'));
   }catch(e){
     const t = I18N[CURR_LANG] || I18N['en'] || {};
     setText('devEuiMsg', t.msg_save_error || 'Save error');
@@ -465,10 +441,10 @@ function normHex(s){ return (s||'').trim().replace(/\s+/g,'').toUpperCase(); }
 async function saveLoRaAll(){
   const sel = byId('drField') ? byId('drField').value : 'auto';
   const payload={
-    devEui:normHex(byId('devEuiField').value),
-    appEui:normHex(byId('appEuiField').value),
-    appKey:normHex(byId('appKeyField').value),
-    minutes:parseInt(byId('minutesField').value||'15',10)
+    devEui_lsb: normHex(byId('devEuiField').value),
+    appEui_lsb: normHex(byId('appEuiField').value),
+    appKey_msb: normHex(byId('appKeyField').value),
+    minutes: parseInt(byId('minutesField').value||'15',10)
   };
   if(sel==='auto'){ payload.adr=true; }
   else { payload.dr=parseInt(sel,10); payload.adr=false; }
@@ -483,7 +459,6 @@ async function saveLoRaAll(){
     payload.align_minute = true;
   }
 
-  // Reference: use single r1Field when manual
   const refMode = (byId('refModeField')?.value==='manual') ? 'manual' : 'auto';
   payload.ref = { mode: refMode };
   if (refMode==='manual') {
@@ -516,7 +491,6 @@ async function saveCrackCalAll(){
   }catch(e){ setText('calMsg', t.msg_save_error||'Save error'); }
 }
 
-// buttons
 byId('btnSend').onclick=async()=>{
   const t=I18N[CURR_LANG]||I18N['en']||{};
   try{
@@ -532,18 +506,15 @@ byId('btnReset').onclick=async()=>{
   }catch(e){ setText('msg', t.msg_save_error||'Save error'); }
 };
 
-// chip helpers
 byId('btnReadChip').onclick=readDevEUI;
 byId('btnSaveChip').onclick=saveChipDevEUI;
 byId('btnSaveLoRa').onclick=saveLoRaAll;
 byId('btnSaveCalAll').onclick=saveCrackCalAll;
 
-// mark-dirty
 ['devEuiField','appEuiField','appKeyField','minutesField',
  'r0Field','mm0Field','r1Field','mm1Field','drField','syncField','refModeField']
  .forEach(bindDirty);
 
-// bootstrap
 document.addEventListener('DOMContentLoaded',()=>{
   const savedTheme=localStorage.getItem(THEME_KEY);
   const initTheme=savedTheme||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
@@ -558,7 +529,8 @@ document.addEventListener('DOMContentLoaded',()=>{
   };
 
   initI18n();
-  setInterval(load,2000); load();
+  setInterval(load,1000);
+  load();
 });
 </script>
 </body>
