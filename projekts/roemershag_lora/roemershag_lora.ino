@@ -488,8 +488,8 @@ void api_cfg_lora(){
   if(d.containsKey("devEui_lsb")) ok &= parseHexLSB((const char*)d["devEui_lsb"], cfg.devEui, 8);
   if(d.containsKey("appEui_lsb")) ok &= parseHexLSB((const char*)d["appEui_lsb"], cfg.appEui, 8);
 
-  // AppKey is provided in MSB order and must be kept in the same order in memory. Parse straight, no reversal.
-  if(d.containsKey("appKey_msb")) ok &= parseHexStraight((const char*)d["appKey_msb"], cfg.appKey, 16);
+  // AppKey is provided in MSB order and must be kept in the same order in memory.
+  if(d.containsKey("appKey_msb")) ok &= parseHexLSB((const char*)d["appKey_msb"], cfg.appKey, 16);
 
   if(d.containsKey("minutes")){ cfg.minutes=d["minutes"].as<uint32_t>(); prefs.begin("uhfb",false); prefs.putUInt("minutes",cfg.minutes); prefs.end(); }
 
