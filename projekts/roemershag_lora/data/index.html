@@ -46,9 +46,9 @@ select{-webkit-appearance:none;-moz-appearance:none;appearance:none}
 .grid > .card:nth-of-type(5n+3){ --cardTone:var(--g3) }
 .grid > .card:nth-of-type(5n+4){ --cardTone:var(--g2) }
 .grid > .card:nth-of-type(5n+5){ --cardTone:var(--g1) }
-.field{display:flex;gap:4px;align-items:center;margin-top:8px}
+.field{display:flex;gap:8px;align-items:center;margin-top:8px}
 .field input,.field select{flex:1;min-width:0}
-.field label{min-width:120px;font-size:16px}
+.field label{min-width:140px;font-size:16px}
 .btn{padding:8px 12px;border:1px solid var(--border);border-radius:10px;background:var(--field);color:var(--fg);font-weight:600;margin-top:8px}
 .btn:hover{background:var(--btn)}
 .btn-block{display:block;width:100%}
@@ -234,245 +234,252 @@ small{color:var(--muted)}
 const THEME_KEY='theme';
 const LANG_KEY='lang';
 const LANGS=['en','de','uk'];
-let I18N={};
-let CURR_LANG='en';
+let I18N={};        // loaded from /i18n.json
+let CURR_LANG='en'; // saved in localStorage
 
 function byId(id){ return document.getElementById(id); }
-function setText(id, val){ const el=byId(id); if(el) el.textContent=val; }
+function setText(id,val){ const el=byId(id); if(el) el.textContent=val; }
+function setTitle(id,val){ const el=byId(id); if(!el) return; el.title=val||''; el.setAttribute('aria-label',val||''); }
 function fmtTime(){ const d=new Date(),p=n=>String(n).padStart(2,'0'); return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`; }
 
 async function q(url,opts){
-  const r = await fetch(url,opts);
+  const r=await fetch(url,opts);
   if(!r.ok) throw new Error(await r.text());
-  const ct = r.headers.get('content-type')||'';
-  return ct.includes('application/json') ? r.json() : r.text();
+  const ct=r.headers.get('content-type')||'';
+  return ct.includes('application/json')?r.json():r.text();
 }
 
-function markDirty(el){ if(el) el.dataset.dirty = "1"; }
+function markDirty(el){ if(el) el.dataset.dirty="1"; }
 function clearDirty(el){ if(el) delete el.dataset.dirty; }
-function bindDirty(id){
-  const el = byId(id); if(!el) return;
-  el.addEventListener('input', ()=>markDirty(el));
-  el.addEventListener('change', ()=>markDirty(el));
-}
-function setInputIfIdle(id, val){
-  const el = byId(id); if(!el) return;
-  if (el.dataset.dirty === "1") return;
-  if (document.activeElement === el) return;
-  if (el.dataset.inited !== "1" || el.value !== String(val??"")) {
-    el.value = (val ?? "");
-    el.dataset.inited = "1";
-  }
+function bindDirty(id){ const el=byId(id); if(!el) return; el.addEventListener('input',()=>markDirty(el)); el.addEventListener('change',()=>markDirty(el)); }
+function setInputIfIdle(id,val){
+  const el=byId(id); if(!el) return;
+  if(el.dataset.dirty==="1") return;
+  if(document.activeElement===el) return;
+  if(el.dataset.inited!=="1"||el.value!==String(val??"")){ el.value=(val??""); el.dataset.inited="1"; }
 }
 
 function setTheme(t){
   document.documentElement.dataset.theme=t;
-  setText('themeBtn', t==='dark' ? '☀️' : '🌙');
+  setText('themeBtn', t==='dark'?'☀️':'🌙');
   localStorage.setItem(THEME_KEY,t);
 }
 
+function applyTooltips(){
+  const tips=(I18N[CURR_LANG]?.tips)||{};
+  setTitle('i_dr_k', tips.drate||'');
+  setTitle('i_interval_k', tips.interval||'');
+  setTitle('i_ref_src_k', tips.ref||'');
+  setTitle('i_sync_k', tips.sync||'');
+  const dr=byId('drField'); if(dr) dr.title=tips.drate||'';
+  const it=byId('minutesField'); if(it) it.title=tips.interval||'';
+  const rf=byId('refModeField'); if(rf) rf.title=tips.ref||'';
+  const sy=byId('syncField'); if(sy) sy.title=tips.sync||'';
+}
+
 function applyI18n(){
-  const t = I18N[CURR_LANG] || I18N['en'] || {};
-  setText('i_title',       t.title || 'LoRa Crack Monitoring');
-  setText('t_title',       t.title || 'LoRa Crack Monitoring');
-  setText('i_sensors',     t.sensors || 'Sensors');
-  setText('i_time_k',      t.time || 'Time');
-  setText('i_ds_k',        t.ds18b20 || 'DS18B20');
-  setText('i_adc_k',       t.crack_adc || 'Crack ADC');
-  setText('i_crack_status_k', t.crack_status || 'Crack sensor');
-  setText('i_crack_k',     t.crack || 'Crack');
-  setText('i_bat_k',       t.battery || 'Battery');
-  setText('i_mm',          t.mm || 'mm');
-  setText('i_mv',          t.mv || 'mV');
-  setText('i_controller',  t.controller || 'Controller');
-  setText('i_mode_k',      t.mode || 'Mode');
-  setText('i_ip_k',        t.ip || 'IP');
-  setText('i_uptime_k',    t.uptime || 'Uptime');
-  setText('i_heap_k',      t.heap || 'Heap');
-  setText('i_rssi_k',      t.rssi || 'RSSI');
-  setText('i_snr_k',       t.snr || 'SNR');
-  setText('i_dlage_k',     t.dl_age || 'DL age');
-  setText('i_footer_by',   t.footer_by || 'developed by');
-  setText('i_deveui_k',    t.deveui || 'DevEUI');
-  setText('i_appeui_k',    t.appeui || 'AppEUI');
-  setText('i_appkey_k',    t.appkey || 'AppKey');
-  setText('i_interval_k',  t.interval || 'Interval');
-  setText('i_crcal',       t.crack_cal || 'Crack calibration');
-  setText('i_r0_k',        t.r0 || 'ADC r0');
-  setText('i_mm0_k',       t.mm0 || 'mm0');
-  setText('i_r1_k',        t.r1 || 'ADC r1');
-  setText('i_mm1_k',       t.mm1 || 'mm1');
-  setText('i_dr_k',        t.drate || 'DataRate (EU868)');
-  setText('i_sync_k',      t.time_sync || 'Time sync');
-  setText('i_ref_src_k',   (t.ref_src)||'Reference (CH1)');
-  const optAuto = byId('i_ref_auto'); if (optAuto) optAuto.textContent = (t.ref_auto)||'Auto (ADS1115 CH1)';
-  const optMan  = byId('i_ref_manual'); if (optMan)  optMan.textContent  = (t.ref_manual)||'Manual (fixed R1)';
+  const t=I18N[CURR_LANG]||{};
+  // only override if key exists; otherwise keep static text
+  if(t.title)       { setText('i_title',t.title); setText('t_title',t.title); }
+  if(t.sensors)     setText('i_sensors',t.sensors);
+  if(t.time)        setText('i_time_k',t.time);
+  if(t.ds18b20)     setText('i_ds_k',t.ds18b20);
+  if(t.crack_adc)   setText('i_adc_k',t.crack_adc);
+  if(t.crack_status)setText('i_crack_status_k',t.crack_status);
+  if(t.crack)       setText('i_crack_k',t.crack);
+  if(t.battery)     setText('i_bat_k',t.battery);
+  if(t.mm)          setText('i_mm',t.mm);
+  if(t.mv)          setText('i_mv',t.mv);
+  if(t.controller)  setText('i_controller',t.controller);
+  if(t.mode)        setText('i_mode_k',t.mode);
+  if(t.ip)          setText('i_ip_k',t.ip);
+  if(t.uptime)      setText('i_uptime_k',t.uptime);
+  if(t.heap)        setText('i_heap_k',t.heap);
+  if(t.rssi)        setText('i_rssi_k',t.rssi);
+  if(t.snr)         setText('i_snr_k',t.snr);
+  if(t.dl_age)      setText('i_dlage_k',t.dl_age);
+  if(t.footer_by)   setText('i_footer_by',t.footer_by);
+  if(t.deveui)      setText('i_deveui_k',t.deveui);
+  if(t.appeui)      setText('i_appeui_k',t.appeui);
+  if(t.appkey)      setText('i_appkey_k',t.appkey);
+  if(t.interval)    setText('i_interval_k',t.interval);
+  if(t.crack_cal)   setText('i_crcal',t.crack_cal);
+  if(t.r0)          setText('i_r0_k',t.r0);
+  if(t.mm0)         setText('i_mm0_k',t.mm0);
+  if(t.r1)          setText('i_r1_k',t.r1);
+  if(t.mm1)         setText('i_mm1_k',t.mm1);
+  if(t.drate)       setText('i_dr_k',t.drate);
+  if(t.time_sync)   setText('i_sync_k',t.time_sync);
+  if(t.ref_src)     setText('i_ref_src_k',t.ref_src);
+  const optAuto=byId('i_ref_auto'); if(optAuto && t.ref_auto) optAuto.textContent=t.ref_auto;
+  const optMan=byId('i_ref_manual'); if(optMan && t.ref_manual) optMan.textContent=t.ref_manual;
   setText('langBtn', CURR_LANG.toUpperCase());
+  applyTooltips();
 }
 
 async function initI18n(){
-  try{ I18N = await q('/i18n.json'); }catch(e){ I18N = {}; }
-  const saved = localStorage.getItem(LANG_KEY);
-  CURR_LANG = saved && LANGS.includes(saved) ? saved : 'en';
+  try{ I18N=await q('/i18n.json'); }catch(e){ I18N={}; }
+  const saved=localStorage.getItem(LANG_KEY);
+  CURR_LANG=(saved && LANGS.includes(saved))?saved:'en';
   applyI18n();
 }
 
 async function load(){
   try{
-    const s = await q('/api/state');
-    setText('t', fmtTime());
+    const s=await q('/api/state');
+    setText('t',fmtTime());
 
-    const vRaw = s.DS18B20_Temp;
-    const vNum = Number(vRaw);
-    const hasVal = vRaw !== null && vRaw !== undefined && Number.isFinite(vNum) && vNum > -100 && vNum < 125;
-    if (hasVal) {
-      setText('ds', vNum.toFixed(1));
-      const dsEl = byId('ds'); dsEl && dsEl.classList.remove('badge','err','ok');
+    const vRaw=s.DS18B20_Temp;
+    const vNum=Number(vRaw);
+    const hasVal=vRaw!==null && vRaw!==undefined && Number.isFinite(vNum) && vNum>-100 && vNum<125;
+    if(hasVal){
+      setText('ds',vNum.toFixed(1));
+      const dsEl=byId('ds'); dsEl&&dsEl.classList.remove('badge','err','ok');
       setText('ds_unit',' °C');
-    } else {
-      const t = I18N[CURR_LANG] || I18N['en'] || {};
-      setText('ds', t.nc || 'N/C');
-      const dsEl = byId('ds'); if(dsEl){ dsEl.classList.add('badge','err'); }
+    }else{
+      const t=I18N[CURR_LANG]||{};
+      setText('ds', t.nc||'N/C');
+      const dsEl=byId('ds'); if(dsEl){ dsEl.classList.add('badge','err'); }
       setText('ds_unit','');
     }
 
-    const present = !!s.crack_present;
-    setText('adc', present ? (s.adc_raw ?? '-') : 'N/C');
+    const present=!!s.crack_present;
+    setText('adc',present?(s.adc_raw??'-'):'N/C');
     setCrackStatus(present);
 
     if(present){
-      if(s.crack_mm != null) setText('crk', (+s.crack_mm).toFixed(3));
-      else if(s.crack_x100 != null) setText('crk', (s.crack_x100/100).toFixed(3));
+      if(s.crack_mm!=null) setText('crk',(+s.crack_mm).toFixed(3));
+      else if(s.crack_x100!=null) setText('crk',(s.crack_x100/100).toFixed(3));
       else setText('crk','-');
-    } else setText('crk','N/C');
+    }else setText('crk','N/C');
 
-    setText('bat', (s.batt_mV ?? '-'));
-    setText('mode', s.mode || '-');
-    setText('ip', s.ip || '-');
-    setText('up', s.uptime_s ?? '-');
-    setText('heap', s.heap_free ?? '-');
+    setText('bat',(s.batt_mV??'-'));
+    setText('mode',s.mode||'-');
+    setText('ip',s.ip||'-');
+    setText('up',s.uptime_s??'-');
+    setText('heap',s.heap_free??'-');
 
-    const L = s.lora || {};
-    setText('rssi', (L.rssi!=null)?L.rssi:'—');
-    setText('snr',  (L.snr!=null)?L.snr:'—');
+    const L=s.lora||{};
+    setText('rssi',(L.rssi!=null)?L.rssi:'—');
+    setText('snr',(L.snr!=null)?L.snr:'—');
     setText('dlage',(L.age_s!=null)?L.age_s:'—');
 
     if(s.cfg){
-      setInputIfIdle('devEuiField', s.cfg.devEui_lsb || '');
-      setInputIfIdle('appEuiField', s.cfg.appEui_lsb || '');
-      setInputIfIdle('appKeyField', s.cfg.appKey_msb || '');
-      setInputIfIdle('minutesField', s.cfg.minutes ?? 15);
+      setInputIfIdle('devEuiField', s.cfg.devEui_lsb||'');
+      setInputIfIdle('appEuiField', s.cfg.appEui_lsb||'');
+      setInputIfIdle('appKeyField', s.cfg.appKey_msb||'');
+      setInputIfIdle('minutesField', s.cfg.minutes??15);
 
-      const drSel = byId('drField');
-      if(drSel && drSel.dataset.dirty !== "1" && document.activeElement !== drSel){
+      const drSel=byId('drField');
+      if(drSel && drSel.dataset.dirty!=="1" && document.activeElement!==drSel){
         if(s.cfg.adr===true) drSel.value='auto';
         else if(s.cfg.dr!=null && s.cfg.dr>=0 && s.cfg.dr<=5) drSel.value=String(s.cfg.dr);
         else drSel.value='auto';
-        drSel.dataset.inited = "1";
+        drSel.dataset.inited="1";
       }
 
-      const syncSel = byId('syncField');
-      if (syncSel && syncSel.dataset.dirty !== "1" && document.activeElement !== syncSel){
-        const ts = (s.cfg.time_sync)||{};
-        const v = (ts.enabled===false) ? 'off' : String(ts.hours||'off');
-        const allowed = ['off','1','2','3','6','12','24','48','72','168'];
-        syncSel.value = allowed.includes(v) ? v : 'off';
-        syncSel.dataset.inited = "1";
+      const syncSel=byId('syncField');
+      if(syncSel && syncSel.dataset.dirty!=="1" && document.activeElement!==syncSel){
+        const ts=(s.cfg.time_sync)||{};
+        const v=(ts.enabled===false)?'off':String(ts.hours||'off');
+        const allowed=['off','1','2','3','6','12','24','48','72','168'];
+        syncSel.value=allowed.includes(v)?v:'off';
+        syncSel.dataset.inited="1";
       }
 
       if(s.cfg.crack_cal){
         const cc=s.cfg.crack_cal;
-        setInputIfIdle('r0Field',  cc.r0);
-        setInputIfIdle('mm0Field', (cc.mm0!=null)?(+cc.mm0).toFixed(2):'');
-        setInputIfIdle('r1Field',  cc.r1);
-        setInputIfIdle('mm1Field', (cc.mm1!=null)?(+cc.mm1).toFixed(2):'');
+        setInputIfIdle('r0Field',cc.r0);
+        setInputIfIdle('mm0Field',(cc.mm0!=null)?(+cc.mm0).toFixed(2):'');
+        setInputIfIdle('r1Field',cc.r1);
+        setInputIfIdle('mm1Field',(cc.mm1!=null)?(+cc.mm1).toFixed(2):'');
       }
 
-      if (s.cfg.ref){
-        const refSel = byId('refModeField');
+      if(s.cfg.ref){
+        const refSel=byId('refModeField');
         if(refSel && refSel.dataset.dirty!=="1" && document.activeElement!==refSel){
-          refSel.value = (s.cfg.ref.mode==='manual') ? 'manual' : 'auto';
+          refSel.value=(s.cfg.ref.mode==='manual')?'manual':'auto';
           refSel.dataset.inited="1";
         }
       }
     }
   }catch(e){
-    const t = I18N[CURR_LANG] || I18N['en'] || {};
-    setText('msg', t.msg_state_error || 'state error');
+    const t=I18N[CURR_LANG]||{};
+    setText('msg', t.msg_state_error||'state error');
   }
 }
 
 function setCrackStatus(present){
-  const t = I18N[CURR_LANG] || I18N['en'] || {};
-  const el = byId('cr_status');
+  const t=I18N[CURR_LANG]||{};
+  const el=byId('cr_status');
   if(!el) return;
-  if(present){ el.textContent = t.ok || 'OK'; el.classList.remove('err'); el.classList.add('ok'); }
-  else{ el.textContent = t.nc || 'N/C'; el.classList.remove('ok'); el.classList.add('err'); }
+  if(present){ el.textContent=t.ok||'OK'; el.classList.remove('err'); el.classList.add('ok'); }
+  else{ el.textContent=t.nc||'N/C'; el.classList.remove('ok'); el.classList.add('err'); }
 }
 
 async function readDevEUI(){
   try{
-    const j = await q('/api/deveui');
-    byId('devEuiField').value = j.chip_devEui_lsb || '';
-    const t = I18N[CURR_LANG] || I18N['en'] || {};
+    const j=await q('/api/deveui');
+    byId('devEuiField').value=j.chip_devEui_lsb||'';
+    const t=I18N[CURR_LANG]||{};
     setText('devEuiMsg',
-      `${(t.chip_msb||'chip MSB')}=${j.chip_devEui_msb}  ` +
-      `${(t.chip_lsb||'LSB')}=${j.chip_devEui_lsb}  ` +
+      `${(t.chip_msb||'chip MSB')}=${j.chip_devEui_msb}  `+
+      `${(t.chip_lsb||'LSB')}=${j.chip_devEui_lsb}  `+
       `${(t.stored_lsb||'stored LSB')}=${j.stored_devEui_lsb}`
     );
     clearDirty(byId('devEuiField'));
   }catch(e){
-    const t = I18N[CURR_LANG] || I18N['en'] || {};
-    setText('devEuiMsg', t.msg_save_error || 'Save error');
+    const t=I18N[CURR_LANG]||{};
+    setText('devEuiMsg', t.msg_save_error||'Save error');
   }
 }
 
 async function saveChipDevEUI(){
-  const t = I18N[CURR_LANG] || I18N['en'] || {};
+  const t=I18N[CURR_LANG]||{};
   try{
     await fetch('/api/deveui',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({use:'chip'})});
-    setText('devEuiMsg', t.msg_saved_reboot || 'Saved; rebooting…');
+    setText('devEuiMsg', t.msg_saved_reboot||'Saved; rebooting…');
     ['devEuiField'].forEach(id=>clearDirty(byId(id)));
-  }catch(e){ setText('devEuiMsg', t.msg_save_error || 'Save error'); }
+  }catch(e){ setText('devEuiMsg', t.msg_save_error||'Save error'); }
 }
 
 function normHex(s){ return (s||'').trim().replace(/\s+/g,'').toUpperCase(); }
 
 async function saveLoRaAll(){
-  const sel = byId('drField') ? byId('drField').value : 'auto';
+  const sel=byId('drField')?byId('drField').value:'auto';
   const payload={
-    devEui_lsb: normHex(byId('devEuiField').value),
-    appEui_lsb: normHex(byId('appEuiField').value),
-    appKey_msb: normHex(byId('appKeyField').value),
-    minutes: parseInt(byId('minutesField').value||'15',10)
+    devEui_lsb:normHex(byId('devEuiField').value),
+    appEui_lsb:normHex(byId('appEuiField').value),
+    appKey_msb:normHex(byId('appKeyField').value),
+    minutes:parseInt(byId('minutesField').value||'15',10)
   };
   if(sel==='auto'){ payload.adr=true; }
-  else { payload.dr=parseInt(sel,10); payload.adr=false; }
+  else{ payload.dr=parseInt(sel,10); payload.adr=false; }
 
-  const syncVal = byId('syncField') ? byId('syncField').value : 'off';
-  if (syncVal === 'off') {
-    payload.time_sync = { enabled:false, hours:24 };
-    payload.align_minute = false;
-  } else {
-    const h = parseInt(syncVal,10) || 24;
-    payload.time_sync = { enabled:true, hours:h };
-    payload.align_minute = true;
+  const syncVal=byId('syncField')?byId('syncField').value:'off';
+  if(syncVal==='off'){
+    payload.time_sync={enabled:false,hours:24};
+    payload.align_minute=false;
+  }else{
+    const h=parseInt(syncVal,10)||24;
+    payload.time_sync={enabled:true,hours:h};
+    payload.align_minute=true;
   }
 
-  const refMode = (byId('refModeField')?.value==='manual') ? 'manual' : 'auto';
-  payload.ref = { mode: refMode };
-  if (refMode==='manual') {
-    const r1 = parseInt(byId('r1Field')?.value||'0',10);
-    if (Number.isFinite(r1) && r1>0) payload.ref.r1 = r1;
+  const refMode=(byId('refModeField')?.value==='manual')?'manual':'auto';
+  payload.ref={mode:refMode};
+  if(refMode==='manual'){
+    const r1=parseInt(byId('r1Field')?.value||'0',10);
+    if(Number.isFinite(r1)&&r1>0) payload.ref.r1=r1;
   }
 
-  const t = I18N[CURR_LANG] || I18N['en'] || {};
+  const t=I18N[CURR_LANG]||{};
   try{
     await fetch('/api/config/lora',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-    setText('devEuiMsg', t.msg_saved_reboot || 'Saved; rebooting…');
+    setText('devEuiMsg', t.msg_saved_reboot||'Saved; rebooting…');
     ['devEuiField','appEuiField','appKeyField','minutesField','drField','syncField','refModeField']
       .forEach(id=>clearDirty(byId(id)));
-  }catch(e){ setText('devEuiMsg', t.msg_save_error || 'Save error'); }
+  }catch(e){ setText('devEuiMsg', t.msg_save_error||'Save error'); }
 }
 
 async function saveCrackCalAll(){
@@ -480,7 +487,7 @@ async function saveCrackCalAll(){
   const r1=parseInt(byId('r1Field').value,10);
   const mm0=parseFloat(byId('mm0Field').value);
   const mm1=parseFloat(byId('mm1Field').value);
-  const t=I18N[CURR_LANG]||I18N['en']||{};
+  const t=I18N[CURR_LANG]||{};
   if(!Number.isFinite(r0)||!Number.isFinite(r1)||!Number.isFinite(mm0)||!Number.isFinite(mm1)){
     setText('calMsg', t.msg_save_error||'Save error'); return;
   }
@@ -492,17 +499,17 @@ async function saveCrackCalAll(){
 }
 
 byId('btnSend').onclick=async()=>{
-  const t=I18N[CURR_LANG]||I18N['en']||{};
+  const t=I18N[CURR_LANG]||{};
   try{
     const r=await fetch('/api/send',{method:'POST'});
     setText('msg', r.ok?(t.msg_send_ok||'LoRa queued'):(t.msg_send_err||'Send error'));
   }catch(e){ setText('msg', t.msg_send_err||'Send error'); }
 };
 byId('btnReset').onclick=async()=>{
-  const t=I18N[CURR_LANG]||I18N['en']||{};
+  const t=I18N[CURR_LANG]||{};
   try{
     const r=await fetch('/api/reset',{method:'POST'});
-    setText('msg', r.ok?(t.msg_restarting||'restarting…'):(t.msg_reset_forbidden||'Reset forbidden'));
+    setText('msg', r.ok?(t.msg_restarting||'restarting…'):(t.msg_save_error||'Save error'));
   }catch(e){ setText('msg', t.msg_save_error||'Save error'); }
 };
 
@@ -525,7 +532,8 @@ document.addEventListener('DOMContentLoaded',()=>{
 
   byId('langBtn').onclick=()=>{
     const idx=LANGS.indexOf(CURR_LANG); CURR_LANG=LANGS[(idx+1)%LANGS.length];
-    localStorage.setItem(LANG_KEY,CURR_LANG); applyI18n();
+    localStorage.setItem(LANG_KEY,CURR_LANG);
+    applyI18n();
   };
 
   initI18n();
