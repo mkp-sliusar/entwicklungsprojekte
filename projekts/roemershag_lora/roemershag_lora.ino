@@ -1,7 +1,7 @@
 /*
  * =====================================================================
  *  Project: Heltec ESP32-S3 (LoRa V3) — Crack Monitoring Node
- *  Function: Ratio (CH0/CH1)
+ *  Function: Ratio (CH0/CH1) with low-noise dynamic scaling (no averaging)
  * ---------------------------------------------------------------------
  *  Hardware:
  *    - ADS1115 (I2C1)
@@ -13,7 +13,7 @@
  *    - Crack length by ratio: L = L_full * CH0 / CH1
  *      CH0 = sensor (pot), CH1 = reference from same Vee
  *      If ref.mode=manual → CH1 = fixed r1 (one ADC field r1)
- *      If CH1 == 0 → linear fallback-----------------------------
+ *      If CH1 == 0 → linear fallback
  *  Modes:
  *    AUTO    — dynamic scaling by ADS1115 CH1
  *    MANUAL  — linear map r0→mm0, r1→mm1 on CH0
@@ -22,12 +22,12 @@
  *    DevEUI, AppEUI — LSB order end-to-end (UI, storage, prints)
  *    AppKey         — MSB order end-to-end (UI, storage, prints)
  * ---------------------------------------------------------------------
- *  Version:      1.5.0
- *  Date:         2025-10-13
+ *  Version:      1.5.1
+ *  Date:         2025-10-15
+ *  Changes:      removed minute alignment; fixed-interval scheduling
  *  Contributors: Bernd Schinköthe, Roman Sliusar, Evgenij Koloda
  * =====================================================================
  */
-
 
 #include "LoRaWan_APP.h"
 #ifdef CLASS
@@ -55,69 +55,61 @@
 #include <DallasTemperature.h>
 #include <math.h>
 
-// ---------- Heltec LoRaWAN keys expected by core (extern symbols) ----------
-uint8_t devEui[8]  = {0};   // LSB
-uint8_t appEui[8]  = {0};   // LSB
-uint8_t appKey[16] = {0};   // MSB
-
-// Local mirrors for logging clarity
+// ---------- Heltec LoRaWAN keys expected by core ----------
+uint8_t devEui[8]={0}, appEui[8]={0};   // LSB
+uint8_t appKey[16]={0};                 // MSB
 uint8_t DevEui[8]={0}, AppEui[8]={0}, AppKey[16]={0};
 
 // ---------- Types ----------
-struct CrackMeas {
+struct CrackMeas{
   bool    present;
-  int16_t raw0;       // ADS CH0
-  int16_t raw1;       // ADS CH1
-  float   mm;         // mapped value in mm
-  bool    auto_used;  // true if AUTO scaling used
+  int16_t raw0;
+  int16_t raw1;
+  float   mm;
+  bool    auto_used;
 };
-CrackMeas readCrack();  // explicit prototype for Arduino preprocessor
+CrackMeas readCrack();
 
-// ---------- Hardware pins and constants ----------
-static constexpr uint8_t  OLED_ADDR   = 0x3C;
-static constexpr int      I2C_ADS_SDA = 47;
-static constexpr int      I2C_ADS_SCL = 48;
-static constexpr uint32_t I2C_FREQ_HZ = 400000;
+// ---------- HW pins/const ----------
+static constexpr uint8_t  OLED_ADDR=0x3C;
+static constexpr int      I2C_ADS_SDA=47;
+static constexpr int      I2C_ADS_SCL=48;
+static constexpr uint32_t I2C_FREQ_HZ=400000;
 
-static constexpr int PIN_ONE_WIRE      = 4;
-static constexpr int PIN_VBAT_ADC      = 1;
-static constexpr int PIN_ADC_CTRL      = 37;
-static constexpr int PIN_MODE_OUT      = 45;
-static constexpr int PIN_MODE_IN       = 46;
-static constexpr int PIN_CRACK_PRESENT = 3;
+static constexpr int PIN_ONE_WIRE=4;
+static constexpr int PIN_VBAT_ADC=1;
+static constexpr int PIN_ADC_CTRL=37;
+static constexpr int PIN_MODE_OUT=45;
+static constexpr int PIN_MODE_IN =46;
+static constexpr int PIN_CRACK_PRESENT=3;
 
-static constexpr int  PIN_SENS_EN      = 7;
-static constexpr bool SENS_ACTIVE_HIGH = true;
+static constexpr int  PIN_SENS_EN=7;
+static constexpr bool SENS_ACTIVE_HIGH=true;
 
-static constexpr uint8_t  ADS1115_ADDR = 0x48;
-static constexpr uint8_t  DS_RES_BITS  = 10;
+static constexpr uint8_t  ADS1115_ADDR=0x48;
+static constexpr uint8_t  DS_RES_BITS=10;
 
-// Calibrated divider factor for battery ADC → volts
-static constexpr float VBAT_ADC_FACTOR = 1.0f/4096.0f/0.210282997855762f;
+static constexpr float VBAT_ADC_FACTOR=1.0f/4096.0f/0.210282997855762f;
 
-// ---------- System constants ----------
-static constexpr char   AP_PSK[]           = "12345678";
-static constexpr size_t JSON_STATE_DOC     = 1700;
-static constexpr size_t JSON_CFG_DOC       = 1100;
-static constexpr uint32_t MS_PER_SEC       = 1000UL;
-static constexpr uint32_t SEC_PER_MIN      = 60UL;
-static constexpr uint32_t MARQUEE_PERIOD_MS= 40;
+// ---------- System ----------
+static constexpr char   AP_PSK[]="12345678";
+static constexpr size_t JSON_STATE_DOC=1700, JSON_CFG_DOC=1100;
+static constexpr uint32_t MS_PER_SEC=1000UL;
+static constexpr uint32_t MARQUEE_PERIOD_MS=40;
 
-static constexpr uint8_t  UPLINK_PORT      = 2;
-static constexpr uint8_t  CONF_TRIALS_AP   = 3;
-static constexpr uint8_t  CONF_TRIALS_FIELD= 1;
+static constexpr uint8_t  UPLINK_PORT=2;
+static constexpr uint8_t  CONF_TRIALS_AP=3, CONF_TRIALS_FIELD=1;
 
-// ---------- Time helper ----------
 static inline uint32_t now_sec(){ return millis()/MS_PER_SEC; }
 
 // ---------- Peripherals ----------
 SSD1306Wire OLED_Display(OLED_ADDR, I2C_FREQ_HZ, SDA_OLED, SCL_OLED, GEOMETRY_128_64, RST_OLED);
-TwoWire I2C_ADS = TwoWire(1);
+TwoWire I2C_ADS=TwoWire(1);
 Adafruit_ADS1115 ads;
 
 OneWire oneWire(PIN_ONE_WIRE);
 DallasTemperature sensors(&oneWire);
-uint8_t firstDs[8] = {0};
+uint8_t firstDs[8]={0};
 bool firstDsFound=false;
 
 bool apMode=false;
@@ -125,54 +117,45 @@ Preferences prefs;
 
 enum RefMode:uint8_t{ REF_AUTO=0, REF_MANUAL=1 };
 
-// ---------- Config persisted in NVS ----------
+// ---------- Config in NVS ----------
 struct Cfg{
-  // LoRa IDs/Key
-  uint8_t devEui[8]={0};   // LSB
-  uint8_t appEui[8]={0};   // LSB
-  uint8_t appKey[16]={0};  // MSB
+  uint8_t devEui[8]={0};
+  uint8_t appEui[8]={0};
+  uint8_t appKey[16]={0};
 
-  // Uplink period
   uint32_t minutes=15;
 
-  // Manual linear calibration for CH0
   int16_t  crack_r0=5;
   int16_t  crack_r1=25480;
   uint16_t crack_mm0_x100=0;
   uint16_t crack_mm1_x100=1000; // 10.00 mm
+  uint16_t crack_len_mm_x100=1000;
 
-  // Clamp for both AUTO and MANUAL
-  uint16_t crack_len_mm_x100=1000; // 10.00 mm max
-
-  // Reference mode
   uint8_t  ref_mode=REF_AUTO;
 
-  // LoRa link
   uint8_t  lora_dr=3;
   bool     lora_adr=true;
 
-  // Scheduling
-  bool     ts_enable=false;   // reserved, not used in this sketch
-  uint16_t ts_hours=24;       // reserved
-  bool     align_minute=true; // align send to minutes grid
+  bool     ts_enable=false;
+  uint16_t ts_hours=24;
 } cfg;
 
-// ---------- Heltec LoRaWAN globals required by their core ----------
-uint16_t        userChannelsMask[6] = { 0x00FF, 0, 0, 0, 0, 0 };
-LoRaMacRegion_t loraWanRegion = ACTIVE_REGION;
-DeviceClass_t   loraWanClass  = CLASS_A;
+// ---------- LoRa ----------
+uint16_t        userChannelsMask[6]={0x00FF,0,0,0,0,0};
+LoRaMacRegion_t loraWanRegion=ACTIVE_REGION;
+DeviceClass_t   loraWanClass=CLASS_A;
 
-bool overTheAirActivation = true;
-bool loraWanAdr           = true;
+bool overTheAirActivation=true;
+bool loraWanAdr=true;
 
-bool     isTxConfirmed     = false;
-uint8_t  appPort           = UPLINK_PORT;
-uint8_t  confirmedNbTrials = 1;
-uint32_t appTxDutyCycle    = 60000UL * 2;   // unused by our scheduler
+bool     isTxConfirmed=false;
+uint8_t  appPort=UPLINK_PORT;
+uint8_t  confirmedNbTrials=1;
+uint32_t appTxDutyCycle=60000UL*2;
 
-uint8_t  nwkSKey[16] = {0}; // ABP only
-uint8_t  appSKey[16] = {0};
-uint32_t devAddr     = 0;
+uint8_t  nwkSKey[16]={0};
+uint8_t  appSKey[16]={0};
+uint32_t devAddr=0;
 
 // ---------- NVS helpers ----------
 static inline void nvsPut(const char* k,const void* p,size_t n){ prefs.begin("uhfb",false); prefs.putBytes(k,p,n); prefs.end(); }
@@ -180,42 +163,37 @@ static inline void nvsGet(const char* k,void* p,size_t n){ prefs.begin("uhfb",tr
 
 void loadCfg(){
   prefs.begin("uhfb",true);
-  prefs.getBytes("devEui", cfg.devEui, 8);
-  prefs.getBytes("appEui", cfg.appEui, 8);
-  prefs.getBytes("appKey", cfg.appKey, 16);
-  cfg.minutes  = prefs.getUInt ("minutes", cfg.minutes);
-  cfg.crack_len_mm_x100 = prefs.getUShort("cr_len_x100", cfg.crack_len_mm_x100);
-  cfg.crack_r0 = prefs.getShort("cr_r0", cfg.crack_r0);
-  cfg.crack_r1 = prefs.getShort("cr_r1", cfg.crack_r1);
-  cfg.crack_mm0_x100 = prefs.getUShort("cr_mm0", cfg.crack_mm0_x100);
-  cfg.crack_mm1_x100 = prefs.getUShort("cr_mm1", cfg.crack_mm1_x100);
+  prefs.getBytes("devEui",cfg.devEui,8);
+  prefs.getBytes("appEui",cfg.appEui,8);
+  prefs.getBytes("appKey",cfg.appKey,16);
+  cfg.minutes=prefs.getUInt("minutes",cfg.minutes);
+  cfg.crack_len_mm_x100=prefs.getUShort("cr_len_x100",cfg.crack_len_mm_x100);
+  cfg.crack_r0=prefs.getShort("cr_r0",cfg.crack_r0);
+  cfg.crack_r1=prefs.getShort("cr_r1",cfg.crack_r1);
+  cfg.crack_mm0_x100=prefs.getUShort("cr_mm0",cfg.crack_mm0_x100);
+  cfg.crack_mm1_x100=prefs.getUShort("cr_mm1",cfg.crack_mm1_x100);
   if(cfg.crack_mm1_x100==1000) cfg.crack_mm1_x100=cfg.crack_len_mm_x100;
-  cfg.ref_mode = prefs.getUChar("ref_mode", cfg.ref_mode);
-  cfg.lora_dr  = prefs.getUChar("lora_dr",  cfg.lora_dr);
-  cfg.lora_adr = prefs.getBool ("lora_adr", cfg.lora_adr);
-  cfg.ts_enable    = prefs.getBool  ("ts_en",     cfg.ts_enable);
-  cfg.ts_hours     = prefs.getUShort("ts_h",      cfg.ts_hours);
-  cfg.align_minute = prefs.getBool  ("align_min", cfg.align_minute);
+  cfg.ref_mode=prefs.getUChar("ref_mode",cfg.ref_mode);
+  cfg.lora_dr=prefs.getUChar("lora_dr",cfg.lora_dr);
+  cfg.lora_adr=prefs.getBool("lora_adr",cfg.lora_adr);
+  cfg.ts_enable=prefs.getBool("ts_en",cfg.ts_enable);
+  cfg.ts_hours=prefs.getUShort("ts_h",cfg.ts_hours);
   prefs.end();
 }
 
 // ---------- Hex helpers ----------
-// Straight parse: read "AABB..." into out[0]=AA, out[1]=BB, ...
 static inline bool parseHexStraight(const String& s,uint8_t* out,size_t n){
   if(s.length()!=n*2) return false;
-  for(size_t i=0;i<n;i++){ char b[3]={ (char)s[2*i], (char)s[2*i+1], 0}; out[i]=(uint8_t)strtoul(b,nullptr,16);}
+  for(size_t i=0;i<n;i++){ char b[3]={ (char)s[2*i], (char)s[2*i+1], 0}; out[i]=(uint8_t)strtoul(b,nullptr,16); }
   return true;
 }
-// For LSB strings where UI already shows LSB order we still parse straight
 static inline bool parseHexLSB(const String& s,uint8_t* out,size_t n){ return parseHexStraight(s,out,n); }
-// Historical helper that reverses (kept for reference, not used for AppKey)
 static inline bool parseHexMSB_reverse(const String& msb,uint8_t* out,size_t n){
   if(msb.length()!=n*2) return false;
-  for(size_t i=0;i<n;i++){ char b[3]={ (char)msb[2*i], (char)msb[2*i+1], 0}; out[n-1-i]=(uint8_t)strtoul(b,nullptr,16);}
+  for(size_t i=0;i<n;i++){ char b[3]={ (char)msb[2*i], (char)msb[2*i+1], 0}; out[n-1-i]=(uint8_t)strtoul(b,nullptr,16); }
   return true;
 }
-
-String toHex(const uint8_t* v,size_t n){ char b[3]; String s; s.reserve(n*2); for(size_t i=0;i<n;i++){ sprintf(b,"%02X",v[i]); s+=b; } return s; }
+String toHex(const uint8_t* v,size_t n){ char b[3]; String s; s.reserve(n*2); for(size_t i=0;i<n;i++){ sprintf(b,"%02X",v[i]); s+=b;} return s; }
 
 void devEuiFromChipMSB(uint8_t out[8]){
   uint64_t mac=ESP.getEfuseMac(); uint8_t m[6];
@@ -229,15 +207,26 @@ static inline void SensorsON(){ pinMode(PIN_SENS_EN,OUTPUT); digitalWrite(PIN_SE
 static inline void SensorsOFF(){ digitalWrite(PIN_SENS_EN, SENS_ACTIVE_HIGH?LOW:HIGH); pinMode(PIN_SENS_EN,INPUT); }
 static inline bool crackPresent(){ pinMode(PIN_CRACK_PRESENT,INPUT_PULLUP); return digitalRead(PIN_CRACK_PRESENT)==LOW; }
 
-static inline void adsInitOnce(){ ads.setGain(GAIN_ONE); ads.setDataRate(RATE_ADS1115_860SPS); (void)ads.readADC_SingleEnded(0); delay(1); }
+// === low-noise ADS init (like test) ===
+void adsInitOnce(){
+  ads.setGain(GAIN_ONE);
+  ads.setDataRate(RATE_ADS1115_128SPS);
+  (void)ads.readADC_SingleEnded(0);
+  delay(4); // ~1 period @128SPS
+}
 
+// separate bus + power
 void sensorsPowerOn(){
   SensorsON(); delay(12);
   I2C_ADS.begin(I2C_ADS_SDA, I2C_ADS_SCL, I2C_FREQ_HZ);
   if(ads.begin(ADS1115_ADDR,&I2C_ADS)) adsInitOnce(); else Serial.println("ADS1115 not found");
+
   if(!firstDsFound){
     sensors.begin(); firstDsFound = sensors.getAddress(firstDs,0);
-    if(!firstDsFound){ OneWire ow(PIN_ONE_WIRE); uint8_t a[8]; ow.reset_search(); while(ow.search(a)){ if(a[0]==0x28){ memcpy(firstDs,a,8); firstDsFound=true; break; } } }
+    if(!firstDsFound){
+      OneWire ow(PIN_ONE_WIRE); uint8_t a[8]; ow.reset_search();
+      while(ow.search(a)){ if(a[0]==0x28){ memcpy(firstDs,a,8); firstDsFound=true; break; } }
+    }
   }
   if(firstDsFound) sensors.setResolution(firstDs, DS_RES_BITS);
 }
@@ -256,14 +245,15 @@ float readTempOnceC(){
 }
 
 // ---------- Mapping ----------
-static constexpr int16_t RAW_MIN_STABLE = 6;
-static constexpr int16_t DYN_SPAN_MIN   = 50;
+static constexpr int16_t RAW_MIN_STABLE=6;
+static constexpr int16_t DYN_SPAN_MIN=50;
 
 static inline float mapLinear_i32(int32_t x,int32_t in_min,int32_t in_max,float out_min,float out_max){
   if(in_max<=in_min) return out_min;
   return (float)(x-in_min)*(out_max-out_min)/(float)(in_max-in_min)+out_min;
 }
 
+// manual unchanged
 static inline float mapCrackManual(int M){
   const float M0=(float)cfg.crack_r0, M1=(float)cfg.crack_r1;
   const float mm0=(float)cfg.crack_mm0_x100/100.0f, mm1=(float)cfg.crack_mm1_x100/100.0f;
@@ -274,29 +264,39 @@ static inline float mapCrackManual(int M){
   return mm;
 }
 
-static inline float mapCrackAuto_byCH1(int M,int R_curr){
-  const int16_t dynMax = max((int)RAW_MIN_STABLE + (int)DYN_SPAN_MIN, R_curr);
-  const float mm = mapLinear_i32(M, RAW_MIN_STABLE, dynMax, 0.0f, (float)cfg.crack_len_mm_x100/100.0f);
-  if(mm<0) return 0.0f;
-  float L=(float)cfg.crack_len_mm_x100/100.0f; return mm>L?L:mm;
+// === test-like reads: single sample per channel, back-to-back ===
+static inline int16_t readCH(uint8_t ch){
+  (void)ads.readADC_SingleEnded(ch);   // warm after mux
+  delayMicroseconds(8000);             // ≥1 period @128SPS
+  int16_t v = ads.readADC_SingleEnded(ch);
+  return v<0?0:v;
 }
 
 CrackMeas readCrack(){
   CrackMeas r{false,0,0,0.0f,false};
-  r.present = crackPresent();
-  if(!r.present) return r;
-  int16_t M = ads.readADC_SingleEnded(0); if(M<0) M=0;
-  int16_t R = ads.readADC_SingleEnded(1); if(R<0) R=0;
+  r.present = crackPresent(); if(!r.present) return r;
+
+  int16_t M = readCH(0);
+  int16_t R = readCH(1);
   r.raw0=M; r.raw1=R;
-  if(cfg.ref_mode==REF_MANUAL){ r.mm=mapCrackManual(M); r.auto_used=false; }
-  else                         { r.mm=mapCrackAuto_byCH1(M,R); r.auto_used=true; }
-  if(r.mm<0) r.mm=0; if(r.mm>65.535f) r.mm=65.535f;
+
+  if(cfg.ref_mode==REF_MANUAL){
+    r.mm = mapCrackManual(M); r.auto_used=false;
+  }else{
+    int16_t dynMax = max<int16_t>(RAW_MIN_STABLE + DYN_SPAN_MIN, R);
+    if(dynMax <= RAW_MIN_STABLE) dynMax = RAW_MIN_STABLE + DYN_SPAN_MIN; // fallback
+    const float L = (float)cfg.crack_len_mm_x100/100.0f;
+    float mm = mapLinear_i32(M, RAW_MIN_STABLE, dynMax, 0.0f, L);
+    if(mm<0) mm=0; if(mm>L) mm=L;
+    r.mm=mm; r.auto_used=true;
+  }
+  if(r.mm>65.535f) r.mm=65.535f;
   return r;
 }
 
 // ---------- Battery ----------
 uint16_t readBattery_mV(){
-  analogSetAttenuation(ADC_0db); // global is fine; can switch to pin-specific if needed
+  analogSetAttenuation(ADC_0db);
   pinMode(PIN_ADC_CTRL,OUTPUT); digitalWrite(PIN_ADC_CTRL,HIGH); delay(2);
   int raw=analogRead(PIN_VBAT_ADC);
   digitalWrite(PIN_ADC_CTRL,LOW);
@@ -307,12 +307,10 @@ uint16_t readBattery_mV(){
 static inline uint8_t mapDR(uint8_t i){ switch(i){case 0:return DR_0;case 1:return DR_1;case 2:return DR_2;case 3:return DR_3;case 4:return DR_4;case 5:return DR_5;default:return DR_3;} }
 static inline void applyLoraDR(){ LoRaWAN.setDefaultDR(mapDR(cfg.lora_dr)); }
 
-// Downlink last-RX markers (kept though not shown on OLED)
 volatile bool     lora_has_rx=false;
 volatile int16_t  lora_last_rssi=0;
 volatile int8_t   lora_last_snr=0;
 volatile uint32_t lora_last_rx_ms=0;
-
 extern "C" void downLinkDataHandle(McpsIndication_t *ind){
   lora_has_rx=true; lora_last_rssi=ind->Rssi; lora_last_snr=ind->Snr; lora_last_rx_ms=millis();
 }
@@ -344,10 +342,11 @@ static void oledShowSSID(const String& ssid){
   OLED_Display.drawString(0,16,"SSID: " + ssid);
   OLED_Display.drawString(0,32,"IP: " + WiFi.softAPIP().toString());
   OLED_Display.display();
-  apScroll.active = false; // no marquee to avoid duplication
+  apScroll.active=false;
 }
 
 void oledSensorsOnce(){
+  // read before any drawing
   sensorsPowerOn();
   CrackMeas cr=readCrack();
   float t=readTempOnceC();
@@ -357,31 +356,22 @@ void oledSensorsOnce(){
   OLED_Display.clear();
   OLED_Display.setFont(ArialMT_Plain_10);
   OLED_Display.setTextAlignment(TEXT_ALIGN_LEFT);
-
   int y=0, dy=12;
 
-  // Temperature
   if(isfinite(t)) OLED_Display.drawString(0,y, String("DS18B20  ")+String(t,1)+" C");
   else            OLED_Display.drawString(0,y,"DS18B20  N/C");
-  y += dy;
+  y+=dy;
 
-  // ADC raw
   OLED_Display.drawString(0,y, String("ADC M   ")+(cr.present?String(cr.raw0):"N/C")); y+=dy;
   OLED_Display.drawString(0,y, String("ADC R   ")+(cr.present?String(cr.raw1):"N/C")); y+=dy;
 
-  // Crack value
   if(cr.present){
-    const char* tag = (cfg.ref_mode==REF_MANUAL) ? " (M)" : " (A)";
+    const char* tag=(cfg.ref_mode==REF_MANUAL)?" (M)":" (A)";
     OLED_Display.drawString(0,y, String("Crack   ")+String(cr.mm,3)+" mm"+tag);
-  } else {
-    OLED_Display.drawString(0,y,"Crack   N/C");
-  }
-  y += dy;
+  }else OLED_Display.drawString(0,y,"Crack   N/C");
+  y+=dy;
 
-  // Battery
   OLED_Display.drawString(0,y, String("Battery ")+String(bat)+" mV");
-
-  // No RSSI/SNR
   OLED_Display.display();
 }
 
@@ -441,7 +431,7 @@ void api_state(){
   c["dr"]=cfg.lora_dr; c["adr"]=cfg.lora_adr;
 
   JsonObject ts=c.createNestedObject("time_sync");
-  ts["enabled"]=cfg.ts_enable; ts["hours"]=cfg.ts_hours; c["align_minute"]=cfg.align_minute;
+  ts["enabled"]=cfg.ts_enable; ts["hours"]=cfg.ts_hours;
 
   JsonObject ref=c.createNestedObject("ref");
   ref["mode"]=(cfg.ref_mode==REF_MANUAL)?"manual":"auto";
@@ -468,7 +458,7 @@ void api_cfg_get(){
   d["dr"]=cfg.lora_dr; d["adr"]=cfg.lora_adr;
 
   JsonObject ts=d.createNestedObject("time_sync");
-  ts["enabled"]=cfg.ts_enable; ts["hours"]=cfg.ts_hours; d["align_minute"]=cfg.align_minute;
+  ts["enabled"]=cfg.ts_enable; ts["hours"]=cfg.ts_hours;
 
   JsonObject ref=d.createNestedObject("ref");
   ref["mode"]=(cfg.ref_mode==REF_MANUAL)?"manual":"auto";
@@ -483,12 +473,8 @@ void api_cfg_lora(){
   if(deserializeJson(d,http.arg("plain"))){ http.send(400,"text/plain","bad json"); return; }
 
   bool ok=true;
-
-  // DevEUI/AppEUI are given and stored in LSB order. Parse straight.
   if(d.containsKey("devEui_lsb")) ok &= parseHexLSB((const char*)d["devEui_lsb"], cfg.devEui, 8);
   if(d.containsKey("appEui_lsb")) ok &= parseHexLSB((const char*)d["appEui_lsb"], cfg.appEui, 8);
-
-  // AppKey is provided in MSB order and must be kept in the same order in memory.
   if(d.containsKey("appKey_msb")) ok &= parseHexLSB((const char*)d["appKey_msb"], cfg.appKey, 16);
 
   if(d.containsKey("minutes")){ cfg.minutes=d["minutes"].as<uint32_t>(); prefs.begin("uhfb",false); prefs.putUInt("minutes",cfg.minutes); prefs.end(); }
@@ -523,7 +509,7 @@ void api_cfg_lora(){
   if(d.containsKey("adr")){
     cfg.lora_adr=d["adr"].as<bool>();
     prefs.begin("uhfb",false); prefs.putBool("lora_adr",cfg.lora_adr); prefs.end();
-    loraWanAdr = cfg.lora_adr;
+    loraWanAdr=cfg.lora_adr;
   }
 
   if(d.containsKey("time_sync")){
@@ -532,11 +518,10 @@ void api_cfg_lora(){
     if(ts.containsKey("hours")){ int h=ts["hours"].as<int>(); if(h<1||h>168){ http.send(400,"text/plain","ts hours range"); return; } cfg.ts_hours=(uint16_t)h; }
     prefs.begin("uhfb",false); prefs.putBool("ts_en",cfg.ts_enable); prefs.putUShort("ts_h",cfg.ts_hours); prefs.end();
   }
-  if(d.containsKey("align_minute")){ cfg.align_minute=d["align_minute"].as<bool>(); prefs.begin("uhfb",false); prefs.putBool("align_min",cfg.align_minute); prefs.end(); }
 
   if(d.containsKey("ref")){
     JsonObject rj=d["ref"].as<JsonObject>(); String m=rj["mode"]|"auto";
-    cfg.ref_mode = (m=="manual") ? REF_MANUAL : REF_AUTO;
+    cfg.ref_mode=(m=="manual")?REF_MANUAL:REF_AUTO;
     prefs.begin("uhfb",false); prefs.putUChar("ref_mode",cfg.ref_mode); prefs.end();
   }
 
@@ -670,7 +655,7 @@ void loop(){
   switch(deviceState){
     case DEVICE_STATE_INIT:
       memcpy(DevEui,cfg.devEui,8); memcpy(AppEui,cfg.appEui,8); memcpy(AppKey,cfg.appKey,16);
-      loraWanAdr = cfg.lora_adr;        // keep ADR in sync with config
+      loraWanAdr = cfg.lora_adr;
       LoRaWAN.init(CLASS_A, ACTIVE_REGION);
       applyLoraDR();
       deviceState=DEVICE_STATE_JOIN; break;
@@ -681,16 +666,8 @@ void loop(){
       LoRaWAN.send();
       deviceState=DEVICE_STATE_CYCLE; break;
     case DEVICE_STATE_CYCLE:{
-      uint32_t txDutyCycleTime;
-      if(cfg.align_minute){
-        const uint32_t period=cfg.minutes*SEC_PER_MIN;
-        const uint32_t nowS=now_sec();
-        const uint32_t rem=nowS%period;
-        const uint32_t waitSec=(rem==0)?period:(period-rem);
-        txDutyCycleTime=waitSec*MS_PER_SEC;
-      }else{
-        txDutyCycleTime=appTxDutyCycleCached + randr(-APP_TX_DUTYCYCLE_RND, APP_TX_DUTYCYCLE_RND);
-      }
+      // fixed interval, no minute alignment
+      const uint32_t txDutyCycleTime = 60000UL * cfg.minutes;
       LoRaWAN.cycle(txDutyCycleTime);
       deviceState=DEVICE_STATE_SLEEP; break;
     }
