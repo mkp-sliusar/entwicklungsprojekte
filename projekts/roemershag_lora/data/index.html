@@ -66,7 +66,6 @@ small{color:var(--muted)}
 .footer a:hover{text-decoration:underline}
 .card:has(#i_lora) .field{display:grid;grid-template-columns:140px 1fr;column-gap:12px;row-gap:12px;align-items:center}
 .card:has(#i_lora) .field input,.card:has(#i_lora) .field select{width:100%}
-.status{display:block;min-height:1.2em;margin-bottom:6px;color:var(--muted);word-break:break-word;white-space:pre-line}
 @media (max-width:900px){
   body{margin:10px}
   .main{max-height:none;overflow:auto}
@@ -89,6 +88,18 @@ small{color:var(--muted)}
   h1 img{height:22px}
   #themeBtn,#langBtn{padding:6px 8px;font-size:13px}
 }
+.status{
+  display:block;
+  margin-bottom:6px;
+  color:var(--muted);
+  word-break:break-word;
+  white-space:pre-line;
+  /* нове: висота ~10 рядків, прокрутка */
+  max-height: calc(10em * var(--lh));
+  overflow: auto;
+  padding-right: 4px; /* щоб не перекривало скролом текст */
+}
+
 </style>
 </head>
 <body>
@@ -192,7 +203,6 @@ small{color:var(--muted)}
     </div>
     <div class="actions">
       <button id="btnSaveLoRa" class="btn btn-block" type="button">Save all LoRa settings</button>
-      <small id="devEuiMsg" aria-live="polite"></small>
     </div>
   </div>
 
@@ -216,7 +226,6 @@ small{color:var(--muted)}
     </div>
     <div class="actions">
       <button id="btnSaveCalAll" class="btn btn-block" type="button">Save crack calibration</button>
-      <small id="calMsg" aria-live="polite"></small>
     </div>
   </div>
 </div>
@@ -265,6 +274,15 @@ function setTheme(t){
   localStorage.setItem(THEME_KEY,t);
 }
 
+// unified logger
+function logMsg(text){
+  const el=byId('msg'); if(!el) return;
+  const ts=new Date().toLocaleTimeString();
+  const line=`[${ts}] ${text}`;
+  el.textContent = el.textContent ? (el.textContent+'\n'+line) : line;
+}
+function clearMsg(){ const el=byId('msg'); if(el) el.textContent=''; }
+
 function applyTooltips(){
   const tips=(I18N[CURR_LANG]?.tips)||{};
   setTitle('i_dr_k', tips.drate||'');
@@ -279,8 +297,7 @@ function applyTooltips(){
 
 function applyI18n(){
   const t=I18N[CURR_LANG]||{};
-  // only override if key exists; otherwise keep static text
-  if(t.title)       { setText('i_title',t.title); setText('t_title',t.title); }
+  if(t.title){ setText('i_title',t.title); setText('t_title',t.title); }
   if(t.sensors)     setText('i_sensors',t.sensors);
   if(t.time)        setText('i_time_k',t.time);
   if(t.ds18b20)     setText('i_ds_k',t.ds18b20);
@@ -405,7 +422,7 @@ async function load(){
     }
   }catch(e){
     const t=I18N[CURR_LANG]||{};
-    setText('msg', t.msg_state_error||'state error');
+    logMsg(t.msg_state_error||'state error');
   }
 }
 
@@ -422,7 +439,7 @@ async function readDevEUI(){
     const j=await q('/api/deveui');
     byId('devEuiField').value=j.chip_devEui_lsb||'';
     const t=I18N[CURR_LANG]||{};
-    setText('devEuiMsg',
+    logMsg(
       `${(t.chip_msb||'chip MSB')}=${j.chip_devEui_msb}  `+
       `${(t.chip_lsb||'LSB')}=${j.chip_devEui_lsb}  `+
       `${(t.stored_lsb||'stored LSB')}=${j.stored_devEui_lsb}`
@@ -430,7 +447,7 @@ async function readDevEUI(){
     clearDirty(byId('devEuiField'));
   }catch(e){
     const t=I18N[CURR_LANG]||{};
-    setText('devEuiMsg', t.msg_save_error||'Save error');
+    logMsg(t.msg_save_error||'Save error');
   }
 }
 
@@ -438,9 +455,9 @@ async function saveChipDevEUI(){
   const t=I18N[CURR_LANG]||{};
   try{
     await fetch('/api/deveui',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({use:'chip'})});
-    setText('devEuiMsg', t.msg_saved_reboot||'Saved; rebooting…');
+    logMsg(t.msg_saved_reboot||'Saved; rebooting…');
     ['devEuiField'].forEach(id=>clearDirty(byId(id)));
-  }catch(e){ setText('devEuiMsg', t.msg_save_error||'Save error'); }
+  }catch(e){ logMsg(t.msg_save_error||'Save error'); }
 }
 
 function normHex(s){ return (s||'').trim().replace(/\s+/g,'').toUpperCase(); }
@@ -476,10 +493,10 @@ async function saveLoRaAll(){
   const t=I18N[CURR_LANG]||{};
   try{
     await fetch('/api/config/lora',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-    setText('devEuiMsg', t.msg_saved_reboot||'Saved; rebooting…');
+    logMsg(t.msg_saved_reboot||'Saved; rebooting…');
     ['devEuiField','appEuiField','appKeyField','minutesField','drField','syncField','refModeField']
       .forEach(id=>clearDirty(byId(id)));
-  }catch(e){ setText('devEuiMsg', t.msg_save_error||'Save error'); }
+  }catch(e){ logMsg(t.msg_save_error||'Save error'); }
 }
 
 async function saveCrackCalAll(){
@@ -489,28 +506,29 @@ async function saveCrackCalAll(){
   const mm1=parseFloat(byId('mm1Field').value);
   const t=I18N[CURR_LANG]||{};
   if(!Number.isFinite(r0)||!Number.isFinite(r1)||!Number.isFinite(mm0)||!Number.isFinite(mm1)){
-    setText('calMsg', t.msg_save_error||'Save error'); return;
+    logMsg(t.msg_save_error||'Save error'); return;
   }
   try{
     await fetch('/api/config/lora',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({crack_cal:{r0,mm0,r1,mm1}})});
-    setText('calMsg', t.msg_saved_reboot||'Saved; rebooting…');
+    logMsg(t.msg_saved_reboot||'Saved; rebooting…');
     ['r0Field','mm0Field','r1Field','mm1Field'].forEach(id=>clearDirty(byId(id)));
-  }catch(e){ setText('calMsg', t.msg_save_error||'Save error'); }
+  }catch(e){ logMsg(t.msg_save_error||'Save error'); }
 }
 
 byId('btnSend').onclick=async()=>{
   const t=I18N[CURR_LANG]||{};
   try{
     const r=await fetch('/api/send',{method:'POST'});
-    setText('msg', r.ok?(t.msg_send_ok||'LoRa queued'):(t.msg_send_err||'Send error'));
-  }catch(e){ setText('msg', t.msg_send_err||'Send error'); }
+    logMsg(r.ok?(t.msg_send_ok||'LoRa queued'):(t.msg_send_err||'Send error'));
+  }catch(e){ logMsg(t.msg_send_err||'Send error'); }
 };
+
 byId('btnReset').onclick=async()=>{
   const t=I18N[CURR_LANG]||{};
   try{
     const r=await fetch('/api/reset',{method:'POST'});
-    setText('msg', r.ok?(t.msg_restarting||'restarting…'):(t.msg_save_error||'Save error'));
-  }catch(e){ setText('msg', t.msg_save_error||'Save error'); }
+    logMsg(r.ok?(t.msg_restarting||'restarting…'):(t.msg_save_error||'Save error'));
+  }catch(e){ logMsg(t.msg_save_error||'Save error'); }
 };
 
 byId('btnReadChip').onclick=readDevEUI;
