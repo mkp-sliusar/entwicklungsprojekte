@@ -22,9 +22,10 @@
  *    DevEUI, AppEUI — LSB order end-to-end (UI, storage, prints)
  *    AppKey         — MSB order end-to-end (UI, storage, prints)
  * ---------------------------------------------------------------------
- *  Version:      1.5.1
- *  Date:         2025-10-15
- *  Changes:      removed minute alignment; fixed-interval scheduling
+ *  Version:      1.7.1
+ *  Date:         2025-10-16
+ *  Changes:      unified TX policy for unstable networks: confirmed uplink, NbTrans=1, retries=3
+ *                removed AP/field TX divergence; enforced policy at init and before each send
  *  Contributors: Bernd Schinköthe, Roman Sliusar, Evgenij Koloda
  * =====================================================================
  */
@@ -41,6 +42,9 @@
 #endif
 #define LORAWAN_DEVEUI_AUTO 0
 
+// Access to LoRaMac MIB for NbTrans
+// LoRaMac.h not available in Heltec build; using confirmed uplink policy without MIB access
+
 #include "data/logoMKP.h"
 
 #include <WiFi.h>
@@ -54,7 +58,6 @@
 #include <OneWire.h>
 #include <DallasTemperature.h>
 #include <math.h>
-
 // ---------- Heltec LoRaWAN keys expected by core ----------
 uint8_t devEui[8]={0}, appEui[8]={0};   // LSB
 uint8_t appKey[16]={0};                 // MSB
@@ -98,7 +101,7 @@ static constexpr uint32_t MS_PER_SEC=1000UL;
 static constexpr uint32_t MARQUEE_PERIOD_MS=40;
 
 static constexpr uint8_t  UPLINK_PORT=2;
-static constexpr uint8_t  CONF_TRIALS_AP=3, CONF_TRIALS_FIELD=1;
+static constexpr uint8_t  CONF_TRIALS_AP=3, CONF_TRIALS_FIELD=1; // kept for reference, not used for branching anymore
 
 static inline uint32_t now_sec(){ return millis()/MS_PER_SEC; }
 
@@ -233,11 +236,18 @@ void sensorsPowerOn(){
 void sensorsPowerOff(){ I2C_ADS.end(); pinMode(I2C_ADS_SDA,INPUT); pinMode(I2C_ADS_SCL,INPUT); pinMode(PIN_ONE_WIRE,INPUT); SensorsOFF(); }
 
 int16_t readTemp_c_x100(){
-  if(!firstDsFound) return 5000;
-  sensors.requestTemperaturesByAddress(firstDs); delay(200);
-  float t=sensors.getTempC(firstDs); if(t<=-127||t>=125) return 5000;
-  int v=(int)(t*100.0f)+5000; if(v<0)v=0; return (int16_t)v;
+  if(!firstDsFound) return 5000;              // 0.00°C
+  sensors.requestTemperaturesByAddress(firstDs);
+  delay(200);
+  float t = sensors.getTempC(firstDs);
+  if(!isfinite(t) || t<-50 || t>125) return 5000;
+
+  long v = lroundf(t * 100.0f) + 5000;        // 24.25°C -> 2425
+  if(v < 0)     v = 0;
+  if(v > 10000) v = 10000;
+  return (int16_t)v;
 }
+
 float readTempOnceC(){
   if(!firstDsFound) return NAN;
   sensors.requestTemperaturesByAddress(firstDs); delay(200);
@@ -306,6 +316,14 @@ uint16_t readBattery_mV(){
 // ---------- LoRa helpers ----------
 static inline uint8_t mapDR(uint8_t i){ switch(i){case 0:return DR_0;case 1:return DR_1;case 2:return DR_2;case 3:return DR_3;case 4:return DR_4;case 5:return DR_5;default:return DR_3;} }
 static inline void applyLoraDR(){ LoRaWAN.setDefaultDR(mapDR(cfg.lora_dr)); }
+
+// Unified TX policy for unstable networks
+static void enforceTxPolicy(){
+  isTxConfirmed = false;     // confirmed
+  confirmedNbTrials = 1;    // nur 1 TX
+  loraWanAdr = false;       // verhindert LinkADRReq vom Netz
+}
+
 
 volatile bool     lora_has_rx=false;
 volatile int16_t  lora_last_rssi=0;
@@ -578,20 +596,24 @@ void attachHttpFS(){
 // ---------- Uplink payload (8 bytes) ----------
 void prepareTxFrame(uint8_t){
   sensorsPowerOn();
-  CrackMeas cr=readCrack();
-  int16_t t=readTemp_c_x100();
-  uint16_t vb=readBattery_mV();
+  CrackMeas cr = readCrack();
+  const int16_t  t      = readTemp_c_x100();               // 0..10000
+  const uint16_t vb     = readBattery_mV();
+  const uint16_t cr1000 = (uint16_t)lrintf(max(0.0f, min(cr.mm, 65.535f)) * 1000.0f);
+  const uint16_t adcRaw = cr.present ? (uint16_t)cr.raw0 : 0;
   sensorsPowerOff();
 
-  uint16_t cr1000=(uint16_t)lrintf(cr.mm*1000.0f);
-  int16_t  adcRaw = cr.present ? cr.raw0 : 0;
+  appDataSize = 8;                         // 4 * uint16
+  appData[0] = (uint16_t)t      >> 8;      appData[1] = (uint16_t)t;
+  appData[2] =  adcRaw          >> 8;      appData[3] =  adcRaw;
+  appData[4] =  cr1000          >> 8;      appData[5] =  cr1000;
+  appData[6] =  vb              >> 8;      appData[7] =  vb;
+  Serial.printf("TX 8B: T=%d ADC=%u CR=%u VB=%u  HEX=%02X%02X %02X%02X %02X%02X %02X%02X\n",
+  (int)t, adcRaw, cr1000, vb,
+  appData[0],appData[1], appData[2],appData[3], appData[4],appData[5], appData[6],appData[7]);
 
-  appDataSize=8;
-  appData[0]=t>>8;      appData[1]=t;
-  appData[2]=adcRaw>>8; appData[3]=adcRaw;
-  appData[4]=cr1000>>8; appData[5]=cr1000;
-  appData[6]=vb>>8;     appData[7]=vb;
 }
+
 
 // ---------- App ----------
 enum OledPhase{ OLED_LOGO, OLED_SSID, OLED_SENS };
@@ -621,7 +643,7 @@ void setup(){
     toHex(chipMSB,8).c_str(), toHex(chipLSB,8).c_str(), toHex(cfg.devEui,8).c_str());
 
   if(apMode){
-    isTxConfirmed=true; confirmedNbTrials=CONF_TRIALS_AP;
+    // No TX policy changes here. Unified later.
     WiFi.mode(WIFI_AP);
     bool fsOk=LittleFS.begin(true);
     if(fsOk) attachHttpFS(); else Serial.println("[FS] mount failed");
@@ -631,7 +653,7 @@ void setup(){
     pinMode(Vext,OUTPUT); digitalWrite(Vext,LOW);
     oledSplash(); oledPhase=OLED_SSID; oledPhaseStart=millis(); oledShowSSID(ssid);
   }else{
-    isTxConfirmed=false; confirmedNbTrials=CONF_TRIALS_FIELD;
+    // No TX policy changes here. Unified later.
     WiFi.persistent(false); WiFi.disconnect(true,true); WiFi.mode(WIFI_OFF);
 #if defined(CONFIG_BT_ENABLED) && CONFIG_BT_ENABLED
     btStop();
@@ -652,29 +674,39 @@ void loop(){
     static uint32_t tmr=0; if(oledPhase==OLED_SENS && millis()-tmr>1000){ tmr=millis(); oledSensorsOnce(); }
   }
 
+
+
   switch(deviceState){
     case DEVICE_STATE_INIT:
       memcpy(DevEui,cfg.devEui,8); memcpy(AppEui,cfg.appEui,8); memcpy(AppKey,cfg.appKey,16);
       loraWanAdr = cfg.lora_adr;
       LoRaWAN.init(CLASS_A, ACTIVE_REGION);
       applyLoraDR();
+      enforceTxPolicy();                // enforce at init
       deviceState=DEVICE_STATE_JOIN; break;
+
     case DEVICE_STATE_JOIN:
-      LoRaWAN.join(); break;
+      LoRaWAN.join();
+      enforceTxPolicy();                // enforce around join, some stacks reset MIB
+      break;
+
     case DEVICE_STATE_SEND:
+      enforceTxPolicy();                // enforce before each TX for robustness
       prepareTxFrame(UPLINK_PORT);
       LoRaWAN.send();
       deviceState=DEVICE_STATE_CYCLE; break;
+
     case DEVICE_STATE_CYCLE:{
-      // fixed interval, no minute alignment
-      const uint32_t txDutyCycleTime = 60000UL * cfg.minutes;
+      const uint32_t txDutyCycleTime = 60000UL * cfg.minutes; // fixed interval, no minute alignment
       LoRaWAN.cycle(txDutyCycleTime);
       deviceState=DEVICE_STATE_SLEEP; break;
     }
+
     case DEVICE_STATE_SLEEP:
       sensorsPowerOff();
       if(apMode) LoRaWAN.sleep(CLASS_C); else LoRaWAN.sleep(CLASS_A);
       break;
+
     default: deviceState=DEVICE_STATE_INIT; break;
   }
 }
