@@ -60,6 +60,9 @@
 #include <DallasTemperature.h>
 #include <math.h>
 
+// ========================== Frimware version ======================= //
+static constexpr const char* FW_VER = "1.7.1"; // sync with header
+
 // ========================== LoRaWAN key slots ======================= //
 // The Heltec core expects these globals. Keep LSB/MSB conventions.
 uint8_t devEui[8] = {0}, appEui[8] = {0};  // LSB
@@ -494,6 +497,8 @@ void api_state(){
   d["ip"]       = ipStr();
   d["uptime_s"] = (uint32_t)(millis()/MS_PER_SEC);
   d["heap_free"]= ESP.getFreeHeap();
+  d["fw"]       = FW_VER;
+  d["fw_build"] = String(__DATE__) + " " + String(__TIME__);
 
   sensorsPowerOn();
   CrackMeas cr=readCrack();
@@ -729,6 +734,8 @@ void setup(){
   pinMode(PIN_MODE_OUT,OUTPUT); digitalWrite(PIN_MODE_OUT,LOW);
   pinMode(PIN_MODE_IN,INPUT_PULLUP); delay(5);
   pinMode(PIN_CRACK_PRESENT,INPUT_PULLUP);
+  
+  Serial.printf("FW %s build %s %s\n", FW_VER, __DATE__, __TIME__);
 
   for(int i=0;i<5;i++){ apMode |= (digitalRead(PIN_MODE_IN)==LOW); delay(2); }
 
