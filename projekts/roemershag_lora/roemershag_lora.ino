@@ -23,13 +23,14 @@
  *    AppKey         — MSB order end-to-end (UI, storage, prints)
  * ---------------------------------------------------------------------
  *  Version:      1.7.1
- *  Date:         2025-10-16
+ *  Date:         2025-10-26
  *  Changes:      unified TX policy for unstable networks: confirmed uplink, NbTrans=1, retries=3
  *                removed AP/field TX divergence; enforced policy at init and before each send
  *  Contributors: Bernd Schinköthe, Roman Sliusar, Evgenij Koloda
  * =====================================================================
  */
 
+// ============================= Includes ============================= //
 #include "LoRaWan_APP.h"
 #ifdef CLASS
 #undef CLASS
@@ -42,8 +43,8 @@
 #endif
 #define LORAWAN_DEVEUI_AUTO 0
 
-// Access to LoRaMac MIB for NbTrans
-// LoRaMac.h not available in Heltec build; using confirmed uplink policy without MIB access
+// NOTE: Access to LoRaMac MIB for NbTrans is not available in Heltec build.
+// We rely on the confirmed-uplink policy without direct MIB access.
 
 #include "data/logoMKP.h"
 
@@ -58,133 +59,149 @@
 #include <OneWire.h>
 #include <DallasTemperature.h>
 #include <math.h>
-// ---------- Heltec LoRaWAN keys expected by core ----------
-uint8_t devEui[8]={0}, appEui[8]={0};   // LSB
-uint8_t appKey[16]={0};                 // MSB
-uint8_t DevEui[8]={0}, AppEui[8]={0}, AppKey[16]={0};
 
-// ---------- Types ----------
+// ========================== Frimware version ======================= //
+static constexpr const char* FW_VER = "1.7.1"; // sync with header
+
+// ========================== LoRaWAN key slots ======================= //
+// The Heltec core expects these globals. Keep LSB/MSB conventions.
+uint8_t devEui[8] = {0}, appEui[8] = {0};  // LSB
+uint8_t appKey[16] = {0};                  // MSB
+uint8_t DevEui[8] = {0}, AppEui[8] = {0}, AppKey[16] = {0};
+
+// ============================== Types ============================== //
+/**
+ * @brief Result of a single crack sensor read.
+ */
 struct CrackMeas{
-  bool    present;
-  int16_t raw0;
-  int16_t raw1;
-  float   mm;
-  bool    auto_used;
+  bool    present;   // sensor presence pin indicates installed sensor
+  int16_t raw0;      // ADS1115 CH0 raw
+  int16_t raw1;      // ADS1115 CH1 raw (reference)
+  float   mm;        // computed crack opening in mm
+  bool    auto_used; // true if AUTO mode mapping was used
 };
 CrackMeas readCrack();
 
-// ---------- HW pins/const ----------
-static constexpr uint8_t  OLED_ADDR=0x3C;
-static constexpr int      I2C_ADS_SDA=47;
-static constexpr int      I2C_ADS_SCL=48;
-static constexpr uint32_t I2C_FREQ_HZ=400000;
+// =========================== HW constants ========================== //
+static constexpr uint8_t  OLED_ADDR   = 0x3C;
+static constexpr int      I2C_ADS_SDA = 47;
+static constexpr int      I2C_ADS_SCL = 48;
+static constexpr uint32_t I2C_FREQ_HZ = 400000;
 
-static constexpr int PIN_ONE_WIRE=4;
-static constexpr int PIN_VBAT_ADC=1;
-static constexpr int PIN_ADC_CTRL=37;
-static constexpr int PIN_MODE_OUT=45;
-static constexpr int PIN_MODE_IN =46;
-static constexpr int PIN_CRACK_PRESENT=3;
+static constexpr int PIN_ONE_WIRE     = 4;
+static constexpr int PIN_VBAT_ADC     = 1;
+static constexpr int PIN_ADC_CTRL     = 37;
+static constexpr int PIN_MODE_OUT     = 45;
+static constexpr int PIN_MODE_IN      = 46;
+static constexpr int PIN_CRACK_PRESENT= 3;
 
-static constexpr int  PIN_SENS_EN=7;
-static constexpr bool SENS_ACTIVE_HIGH=true;
+static constexpr int  PIN_SENS_EN     = 7;
+static constexpr bool SENS_ACTIVE_HIGH= true;
 
-static constexpr uint8_t  ADS1115_ADDR=0x48;
-static constexpr uint8_t  DS_RES_BITS=10;
+static constexpr uint8_t  ADS1115_ADDR= 0x48;
+static constexpr uint8_t  DS_RES_BITS = 10;
 
-static constexpr float VBAT_ADC_FACTOR=1.0f/4096.0f/0.210282997855762f;
+static constexpr float VBAT_ADC_FACTOR= 1.0f/4096.0f/0.210282997855762f; // board-specific divider and ADC scaling
 
-// ---------- System ----------
-static constexpr char   AP_PSK[]="12345678";
-static constexpr size_t JSON_STATE_DOC=1700, JSON_CFG_DOC=1100;
-static constexpr uint32_t MS_PER_SEC=1000UL;
-static constexpr uint32_t MARQUEE_PERIOD_MS=40;
+// ============================ System cfg =========================== //
+static constexpr char   AP_PSK[]       = "12345678";
+static constexpr size_t JSON_STATE_DOC = 1700;
+static constexpr size_t JSON_CFG_DOC   = 1100;
+static constexpr uint32_t MS_PER_SEC   = 1000UL;
+static constexpr uint32_t MARQUEE_PERIOD_MS = 40;
 
-static constexpr uint8_t  UPLINK_PORT=2;
-static constexpr uint8_t  CONF_TRIALS_AP=3, CONF_TRIALS_FIELD=1; // kept for reference, not used for branching anymore
+static constexpr uint8_t  UPLINK_PORT = 2;
+// Kept for reference; policy is unified and not branching on AP/field.
+static constexpr uint8_t  CONF_TRIALS_AP = 3, CONF_TRIALS_FIELD = 1;
 
 static inline uint32_t now_sec(){ return millis()/MS_PER_SEC; }
 
-// ---------- Peripherals ----------
+// ========================== Peripherals ============================ //
 SSD1306Wire OLED_Display(OLED_ADDR, I2C_FREQ_HZ, SDA_OLED, SCL_OLED, GEOMETRY_128_64, RST_OLED);
-TwoWire I2C_ADS=TwoWire(1);
+TwoWire     I2C_ADS = TwoWire(1);
 Adafruit_ADS1115 ads;
 
 OneWire oneWire(PIN_ONE_WIRE);
 DallasTemperature sensors(&oneWire);
-uint8_t firstDs[8]={0};
-bool firstDsFound=false;
+uint8_t firstDs[8] = {0};
+bool    firstDsFound = false;
 
-bool apMode=false;
+bool        apMode = false;
 Preferences prefs;
 
-enum RefMode:uint8_t{ REF_AUTO=0, REF_MANUAL=1 };
+enum RefMode: uint8_t { REF_AUTO=0, REF_MANUAL=1 };
 
-// ---------- Config in NVS ----------
+// ========================= Persisted config ======================== //
+/**
+ * @brief Non-volatile configuration stored in NVS (Preferences).
+ */
 struct Cfg{
-  uint8_t devEui[8]={0};
-  uint8_t appEui[8]={0};
-  uint8_t appKey[16]={0};
+  uint8_t devEui[8] = {0};
+  uint8_t appEui[8] = {0};
+  uint8_t appKey[16]= {0};
 
-  uint32_t minutes=15;
+  uint32_t minutes = 15;                   // uplink period in minutes
 
-  int16_t  crack_r0=5;
-  int16_t  crack_r1=25480;
-  uint16_t crack_mm0_x100=0;
-  uint16_t crack_mm1_x100=1000; // 10.00 mm
-  uint16_t crack_len_mm_x100=1000;
+  int16_t  crack_r0 = 5;                   // manual mapping raw0
+  int16_t  crack_r1 = 25480;               // manual mapping raw1
+  uint16_t crack_mm0_x100 = 0;             // 0.01 mm units
+  uint16_t crack_mm1_x100 = 1000;          // 10.00 mm default
+  uint16_t crack_len_mm_x100 = 1000;       // L_full in 0.01 mm
 
-  uint8_t  ref_mode=REF_AUTO;
+  uint8_t  ref_mode = REF_AUTO;            // AUTO vs MANUAL
 
-  uint8_t  lora_dr=3;
-  bool     lora_adr=true;
+  uint8_t  lora_dr  = 3;                   // default DR index
+  bool     lora_adr = true;                // ADR preference
 
-  bool     ts_enable=false;
-  uint16_t ts_hours=24;
+  bool     ts_enable = false;              // time sync request enable
+  uint16_t ts_hours   = 24;                // time sync period hours
 } cfg;
 
-// ---------- LoRa ----------
-uint16_t        userChannelsMask[6]={0x00FF,0,0,0,0,0};
-LoRaMacRegion_t loraWanRegion=ACTIVE_REGION;
-DeviceClass_t   loraWanClass=CLASS_A;
+// ============================ LoRa state =========================== //
+uint16_t        userChannelsMask[6] = {0x00FF,0,0,0,0,0};
+LoRaMacRegion_t loraWanRegion = ACTIVE_REGION;
+DeviceClass_t   loraWanClass  = CLASS_A;
 
-bool overTheAirActivation=true;
-bool loraWanAdr=true;
+bool overTheAirActivation = true;  // OTAA
+bool loraWanAdr           = true;  // mirrored to cfg.lora_adr where needed
 
-bool     isTxConfirmed=false;
-uint8_t  appPort=UPLINK_PORT;
-uint8_t  confirmedNbTrials=1;
-uint32_t appTxDutyCycle=60000UL*2;
+bool     isTxConfirmed    = false; // policy applied via enforceTxPolicy()
+uint8_t  appPort          = UPLINK_PORT;
+uint8_t  confirmedNbTrials= 1;     // stack-level retry count for confirmed
+uint32_t appTxDutyCycle   = 60000UL*2; // unused, see cycle() path
 
-uint8_t  nwkSKey[16]={0};
-uint8_t  appSKey[16]={0};
-uint32_t devAddr=0;
+uint8_t  nwkSKey[16] = {0}; // left for potential ABP compatibility
+uint8_t  appSKey[16] = {0};
+uint32_t devAddr     = 0;
 
-// ---------- NVS helpers ----------
+// ========================= NVS small helpers ======================= //
 static inline void nvsPut(const char* k,const void* p,size_t n){ prefs.begin("uhfb",false); prefs.putBytes(k,p,n); prefs.end(); }
-static inline void nvsGet(const char* k,void* p,size_t n){ prefs.begin("uhfb",true); prefs.getBytes(k,p,n); prefs.end(); }
+static inline void nvsGet(const char* k,void* p,size_t n){ prefs.begin("uhfb",true);  prefs.getBytes(k,p,n);  prefs.end(); }
 
+/**
+ * @brief Load persisted configuration into RAM.
+ */
 void loadCfg(){
   prefs.begin("uhfb",true);
-  prefs.getBytes("devEui",cfg.devEui,8);
-  prefs.getBytes("appEui",cfg.appEui,8);
-  prefs.getBytes("appKey",cfg.appKey,16);
-  cfg.minutes=prefs.getUInt("minutes",cfg.minutes);
-  cfg.crack_len_mm_x100=prefs.getUShort("cr_len_x100",cfg.crack_len_mm_x100);
-  cfg.crack_r0=prefs.getShort("cr_r0",cfg.crack_r0);
-  cfg.crack_r1=prefs.getShort("cr_r1",cfg.crack_r1);
-  cfg.crack_mm0_x100=prefs.getUShort("cr_mm0",cfg.crack_mm0_x100);
-  cfg.crack_mm1_x100=prefs.getUShort("cr_mm1",cfg.crack_mm1_x100);
-  if(cfg.crack_mm1_x100==1000) cfg.crack_mm1_x100=cfg.crack_len_mm_x100;
-  cfg.ref_mode=prefs.getUChar("ref_mode",cfg.ref_mode);
-  cfg.lora_dr=prefs.getUChar("lora_dr",cfg.lora_dr);
-  cfg.lora_adr=prefs.getBool("lora_adr",cfg.lora_adr);
-  cfg.ts_enable=prefs.getBool("ts_en",cfg.ts_enable);
-  cfg.ts_hours=prefs.getUShort("ts_h",cfg.ts_hours);
+  prefs.getBytes("devEui", cfg.devEui, 8);
+  prefs.getBytes("appEui", cfg.appEui, 8);
+  prefs.getBytes("appKey", cfg.appKey, 16);
+  cfg.minutes               = prefs.getUInt  ("minutes",   cfg.minutes);
+  cfg.crack_len_mm_x100     = prefs.getUShort("cr_len_x100", cfg.crack_len_mm_x100);
+  cfg.crack_r0              = prefs.getShort ("cr_r0",       cfg.crack_r0);
+  cfg.crack_r1              = prefs.getShort ("cr_r1",       cfg.crack_r1);
+  cfg.crack_mm0_x100        = prefs.getUShort("cr_mm0",      cfg.crack_mm0_x100);
+  cfg.crack_mm1_x100        = prefs.getUShort("cr_mm1",      cfg.crack_mm1_x100);
+  if(cfg.crack_mm1_x100==1000) cfg.crack_mm1_x100 = cfg.crack_len_mm_x100; // keep mm1 aligned to L
+  cfg.ref_mode              = prefs.getUChar ("ref_mode",    cfg.ref_mode);
+  cfg.lora_dr               = prefs.getUChar ("lora_dr",     cfg.lora_dr);
+  cfg.lora_adr              = prefs.getBool  ("lora_adr",    cfg.lora_adr);
+  cfg.ts_enable             = prefs.getBool  ("ts_en",       cfg.ts_enable);
+  cfg.ts_hours              = prefs.getUShort("ts_h",        cfg.ts_hours);
   prefs.end();
 }
 
-// ---------- Hex helpers ----------
+// ============================ Hex helpers ========================== //
 static inline bool parseHexStraight(const String& s,uint8_t* out,size_t n){
   if(s.length()!=n*2) return false;
   for(size_t i=0;i<n;i++){ char b[3]={ (char)s[2*i], (char)s[2*i+1], 0}; out[i]=(uint8_t)strtoul(b,nullptr,16); }
@@ -198,6 +215,9 @@ static inline bool parseHexMSB_reverse(const String& msb,uint8_t* out,size_t n){
 }
 String toHex(const uint8_t* v,size_t n){ char b[3]; String s; s.reserve(n*2); for(size_t i=0;i<n;i++){ sprintf(b,"%02X",v[i]); s+=b;} return s; }
 
+/**
+ * @brief Build DevEUI from ESP32 MAC (EUI-64 format MSB order).
+ */
 void devEuiFromChipMSB(uint8_t out[8]){
   uint64_t mac=ESP.getEfuseMac(); uint8_t m[6];
   for(int i=0;i<6;i++) m[i]=(mac>>(8*(5-i)))&0xFF;
@@ -205,12 +225,14 @@ void devEuiFromChipMSB(uint8_t out[8]){
 }
 String devEuiSuffix6LSB(){ char buf[7]; sprintf(buf,"%02X%02X%02X", cfg.devEui[5], cfg.devEui[6], cfg.devEui[7]); return String(buf); }
 
-// ---------- Power and sensors ----------
+// ===================== Power + sensor management =================== //
 static inline void SensorsON(){ pinMode(PIN_SENS_EN,OUTPUT); digitalWrite(PIN_SENS_EN, SENS_ACTIVE_HIGH?HIGH:LOW); }
 static inline void SensorsOFF(){ digitalWrite(PIN_SENS_EN, SENS_ACTIVE_HIGH?LOW:HIGH); pinMode(PIN_SENS_EN,INPUT); }
 static inline bool crackPresent(){ pinMode(PIN_CRACK_PRESENT,INPUT_PULLUP); return digitalRead(PIN_CRACK_PRESENT)==LOW; }
 
-// === low-noise ADS init (like test) ===
+/**
+ * @brief One-time ADS1115 init for low-noise single-shot use.
+ */
 void adsInitOnce(){
   ads.setGain(GAIN_ONE);
   ads.setDataRate(RATE_ADS1115_128SPS);
@@ -218,7 +240,9 @@ void adsInitOnce(){
   delay(4); // ~1 period @128SPS
 }
 
-// separate bus + power
+/**
+ * @brief Power up sensors and buses, discover DS18B20 if needed.
+ */
 void sensorsPowerOn(){
   SensorsON(); delay(12);
   I2C_ADS.begin(I2C_ADS_SDA, I2C_ADS_SCL, I2C_FREQ_HZ);
@@ -233,37 +257,50 @@ void sensorsPowerOn(){
   }
   if(firstDsFound) sensors.setResolution(firstDs, DS_RES_BITS);
 }
+
+/**
+ * @brief Power down sensors and release bus pins to input.
+ */
 void sensorsPowerOff(){ I2C_ADS.end(); pinMode(I2C_ADS_SDA,INPUT); pinMode(I2C_ADS_SCL,INPUT); pinMode(PIN_ONE_WIRE,INPUT); SensorsOFF(); }
 
+/**
+ * @brief Read temperature as 0..10000 plus 5000 offset for 0..100°C mapping.
+ * @return int16 in range 0..10000 (with 5000 offset during packing), default 5000 if invalid.
+ */
 int16_t readTemp_c_x100(){
-  if(!firstDsFound) return 5000;              // 0.00°C
+  if(!firstDsFound) return 5000;
   sensors.requestTemperaturesByAddress(firstDs);
   delay(200);
   float t = sensors.getTempC(firstDs);
   if(!isfinite(t) || t<-50 || t>125) return 5000;
 
-  long v = lroundf(t * 100.0f) + 5000;        // 24.25°C -> 2425
+  long v = lroundf(t * 100.0f) + 5000; // 24.25°C -> 2425
   if(v < 0)     v = 0;
   if(v > 10000) v = 10000;
   return (int16_t)v;
 }
 
+/**
+ * @brief Single temperature read, returns NAN if invalid.
+ */
 float readTempOnceC(){
   if(!firstDsFound) return NAN;
   sensors.requestTemperaturesByAddress(firstDs); delay(200);
   float t=sensors.getTempC(firstDs); if(t<=-127||t>=125) return NAN; return t;
 }
 
-// ---------- Mapping ----------
-static constexpr int16_t RAW_MIN_STABLE=6;
-static constexpr int16_t DYN_SPAN_MIN=50;
+// ============================ Mapping ============================== //
+static constexpr int16_t RAW_MIN_STABLE = 6;   // ADC floor threshold
+static constexpr int16_t DYN_SPAN_MIN   = 50;  // minimal dynamic span
 
 static inline float mapLinear_i32(int32_t x,int32_t in_min,int32_t in_max,float out_min,float out_max){
   if(in_max<=in_min) return out_min;
   return (float)(x-in_min)*(out_max-out_min)/(float)(in_max-in_min)+out_min;
 }
 
-// manual unchanged
+/**
+ * @brief Manual mapping CH0 -> mm using two-point calibration.
+ */
 static inline float mapCrackManual(int M){
   const float M0=(float)cfg.crack_r0, M1=(float)cfg.crack_r1;
   const float mm0=(float)cfg.crack_mm0_x100/100.0f, mm1=(float)cfg.crack_mm1_x100/100.0f;
@@ -274,14 +311,19 @@ static inline float mapCrackManual(int M){
   return mm;
 }
 
-// === test-like reads: single sample per channel, back-to-back ===
+/**
+ * @brief Low-noise single-shot reads on ADS1115 with mux pre-warm.
+ */
 static inline int16_t readCH(uint8_t ch){
-  (void)ads.readADC_SingleEnded(ch);   // warm after mux
+  (void)ads.readADC_SingleEnded(ch);   // pre-warm after mux switch
   delayMicroseconds(8000);             // ≥1 period @128SPS
   int16_t v = ads.readADC_SingleEnded(ch);
   return v<0?0:v;
 }
 
+/**
+ * @brief Read crack sensor and compute mm in AUTO or MANUAL mode.
+ */
 CrackMeas readCrack(){
   CrackMeas r{false,0,0,0.0f,false};
   r.present = crackPresent(); if(!r.present) return r;
@@ -300,11 +342,14 @@ CrackMeas readCrack(){
     if(mm<0) mm=0; if(mm>L) mm=L;
     r.mm=mm; r.auto_used=true;
   }
-  if(r.mm>65.535f) r.mm=65.535f;
+  if(r.mm>65.535f) r.mm=65.535f; // payload limit safety
   return r;
 }
 
-// ---------- Battery ----------
+// ============================ Battery ============================== //
+/**
+ * @brief Read battery voltage in millivolts using board-specific factor.
+ */
 uint16_t readBattery_mV(){
   analogSetAttenuation(ADC_0db);
   pinMode(PIN_ADC_CTRL,OUTPUT); digitalWrite(PIN_ADC_CTRL,HIGH); delay(2);
@@ -313,29 +358,36 @@ uint16_t readBattery_mV(){
   return (uint16_t)(VBAT_ADC_FACTOR*raw*1000.0f);
 }
 
-// ---------- LoRa helpers ----------
+// =========================== LoRa helpers ========================== //
 static inline uint8_t mapDR(uint8_t i){ switch(i){case 0:return DR_0;case 1:return DR_1;case 2:return DR_2;case 3:return DR_3;case 4:return DR_4;case 5:return DR_5;default:return DR_3;} }
 static inline void applyLoraDR(){ LoRaWAN.setDefaultDR(mapDR(cfg.lora_dr)); }
 
-// Unified TX policy for unstable networks
+/**
+ * @brief Enforce a unified TX policy for unstable links.
+ *        Current policy: confirmed uplink, up to 3 trials, ADR disabled.
+ *        Note: Keep functional behavior intact per 1.7.1 change log.
+ */
 static void enforceTxPolicy(){
-  isTxConfirmed = false;     // confirmed
-  confirmedNbTrials = 1;    // nur 1 TX
-  loraWanAdr = false;       // verhindert LinkADRReq vom Netz
+  isTxConfirmed     = true;   // confirmed uplink
+  confirmedNbTrials = 3;      // up to 3 retries decided by the stack
+  loraWanAdr        = false;  // avoid network ADR requests after sleep
 }
 
-
-volatile bool     lora_has_rx=false;
-volatile int16_t  lora_last_rssi=0;
-volatile int8_t   lora_last_snr=0;
+// ================ Downlink indicators for diagnostics ============== //
+volatile bool     lora_has_rx   = false;
+volatile int16_t  lora_last_rssi= 0;
+volatile int8_t   lora_last_snr = 0;
 volatile uint32_t lora_last_rx_ms=0;
 extern "C" void downLinkDataHandle(McpsIndication_t *ind){
   lora_has_rx=true; lora_last_rssi=ind->Rssi; lora_last_snr=ind->Snr; lora_last_rx_ms=millis();
 }
 
-// ---------- OLED ----------
+// ============================== OLED =============================== //
 struct OledMarquee{ String text; int y=28; int w=0; int x=0; bool active=false; uint32_t last=0; } apScroll;
 
+/**
+ * @brief Horizontal marquee tick for AP status line.
+ */
 void oledMarqueeTick(){
   if(!apScroll.active) return;
   const uint32_t now=millis(); if(now-apScroll.last<MARQUEE_PERIOD_MS) return; apScroll.last=now;
@@ -344,6 +396,9 @@ void oledMarqueeTick(){
   apScroll.x+=2; if(apScroll.x>apScroll.w+16) apScroll.x=0; OLED_Display.display();
 }
 
+/**
+ * @brief Show splash with MKP logo at boot.
+ */
 static void oledSplash(){
   OLED_Display.init(); OLED_Display.clear(); OLED_Display.setColor(WHITE);
   const int x=(128-logoMKP_width)/2;
@@ -352,6 +407,10 @@ static void oledSplash(){
   OLED_Display.drawString(64,logoMKP_height+2,"MARX KRONTAL PARTNER");
   OLED_Display.display(); delay(3000);
 }
+
+/**
+ * @brief Render AP SSID/IP screen and stop marquee.
+ */
 static void oledShowSSID(const String& ssid){
   OLED_Display.clear();
   OLED_Display.setFont(ArialMT_Plain_10);
@@ -363,8 +422,11 @@ static void oledShowSSID(const String& ssid){
   apScroll.active=false;
 }
 
+/**
+ * @brief One-shot sensor screen for AP mode.
+ */
 void oledSensorsOnce(){
-  // read before any drawing
+  // Acquire data before drawing to minimize flicker.
   sensorsPowerOn();
   CrackMeas cr=readCrack();
   float t=readTempOnceC();
@@ -393,14 +455,21 @@ void oledSensorsOnce(){
   OLED_Display.display();
 }
 
-// ---------- Web ----------
+// ============================== Web API ============================ //
 WebServer http(80);
 
+/**
+ * @brief Return current IP string depending on Wi-Fi mode.
+ */
 String ipStr(){
   if(WiFi.getMode()==WIFI_AP) return WiFi.softAPIP().toString();
   if(WiFi.status()==WL_CONNECTED) return WiFi.localIP().toString();
   return "-";
 }
+
+/**
+ * @brief Basic content type resolution for static files.
+ */
 String contentTypeFor(const String& p){
   if(p.endsWith(".html")) return "text/html; charset=utf-8";
   if(p.endsWith(".svg"))  return "image/svg+xml";
@@ -409,18 +478,27 @@ String contentTypeFor(const String& p){
   if(p.endsWith(".js"))   return "application/javascript";
   return "application/octet-stream";
 }
+
+/**
+ * @brief Serve a LittleFS file via HTTP if present.
+ */
 bool streamFileFS(const char* p){
   if(!LittleFS.exists(p)) return false;
   File f=LittleFS.open(p,"r"); if(!f) return false;
   http.streamFile(f,contentTypeFor(p)); f.close(); return true;
 }
 
+/**
+ * @brief GET /api/state — current runtime state and snapshot data.
+ */
 void api_state(){
   StaticJsonDocument<JSON_STATE_DOC> d;
-  d["mode"]=(WiFi.getMode()==WIFI_AP)?"AP":"LNS";
-  d["ip"]=ipStr();
-  d["uptime_s"]=(uint32_t)(millis()/MS_PER_SEC);
-  d["heap_free"]=ESP.getFreeHeap();
+  d["mode"]     = (WiFi.getMode()==WIFI_AP)?"AP":"LNS";
+  d["ip"]       = ipStr();
+  d["uptime_s"] = (uint32_t)(millis()/MS_PER_SEC);
+  d["heap_free"]= ESP.getFreeHeap();
+  d["fw"]       = FW_VER;
+  d["fw_build"] = String(__DATE__) + " " + String(__TIME__);
 
   sensorsPowerOn();
   CrackMeas cr=readCrack();
@@ -428,19 +506,19 @@ void api_state(){
   float tC=readTempOnceC();
   sensorsPowerOff();
 
-  d["crack_present"]=cr.present;
-  d["adc_raw"]=cr.present?cr.raw0:0;
-  d["adc_ref"]=cr.present?cr.raw1:0;
+  d["crack_present"] = cr.present;
+  d["adc_raw"]       = cr.present?cr.raw0:0;
+  d["adc_ref"]       = cr.present?cr.raw1:0;
   if(cr.present){ d["crack_mm"]=cr.mm; d["auto"]=cr.auto_used; } else { d["crack_mm"]=nullptr; d["auto"]=nullptr; }
-  d["batt_mV"]=batmV;
-  d["DS18B20_Temp"]= isfinite(tC)?tC:(double)NAN;
+  d["batt_mV"]      = batmV;
+  d["DS18B20_Temp"] = isfinite(tC)?tC:(double)NAN;
 
   JsonObject c=d.createNestedObject("cfg");
-  c["minutes"]=cfg.minutes;
-  c["devEui_lsb"]=toHex(cfg.devEui,8);
-  c["appEui_lsb"]=toHex(cfg.appEui,8);
-  c["appKey_msb"]=toHex(cfg.appKey,16);
-  c["crack_len_x100"]=cfg.crack_len_mm_x100;
+  c["minutes"]    = cfg.minutes;
+  c["devEui_lsb"] = toHex(cfg.devEui,8);
+  c["appEui_lsb"] = toHex(cfg.appEui,8);
+  c["appKey_msb"] = toHex(cfg.appKey,16);
+  c["crack_len_x100"] = cfg.crack_len_mm_x100;
 
   JsonObject cal=c.createNestedObject("crack_cal");
   cal["r0"]=cfg.crack_r0; cal["mm0"]=(float)cfg.crack_mm0_x100/100.0f;
@@ -458,9 +536,19 @@ void api_state(){
   http.send(200,"application/json",out);
 }
 
+/**
+ * @brief POST /api/send — schedule immediate uplink through state machine.
+ */
 void api_send(){ deviceState=DEVICE_STATE_SEND; http.send(200,"text/plain","queued"); }
+
+/**
+ * @brief POST /api/reset — restart the MCU.
+ */
 void api_reset(){ http.send(200,"text/plain","restarting"); delay(200); ESP.restart(); }
 
+/**
+ * @brief GET /api/config — return current configuration snapshot.
+ */
 void api_cfg_get(){
   StaticJsonDocument<JSON_CFG_DOC> d;
   d["devEui_lsb"]=toHex(cfg.devEui,8);
@@ -485,6 +573,10 @@ void api_cfg_get(){
   http.send(200,"application/json",out);
 }
 
+/**
+ * @brief POST /api/config/lora — update LoRa, crack geometry and calibration.
+ *        Validates inputs and persists to NVS; restarts MCU after changes.
+ */
 void api_cfg_lora(){
   if(!http.hasArg("plain")){ http.send(400,"text/plain","bad json"); return; }
   StaticJsonDocument<800> d;
@@ -549,6 +641,9 @@ void api_cfg_lora(){
   http.send(200,"text/plain","ok"); delay(200); ESP.restart();
 }
 
+/**
+ * @brief GET /api/deveui — report chip and stored DevEUIs.
+ */
 void api_deveui_get(){
   uint8_t chipMSB[8]; devEuiFromChipMSB(chipMSB);
   uint8_t chipLSB[8]; for(int i=0;i<8;i++) chipLSB[i]=chipMSB[7-i];
@@ -559,6 +654,10 @@ void api_deveui_get(){
   String out; serializeJson(d,out);
   http.send(200,"application/json",out);
 }
+
+/**
+ * @brief POST /api/deveui — set DevEUI to chip or explicit value.
+ */
 void api_deveui_post(){
   if(!http.hasArg("plain")){ http.send(400,"text/plain","bad json"); return; }
   StaticJsonDocument<128> d;
@@ -578,6 +677,9 @@ void api_deveui_post(){
   http.send(400,"text/plain","args");
 }
 
+/**
+ * @brief Attach HTTP routes and start WebServer; serves SPA index.html on 404.
+ */
 void attachHttpFS(){
   http.on("/", [](){ if(!streamFileFS("/index.html")) http.send(404,"text/plain","index missing"); });
   http.on("/logo.svg", [](){ if(!streamFileFS("/logo.svg")) http.send(404,"text/plain","logo missing"); });
@@ -593,7 +695,11 @@ void attachHttpFS(){
   http.begin();
 }
 
-// ---------- Uplink payload (8 bytes) ----------
+// ========================= Uplink payload (8B) ===================== //
+/**
+ * @brief Prepare 8-byte payload: T, ADCraw, crack*1000, VBAT.
+ *        Layout: 4x uint16 big-endian in appData[0..7].
+ */
 void prepareTxFrame(uint8_t){
   sensorsPowerOn();
   CrackMeas cr = readCrack();
@@ -611,14 +717,16 @@ void prepareTxFrame(uint8_t){
   Serial.printf("TX 8B: T=%d ADC=%u CR=%u VB=%u  HEX=%02X%02X %02X%02X %02X%02X %02X%02X\n",
   (int)t, adcRaw, cr1000, vb,
   appData[0],appData[1], appData[2],appData[3], appData[4],appData[5], appData[6],appData[7]);
-
 }
 
-
-// ---------- App ----------
+// ============================== App ================================ //
 enum OledPhase{ OLED_LOGO, OLED_SSID, OLED_SENS };
 OledPhase oledPhase=OLED_LOGO; uint32_t oledPhaseStart=0;
 
+/**
+ * @brief Application setup: IOs, config, LoRa keys, Wi-Fi/AP, OLED.
+ *        Note: Do not force deviceState=DEVICE_STATE_INIT here to avoid re-join loops.
+ */
 void setup(){
   Serial.begin(115200);
   Mcu.begin(HELTEC_BOARD,SLOW_CLK_TPYE);
@@ -626,6 +734,8 @@ void setup(){
   pinMode(PIN_MODE_OUT,OUTPUT); digitalWrite(PIN_MODE_OUT,LOW);
   pinMode(PIN_MODE_IN,INPUT_PULLUP); delay(5);
   pinMode(PIN_CRACK_PRESENT,INPUT_PULLUP);
+  
+  Serial.printf("FW %s build %s %s\n", FW_VER, __DATE__, __TIME__);
 
   for(int i=0;i<5;i++){ apMode |= (digitalRead(PIN_MODE_IN)==LOW); delay(2); }
 
@@ -633,7 +743,7 @@ void setup(){
   loadCfg();
 
   memcpy(devEui,cfg.devEui,8); memcpy(appEui,cfg.appEui,8); memcpy(appKey,cfg.appKey,16);
-  memcpy(DevEui,devEui,8); memcpy(AppEui,appEui,8); memcpy(AppKey,appKey,16);
+  memcpy(DevEui,devEui,8);     memcpy(AppEui,appEui,8);     memcpy(AppKey,appKey,16);
 
   uint8_t chipMSB[8]; devEuiFromChipMSB(chipMSB);
   uint8_t chipLSB[8]; for(int i=0;i<8;i++) chipLSB[i]=chipMSB[7-i];
@@ -643,7 +753,7 @@ void setup(){
     toHex(chipMSB,8).c_str(), toHex(chipLSB,8).c_str(), toHex(cfg.devEui,8).c_str());
 
   if(apMode){
-    // No TX policy changes here. Unified later.
+    // AP mode for configuration
     WiFi.mode(WIFI_AP);
     bool fsOk=LittleFS.begin(true);
     if(fsOk) attachHttpFS(); else Serial.println("[FS] mount failed");
@@ -653,7 +763,7 @@ void setup(){
     pinMode(Vext,OUTPUT); digitalWrite(Vext,LOW);
     oledSplash(); oledPhase=OLED_SSID; oledPhaseStart=millis(); oledShowSSID(ssid);
   }else{
-    // No TX policy changes here. Unified later.
+    // LNS mode
     WiFi.persistent(false); WiFi.disconnect(true,true); WiFi.mode(WIFI_OFF);
 #if defined(CONFIG_BT_ENABLED) && CONFIG_BT_ENABLED
     btStop();
@@ -661,9 +771,13 @@ void setup(){
     pinMode(Vext,OUTPUT); digitalWrite(Vext,HIGH);
   }
 
-  deviceState=DEVICE_STATE_INIT;
+  // IMPORTANT: Keep deviceState unchanged here to avoid forced re-join.
+  // deviceState=DEVICE_STATE_INIT; // intentionally disabled to prevent double-send after sleep
 }
 
+/**
+ * @brief Main loop: HTTP in AP mode, LoRaWAN state machine otherwise.
+ */
 void loop(){
   static uint32_t appTxDutyCycleCached=0;
   if(appTxDutyCycleCached==0) appTxDutyCycleCached=60000UL*cfg.minutes;
@@ -674,39 +788,42 @@ void loop(){
     static uint32_t tmr=0; if(oledPhase==OLED_SENS && millis()-tmr>1000){ tmr=millis(); oledSensorsOnce(); }
   }
 
-
-
   switch(deviceState){
     case DEVICE_STATE_INIT:
+      // Initialize LoRaWAN and join parameters
       memcpy(DevEui,cfg.devEui,8); memcpy(AppEui,cfg.appEui,8); memcpy(AppKey,cfg.appKey,16);
       loraWanAdr = cfg.lora_adr;
       LoRaWAN.init(CLASS_A, ACTIVE_REGION);
       applyLoraDR();
-      enforceTxPolicy();                // enforce at init
+      enforceTxPolicy();                // ensure policy at init
       deviceState=DEVICE_STATE_JOIN; break;
 
     case DEVICE_STATE_JOIN:
+      // Start OTAA join; some stacks reset MIB around join
       LoRaWAN.join();
-      enforceTxPolicy();                // enforce around join, some stacks reset MIB
+      enforceTxPolicy();                // re-apply policy around join
       break;
 
     case DEVICE_STATE_SEND:
-      enforceTxPolicy();                // enforce before each TX for robustness
+      // Prepare and send uplink once per cycle
+      enforceTxPolicy();                // enforce before each TX
       prepareTxFrame(UPLINK_PORT);
       LoRaWAN.send();
       deviceState=DEVICE_STATE_CYCLE; break;
 
     case DEVICE_STATE_CYCLE:{
-      const uint32_t txDutyCycleTime = 60000UL * cfg.minutes; // fixed interval, no minute alignment
+      // Fixed interval scheduling (no minute alignment)
+      const uint32_t txDutyCycleTime = 60000UL * cfg.minutes;
       LoRaWAN.cycle(txDutyCycleTime);
       deviceState=DEVICE_STATE_SLEEP; break;
     }
 
     case DEVICE_STATE_SLEEP:
+      // Low-power sleep while preserving LoRa session counters
       sensorsPowerOff();
       if(apMode) LoRaWAN.sleep(CLASS_C); else LoRaWAN.sleep(CLASS_A);
       break;
 
-    default: deviceState=DEVICE_STATE_INIT; break;
+    default: deviceState=DEVICE_STATE_INIT; break; // safe fallback
   }
 }
