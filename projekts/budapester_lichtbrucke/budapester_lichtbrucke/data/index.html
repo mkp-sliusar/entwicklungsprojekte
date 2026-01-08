@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<title id="t_title">Budapester Licht Brücke</title>
+<style>
+:root{
+  --bg:#111; --fg:#eee; --card:#1a1a1a; --border:#333; --muted:#9aa; --field:#222; --btn:#222;
+  --ff:system-ui,Arial,sans-serif; --fs:14px; --lh:1.35;
+  --in-fs:14px; --in-lh:1; --in-pad-y:8px; --in-pad-x:12px; --in-radius:12px;
+}
+html[data-theme="light"]{
+  color-scheme: light;
+  --g0:#f6f7f8; --g1:#eef0f1; --g2:#e3e5e7; --g3:#d8dadc; --g4:#cdd0d3; --g5:#c2c5c8;
+  --bg:var(--g0); --fg:#111; --border:#ddd; --muted:#556; --field:#fff; --btn:#f3f4f6; --card:var(--g3);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+html,body{font-family:var(--ff);font-size:var(--fs);line-height:var(--lh)}
+body{margin:0;background:var(--bg);color:var(--fg)}
+.container{min-height:100vh;display:flex;flex-direction:column;max-width:1100px;margin:0 auto;width:100%;padding:16px}
+.main{flex:1}
+h1{font-size:20px;margin:0 0 12px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+h3{margin:0 0 8px}
+.header-ctrl{display:flex;gap:8px}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(320px,1fr));gap:12px}
+@media (max-width:900px){.grid{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px;display:flex;flex-direction:column}
+.hr{height:1px;background:var(--border);margin:10px 0}
+button,input,select{font:inherit;line-height:inherit;color:inherit}
+input,select{font-size:var(--in-fs);line-height:var(--in-lh);padding:var(--in-pad-y) var(--in-pad-x);border:1px solid var(--border);border-radius:var(--in-radius);background:var(--field);color:var(--fg)}
+input:focus,select:focus{outline:none;box-shadow:0 0 0 2px inset var(--border)}
+.btn{padding:8px 12px;border:1px solid var(--border);border-radius:10px;background:var(--field);color:var(--fg);font-weight:600}
+.btn:hover{background:var(--btn)}
+.btn-compact{padding:4px 8px;font-size:12px;border-radius:8px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.field{display:grid;grid-template-columns:140px 1fr;gap:12px;align-items:center;margin-top:8px}
+.list{display:grid;gap:8px;margin-top:8px}
+.badge{display:inline-block;padding:2px 8px;border:1px solid var(--border);border-radius:999px;font-size:12px;background:var(--btn)}
+.badge.ok{border-color:#2e7d32}
+.badge.err{border-color:#b71c1c}
+.small{color:var(--muted);font-size:12px}
+.footer{margin-top:16px;padding-top:12px;border-top:1px solid var(--border);font-size:12px;color:var(--muted);display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:center}
+.footer a{color:inherit;text-decoration:none}
+.footer a:hover{text-decoration:underline}
+
+/* Rules UI */
+.rule{display:grid;grid-template-columns:110px 130px 1fr auto;gap:10px;align-items:center;padding:6px 0}
+.rule input[type=number]{width:100%;min-width:0}
+.rule input[type=color]{width:100%;height:32px;padding:0;border-radius:8px;border:1px solid var(--border);background:transparent}
+.rule .del{border:none;background:transparent;padding:4px 8px;cursor:pointer;font-size:16px;line-height:1}
+.rule .del:hover{filter:brightness(1.1)}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>
+    <a href="https://www.marxkrontal.com/de/" target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;text-decoration:none;color:inherit;gap:8px">
+      <img src="/logo.svg" alt="MKP" style="height:28px">
+      <span id="i_title">Budapester Licht Brücke</span>
+    </a>
+    <div class="header-ctrl">
+      <button id="langBtn" class="btn btn-compact" type="button">EN</button>
+      <button id="themeBtn" class="btn btn-compact" type="button">🌙</button>
+    </div>
+  </h1>
+
+  <main class="main">
+    <div class="grid">
+      <!-- Card 1: Wi-Fi -->
+      <div class="card">
+        <h3 id="i_wifi">Wi-Fi</h3>
+        <div class="field">
+          <label id="i_scan_k">Scan</label>
+          <div class="row">
+            <button id="btnScan" class="btn" type="button">Scan networks</button>
+            <span id="scanCount" class="small">—</span>
+          </div>
+        </div>
+        <div class="field">
+          <label for="ssidField" id="i_ssid_k">SSID</label>
+          <select id="ssidField"></select>
+        </div>
+        <div class="field">
+          <label for="passField" id="i_pass_k">Password</label>
+          <input id="passField" type="password" autocomplete="off" placeholder="••••••••">
+        </div>
+        <div class="row">
+          <button id="btnConnect" class="btn" type="button">Connect</button>
+          <span id="stateBadge" class="badge">—</span>
+          <span id="ipLine" class="small">IP: —</span>
+          <span id="apClients" class="small">AP: —</span>
+        </div>
+        <div class="hr"></div>
+        <h3 id="i_saved">Saved networks</h3>
+        <div id="saved" class="list" aria-live="polite"></div>
+        <div class="hr"></div>
+        <div id="msg" class="small" aria-live="polite" role="status"></div>
+      </div>
+
+      <!-- Card 2: LED colors by dB -->
+      <div class="card">
+        <h3 id="i_colors">LED colors by dB</h3>
+
+        <div class="field">
+          <label id="i_rules_k">Rules</label>
+          <div class="row">
+            <button id="btnAddRule" class="btn" type="button">Add rule</button>
+            <button id="btnSaveRules" class="btn" type="button">Save rules</button>
+            <span id="rulesCount" class="small">—</span>
+          </div>
+        </div>
+
+        <div id="rules" class="list" aria-live="polite"></div>
+
+        <div class="hr"></div>
+        <div id="msg2" class="small" aria-live="polite" role="status"></div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <a href="https://www.marxkrontal.com/de/" target="_blank" rel="noopener noreferrer">© <span id="yr"></span> MKP GmbH</a>
+    <span id="i_footer_by">developed by</span>
+    <a href="mailto:roman.sliusar@marxkrontal.com">SLR</a>
+  </footer>
+</div>
+
+<script>
+const THEME_KEY='theme';
+const LANG_KEY='lang';
+const LANGS=['en','de','uk'];
+let CURR_LANG='en';
+
+const I18N={
+  en:{title:'Budapester Licht Brücke',wifi:'Wi-Fi',scan:'Scan',scan_btn:'Scan networks',ssid:'SSID',pass:'Password',
+      connect:'Connect',saved:'Saved networks',forget:'Forget',ip:'IP',state:'State',ap:'AP clients',
+      states:{disconnected:'disconnected',connecting:'connecting…',connected:'connected'},
+      footer_by:'developed by',
+      colors:'LED colors by dB',rules:'Rules',add_rule:'Add rule',save_rules:'Save rules',
+      msg_scan_ok:'Scan complete',msg_scan_err:'Scan error',msg_connecting:'Connecting…',msg_connected:'Connected',
+      msg_connect_err:'Connect error',msg_forget_ok:'Profile removed',msg_forget_err:'Remove error',
+      msg_rules_loaded:'Rules loaded',msg_rules_saved:'Rules saved',msg_rules_err:'Rules error'},
+  de:{title:'Budapester Licht Brücke',wifi:'Wi-Fi',scan:'Scannen',scan_btn:'Netzwerke scannen',ssid:'SSID',pass:'Passwort',
+      connect:'Verbinden',saved:'Gespeicherte Netzwerke',forget:'Löschen',ip:'IP',state:'Status',ap:'AP-Clients',
+      states:{disconnected:'getrennt',connecting:'verbinden…',connected:'verbunden'},
+      footer_by:'entwickelt von',
+      colors:'LED-Farben nach dB',rules:'Regeln',add_rule:'Regel hinzufügen',save_rules:'Regeln speichern',
+      msg_scan_ok:'Scan fertig',msg_scan_err:'Scanfehler',msg_connecting:'Verbinden…',msg_connected:'Verbunden',
+      msg_connect_err:'Verbindungsfehler',msg_forget_ok:'Profil entfernt',msg_forget_err:'Fehler beim Entfernen',
+      msg_rules_loaded:'Regeln geladen',msg_rules_saved:'Regeln gespeichert',msg_rules_err:'Regelfehler'},
+  uk:{title:'Budapester Licht Brücke',wifi:'Wi-Fi',scan:'Сканування',scan_btn:'Сканувати мережі',ssid:'SSID',pass:'Пароль',
+      connect:'Підключити',saved:'Збережені мережі',forget:'Видалити',ip:'IP',state:'Стан',ap:'Клієнти AP',
+      states:{disconnected:'нема звʼязку',connecting:'підключення…',connected:'підключено'},
+      footer_by:'розроблено',
+      colors:'Кольори LED за dB',rules:'Правила',add_rule:'Додати правило',save_rules:'Зберегти правила',
+      msg_scan_ok:'Сканування завершено',msg_scan_err:'Помилка сканування',msg_connecting:'Підключення…',msg_connected:'Підключено',
+      msg_connect_err:'Помилка підключення',msg_forget_ok:'Профіль видалено',msg_forget_err:'Помилка видалення',
+      msg_rules_loaded:'Правила завантажено',msg_rules_saved:'Правила збережено',msg_rules_err:'Помилка правил'}
+};
+
+function byId(id){ return document.getElementById(id); }
+function setTheme(t){ document.documentElement.dataset.theme=t; localStorage.setItem(THEME_KEY,t); }
+byId('themeBtn').onclick=()=>setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark');
+setTheme(localStorage.getItem(THEME_KEY)||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'));
+byId('yr').textContent=new Date().getFullYear();
+
+/* ===== i18n ===== */
+function applyI18n(){
+  const t=I18N[CURR_LANG]||I18N.en;
+  document.documentElement.lang=CURR_LANG;
+  byId('t_title').textContent=t.title;
+  byId('i_title').textContent=t.title;
+  byId('i_wifi').textContent=t.wifi;
+  byId('i_scan_k').textContent=t.scan;
+  byId('btnScan').textContent=t.scan_btn;
+  byId('i_ssid_k').textContent=t.ssid;
+  byId('i_pass_k').textContent=t.pass;
+  byId('btnConnect').textContent=t.connect;
+  byId('i_saved').textContent=t.saved;
+  byId('i_colors').textContent=t.colors;
+  byId('i_rules_k').textContent=t.rules;
+  byId('i_footer_by').textContent=t.footer_by;
+  byId('langBtn').textContent=CURR_LANG.toUpperCase();
+}
+(function initLang(){
+  const saved=localStorage.getItem(LANG_KEY);
+  CURR_LANG=LANGS.includes(saved)?saved:'en';
+  applyI18n();
+  byId('langBtn').onclick=()=>{
+    const i=(LANGS.indexOf(CURR_LANG)+1)%LANGS.length;
+    CURR_LANG=LANGS[i]; localStorage.setItem(LANG_KEY,CURR_LANG); applyI18n();
+    refreshSaved();
+  };
+})();
+
+/* ===== Wi-Fi ===== */
+async function q(url,opts){ const r=await fetch(url,opts); if(!r.ok) throw new Error(await r.text()); const ct=r.headers.get('content-type')||''; return ct.includes('application/json')?r.json():r.text(); }
+function log(text){ const el=byId('msg'); if(!el) return; const ts=new Date().toLocaleTimeString(); el.textContent = el.textContent? (el.textContent+'\n'+'['+ts+'] '+text) : '['+ts+'] '+text; }
+function badge(state){
+  const b=byId('stateBadge'); if(!b) return; const s=(I18N[CURR_LANG]?.states)||I18N.en.states;
+  b.classList.remove('ok','err');
+  if(state==='connected'){ b.textContent=s.connected; b.classList.add('ok'); }
+  else if(state==='connecting'){ b.textContent=s.connecting; }
+  else { b.textContent=s.disconnected; b.classList.add('err'); }
+}
+async function scan(){
+  try{
+    const j=await q('/api/wifi/scan');
+    const sel=byId('ssidField'); sel.innerHTML='';
+    (j.nets||[]).sort((a,b)=>b.rssi-a.rssi).forEach(n=>{
+      const o=document.createElement('option'); o.value=n.ssid; o.textContent=`${n.ssid} (${n.rssi} dBm)`; sel.appendChild(o);
+    });
+    byId('scanCount').textContent=String((j.nets||[]).length);
+    log((I18N[CURR_LANG]||I18N.en).msg_scan_ok);
+  }catch(_){ log((I18N[CURR_LANG]||I18N.en).msg_scan_err); }
+}
+async function connect(){
+  try{
+    badge('connecting'); log((I18N[CURR_LANG]||I18N.en).msg_connecting);
+    await q('/api/wifi/connect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ssid:byId('ssidField').value,pass:byId('passField').value})});
+    pollStatus(40);
+  }catch(_){ badge('disconnected'); log((I18N[CURR_LANG]||I18N.en).msg_connect_err); }
+}
+let pollTimer=null;
+function pollStatus(steps){
+  clearInterval(pollTimer);
+  pollTimer=setInterval(async()=>{
+    try{
+      const t=I18N[CURR_LANG]||I18N.en;
+      const j=await q('/api/wifi/status');
+      badge(j.state||'disconnected');
+      byId('ipLine').textContent=`${t.ip}: ${j.ip||'—'}`;
+      byId('apClients').textContent=`${t.ap}: ${j.ap_clients ?? '—'}`;
+      if(j.state==='connected'){ clearInterval(pollTimer); log(t.msg_connected); refreshSaved(); }
+      if(--steps<=0) clearInterval(pollTimer);
+    }catch(_){}
+  },500);
+}
+async function refreshSaved(){
+  try{
+    const j=await q('/api/wifi/saved');
+    const root=byId('saved'); root.innerHTML='';
+    (j.profiles||[]).forEach(p=>{
+      const row=document.createElement('div'); row.className='row';
+      const name=document.createElement('div'); name.textContent=p.ssid; name.className='small';
+      const btn=document.createElement('button'); btn.className='btn'; btn.textContent=(I18N[CURR_LANG]||I18N.en).forget;
+      btn.onclick=async()=>{ try{ await q('/api/wifi/forget',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ssid:p.ssid})}); refreshSaved(); }catch(_){} };
+      row.append(name,btn); root.appendChild(row);
+    });
+  }catch(_){}
+}
+byId('btnScan').onclick=scan; byId('btnConnect').onclick=connect;
+scan(); refreshSaved(); pollStatus(8);
+
+/* ===== LED color rules: “≤ max dB → color” ===== */
+let rules = []; // [{max:number,color:'#RRGGBB'}]
+
+function normalizeLoadedRules(arr){
+  const a = Array.isArray(arr)?arr:[];
+  return a.map(x=>({ max:(x.max!=null ? +x.max : +x.db), color:String(x.color||'#00ff00') }))
+          .filter(x=>Number.isFinite(x.max)).sort((p,q)=>p.max-q.max);
+}
+function rangesFromRules(sorted){
+  const res=[]; let prev=-Infinity;
+  for(const r of sorted){
+    const from = Number.isFinite(prev)? (prev+1) : 0;
+    const to = r.max;
+    if(to>=from) res.push({from,to,color:r.color});
+    prev = r.max;
+  }
+  return res;
+}
+function ruleRow(r,i){
+  const row=document.createElement('div'); row.className='rule';
+
+  const dbWrap=document.createElement('div');
+  const dbInput=document.createElement('input');
+  dbInput.type='number'; dbInput.min='0'; dbInput.max='200'; dbInput.step='1'; dbInput.value=r.max;
+  dbInput.oninput=()=>{ r.max=parseInt(dbInput.value||'0',10); render(); };
+  dbWrap.appendChild(dbInput);
+
+  const color=document.createElement('input'); color.type='color'; color.value=r.color||'#00ff00';
+  color.oninput=()=>{ r.color=color.value; render(); };
+
+  const label=document.createElement('div'); label.className='small'; label.textContent='';
+
+  const del=document.createElement('button'); del.className='del'; del.type='button'; del.textContent='✕';
+  del.title='Remove'; del.onclick=()=>{ rules.splice(i,1); render(); };
+
+  row.append(dbWrap,color,label,del);
+  return row;
+}
+function render(){
+  rules = rules.filter(x=>Number.isFinite(x.max)).sort((a,b)=>a.max-b.max);
+
+  const root=byId('rules'); root.innerHTML='';
+  rules.forEach((r,i)=>root.appendChild(ruleRow(r,i)));
+  byId('rulesCount').textContent=String(rules.length);
+
+  const rs=rangesFromRules(rules);
+  const children=[...root.children];
+  rs.forEach((seg,idx)=>{
+    const row=children[idx]; if(!row) return;
+    const label=row.children[2];
+    label.textContent = `≤ ${rules[idx].max} dB  →  ${seg.from}–${seg.to} dB`;
+  });
+}
+async function loadRules(){
+  try{
+    const r=await fetch('/api/ledmap');
+    if(r.ok){ const j=await r.json(); rules = normalizeLoadedRules(j.rules); }
+  }catch(_){}
+  if(!rules.length){
+    rules = normalizeLoadedRules([
+      {max:90,color:'#00ff00'},
+      {max:100,color:'#ffff00'},
+      {max:110,color:'#ff0000'}
+    ]);
+  }
+  render();
+  byId('msg2').textContent=(I18N[CURR_LANG]||I18N.en).msg_rules_loaded;
+}
+async function saveRules(){
+  try{
+    await fetch('/api/ledmap',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rules})});
+    byId('msg2').textContent=(I18N[CURR_LANG]||I18N.en).msg_rules_saved;
+  }catch(_){ byId('msg2').textContent=(I18N[CURR_LANG]||I18N.en).msg_rules_err; }
+}
+function addRule(){
+  const next = rules.length? (rules[rules.length-1].max+5) : 90;
+  rules.push({max:next,color:'#00ffff'}); render();
+}
+byId('btnAddRule').onclick=addRule;
+byId('btnSaveRules').onclick=saveRules;
+
+loadRules();
+</script>
+</body>
+</html>
