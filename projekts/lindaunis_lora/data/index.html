@@ -1,10 +1,28 @@
+<!--
+Web UI aligned to current firmware API (/api/state, /api/config, /api/config/lora, /api/send, /api/reset)
+
+Shows:
+- Temperature window: cur/avg/min/max (°C)
+- Crack window: cur/avg/min/max (mm) + x1000 (optional)
+- Full crack calibration settings (ref_mode, len_mm, r0/r1, mm0/mm1)
+- TX period (minutes) editable
+- Meas period fixed = 10s (read-only; firmware enforces)
+- LoRa keys + DR/ADR
+- Displays note about ADS1115 compensation/reference:
+    Auto mode uses CH1 as reference (ratio CH0/CH1), Manual uses calibration mapping.
+
+If firmware later adds fields like:
+  crack_raw0, crack_raw1, crack_auto_used
+this UI will show them (optional).
+-->
+
 <!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="dark light">
-<title id="t_title">LoRa Temperature Monitoring</title>
+<title id="t_title">LoRa Riss-Monitoring</title>
 <style>
 :root{
   --bg:#111; --fg:#eee; --card:#1a1a1a; --border:#333; --muted:#9aa; --field:#222; --btn:#222;
@@ -28,12 +46,8 @@ h1{font-size:20px;margin:0 0 12px;display:flex;align-items:center;justify-conten
 h3{margin:0 0 8px}
 h1,h3{line-height:1.2}
 h1{font-weight:700} h3{font-weight:600}
-.header-ctrl{
-  display:flex;align-items:baseline;justify-content:center;gap:8px;
-}
-.fw-info{
-  font-size:12px;color:var(--muted);line-height:1;margin:0;display:flex;align-items:end;
-}
+.header-ctrl{ display:flex;align-items:baseline;justify-content:center;gap:8px; }
+.fw-info{ font-size:12px;color:var(--muted);line-height:1;margin:0;display:flex;align-items:end; }
 @media (max-width:640px){
   h1{flex-direction:column;align-items:flex-start}
   .header-ctrl{width:100%;justify-content:space-between}
@@ -68,8 +82,6 @@ select{-webkit-appearance:none;-moz-appearance:none;appearance:none}
 .card:has(#i_lora) .row{display:flex;gap:12px}
 .card:has(#i_lora) .row .btn{flex:1 1 0;min-width:0;height:48px;display:flex;align-items:center;justify-content:center}
 .badge{display:inline-block;padding:2px 8px;border:1px solid var(--border);border-radius:999px;font-size:12px;background:var(--btn)}
-.badge.ok{outline:1px solid #2c7}
-.badge.err{outline:1px solid #e55}
 small{color:var(--muted)}
 #themeBtn,#langBtn{font-size:14px;line-height:1;padding:6px 10px}
 .footer{margin-top:16px;padding-top:12px;border-top:1px solid var(--border);font-size:12px;color:var(--muted);display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:center}
@@ -112,17 +124,16 @@ small{color:var(--muted)}
 table{width:100%;border-collapse:collapse;margin-top:10px}
 th,td{border-bottom:1px solid var(--border);text-align:left;padding:6px 6px;font-size:13px}
 th{color:var(--muted);font-weight:600}
-/* scroll area for last measurements */
 .logWrap{
   margin-top:10px;
   overflow:auto;
-  max-height:60vh;          /* desktop */
+  max-height:60vh;
   border-radius:10px;
 }
 @media (max-width:900px){
   .logWrap{ max-height:40vh; }
 }
-
+.note{font-size:12px;color:var(--muted);margin-top:8px;white-space:pre-line}
 </style>
 </head>
 
@@ -131,14 +142,13 @@ th{color:var(--muted);font-weight:600}
   <a href="https://www.marxkrontal.com/de/" target="_blank" rel="noopener noreferrer"
      style="display:flex;align-items:center;text-decoration:none;color:inherit;gap:8px">
     <img src="/logo.svg" alt="MKP" style="height:28px;vertical-align:middle">
-    <span id="i_title">LoRa Temperature Monitoring</span>
+    <span id="i_title">LoRa Riss-Monitoring</span>
   </a>
 
   <div class="header-ctrl">
     <small class="fw-info">
-      <span id="i_fw_k">Firmware</span>: <b id="fw">-</b>
+      <span>Firmware</span>: <b id="fw">-</b>
     </small>
-    <button id="langBtn" class="btn" title="Language" type="button">EN</button>
     <button id="themeBtn" class="btn" title="Theme" type="button">🌙</button>
   </div>
 </h1>
@@ -148,29 +158,51 @@ th{color:var(--muted);font-weight:600}
 
   <!-- Sensors -->
   <div class="card">
-    <h3 id="i_sensors">Sensors</h3>
-    <div><span class="k" id="i_time_k">Time</span>: <b id="t" aria-live="polite">--:--:--</b></div>
-    <div><span class="k" id="i_ds_k">DS18B20</span>: <span id="ds">-</span><span id="ds_unit"> °C</span></div>
-    <div><span class="k" id="i_bat_k">Battery</span>: <b id="bat">-</b> <span id="i_mv">mV</span></div>
+    <h3>Sensors</h3>
+    <div><span class="k">Time</span>: <b id="t" aria-live="polite">--:--:--</b></div>
 
     <div class="hr"></div>
-    <div><span class="k" id="i_tcur_k">Current</span>: <b id="tcur">-</b> °C</div>
-    <div><span class="k" id="i_tavg_k">Average</span>: <b id="tavg">-</b> °C</div>
-    <div><span class="k" id="i_tmin_k">Minimum</span>: <b id="tmin">-</b> °C</div>
-    <div><span class="k" id="i_tmax_k">Maximum</span>: <b id="tmax">-</b> °C</div>
-    <small id="i_window_info">Window</small>: <span id="win">-</span>
+
+    <div><span class="k">DS18B20</span>: <span id="ds">-</span><span id="ds_unit"> °C</span></div>
+    <div><span class="k">Battery</span>: <b id="bat">-</b> <span>mV</span></div>
+
+    <div class="hr"></div>
+
+    <h3 style="margin-top:2px">Temperature (window)</h3>
+    <div><span class="k">Current</span>: <b id="tcur">-</b> °C</div>
+    <div><span class="k">Average</span>: <b id="tavg">-</b> °C</div>
+    <div><span class="k">Minimum</span>: <b id="tmin">-</b> °C</div>
+    <div><span class="k">Maximum</span>: <b id="tmax">-</b> °C</div>
+
+    <div class="hr"></div>
+
+    <h3 style="margin-top:2px">Crack (ADS1115)</h3>
+    <div><span class="k">Current</span>: <b id="ccur">-</b> mm <small id="ccur_x"> </small></div>
+    <div><span class="k">Average</span>: <b id="cavg">-</b> mm <small id="cavg_x"> </small></div>
+    <div><span class="k">Minimum</span>: <b id="cmin">-</b> mm <small id="cmin_x"> </small></div>
+    <div><span class="k">Maximum</span>: <b id="cmax">-</b> mm <small id="cmax_x"> </small></div>
+
+    <small>Window</small>: <span id="win">-</span>
+
+    <div class="note" id="crkNote">
+Auto mode: uses ADS1115 CH1 as reference (ratio CH0/CH1), clamped by RAW_MIN_STABLE.
+Manual mode: uses calibration mapping (r0/r1 ↔ mm0/mm1) and length limit.
+    </div>
+
+    <div class="note" id="crkRaw" style="display:none"></div>
   </div>
 
   <!-- Controller -->
   <div class="card">
-    <h3 id="i_controller">Controller</h3>
-    <div><span class="k" id="i_mode_k">Mode</span>: <b id="mode">-</b></div>
-    <div><span class="k" id="i_ip_k">IP</span>: <b id="ip">-</b></div>
-    <div><span class="k" id="i_uptime_k">Uptime</span>: <b id="up">-</b> s</div>
-    <div><span class="k" id="i_heap_k">Heap</span>: <b id="heap">-</b> B</div>
+    <h3>Controller</h3>
+    <div><span class="k">Mode</span>: <b id="mode">-</b></div>
+    <div><span class="k">IP</span>: <b id="ip">-</b></div>
+    <div><span class="k">Uptime</span>: <b id="up">-</b> s</div>
+    <div><span class="k">Heap</span>: <b id="heap">-</b> B</div>
 
     <div class="hr"></div>
-    <div><span class="k" id="i_nexttx_k">Next TX</span>: <b id="nexttx">-</b> s</div>
+    <div><span class="k">LoRa joined</span>: <b id="joined">-</b></div>
+    <div><span class="k">Next TX</span>: <b id="nexttx">-</b> s</div>
 
     <div class="hr"></div>
     <div class="actions">
@@ -186,38 +218,33 @@ th{color:var(--muted);font-weight:600}
   <div class="card">
     <h3 id="i_lora">LoRa / Sampling</h3>
 
-    <div class="row">
-      <button id="btnReadChip" class="btn" type="button">Read DevEUI from chip</button>
-      <button id="btnSaveChip" class="btn" type="button">Use chip DevEUI</button>
-    </div>
-
     <div class="field">
-      <label for="devEuiField" id="i_deveui_k">DevEUI</label>
+      <label for="devEuiField">DevEUI</label>
       <input id="devEuiField" inputmode="latin" autocomplete="off" placeholder="DevEUI LSB e.g. 7766554433221100">
     </div>
     <div class="field">
-      <label for="appEuiField" id="i_appeui_k">AppEUI</label>
+      <label for="appEuiField">AppEUI</label>
       <input id="appEuiField" inputmode="latin" autocomplete="off" placeholder="AppEUI LSB">
     </div>
     <div class="field">
-      <label for="appKeyField" id="i_appkey_k">AppKey</label>
+      <label for="appKeyField">AppKey</label>
       <input id="appKeyField" inputmode="latin" autocomplete="off" placeholder="AppKey MSB">
     </div>
 
     <div class="field">
-      <label for="minutesField" id="i_interval_k">TX period (min)</label>
+      <label for="minutesField">TX period (min)</label>
       <input id="minutesField" type="number" min="1" max="100" step="1" placeholder="10">
     </div>
 
     <div class="field">
-      <label for="measField" id="i_meas_k">Meas period (s)</label>
-      <input id="measField" type="number" min="1" max="3600" step="1" placeholder="10">
+      <label for="measField">Meas period (s)</label>
+      <input id="measField" type="number" min="10" max="10" step="1" placeholder="10" disabled>
     </div>
 
     <div class="field">
-      <label for="drField" id="i_dr_k">DataRate (EU868)</label>
+      <label for="drField">DataRate (EU868)</label>
       <select id="drField">
-        <option id="opt_dr_auto" value="auto">Auto</option>
+        <option value="auto">Auto (ADR UI)</option>
         <option value="0">DR0 (SF12 / 125kHz)</option>
         <option value="1">DR1 (SF11 / 125kHz)</option>
         <option value="2">DR2 (SF10 / 125kHz)</option>
@@ -227,6 +254,41 @@ th{color:var(--muted);font-weight:600}
       </select>
     </div>
 
+    <div class="hr"></div>
+
+    <h3 style="margin-top:2px">Crack calibration</h3>
+
+    <div class="field">
+      <label for="crRefMode">Ref mode</label>
+      <select id="crRefMode">
+        <option value="auto">Auto (CH0/CH1)</option>
+        <option value="manual">Manual (r0/r1 ↔ mm0/mm1)</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="crLen">Length (mm)</label>
+      <input id="crLen" type="number" min="0.01" max="1000" step="0.01" placeholder="10.00">
+    </div>
+
+    <div class="field">
+      <label for="crR0">r0 (raw)</label>
+      <input id="crR0" type="number" min="-32768" max="32767" step="1" placeholder="5">
+    </div>
+    <div class="field">
+      <label for="crR1">r1 (raw)</label>
+      <input id="crR1" type="number" min="-32768" max="32767" step="1" placeholder="25480">
+    </div>
+
+    <div class="field">
+      <label for="crMm0">mm0 (mm)</label>
+      <input id="crMm0" type="number" min="0" max="1000" step="0.01" placeholder="0.00">
+    </div>
+    <div class="field">
+      <label for="crMm1">mm1 (mm)</label>
+      <input id="crMm1" type="number" min="0" max="1000" step="0.01" placeholder="10.00">
+    </div>
+
     <div class="actions">
       <button id="btnSaveAll" class="btn btn-block" type="button">Save settings</button>
     </div>
@@ -234,21 +296,21 @@ th{color:var(--muted);font-weight:600}
 
   <!-- Last measurements table -->
   <div class="card">
-    <h3 id="i_last">Last measurements</h3>
-    <small id="i_last_hint">Newest first (controller local log)</small>
+    <h3>Last measurements</h3>
+    <small>Newest first (controller local log)</small>
     <div class="logWrap">
       <table>
         <thead>
           <tr>
             <th>#</th>
-            <th id="i_age">Age, s</th>
-            <th id="i_temp">Temp, °C</th>
+            <th>Age, s</th>
+            <th>Temp, °C</th>
+            <th>Crack, mm</th>
           </tr>
         </thead>
         <tbody id="logBody"></tbody>
       </table>
     </div>
-
   </div>
 
 </div>
@@ -260,11 +322,6 @@ th{color:var(--muted);font-weight:600}
 
 <script>
 const THEME_KEY='theme';
-const LANG_KEY='lang';
-const LANGS=['en','de','uk'];
-let I18N={};
-let CURR_LANG='en';
-
 function byId(id){ return document.getElementById(id); }
 function setText(id,val){ const el=byId(id); if(el) el.textContent=val; }
 function setTitle(id,val){ const el=byId(id); if(!el) return; el.title=val||''; el.setAttribute('aria-label',val||''); }
@@ -275,6 +332,13 @@ async function q(url,opts){
   if(!r.ok) throw new Error(await r.text());
   const ct=r.headers.get('content-type')||'';
   return ct.includes('application/json')?r.json():r.text();
+}
+
+function logMsg(text){
+  const el=byId('msg'); if(!el) return;
+  const ts=new Date().toLocaleTimeString();
+  const line=`[${ts}] ${text}`;
+  el.textContent = el.textContent ? (el.textContent+'\n'+line) : line;
 }
 
 function markDirty(el){ if(el) el.dataset.dirty="1"; }
@@ -288,7 +352,11 @@ function setInputIfIdle(id,val){
   const el=byId(id); if(!el) return;
   if(el.dataset.dirty==="1") return;
   if(document.activeElement===el) return;
-  if(el.dataset.inited!=="1"||el.value!==String(val??"")){ el.value=(val??""); el.dataset.inited="1"; }
+  const v = (val ?? "");
+  if(el.dataset.inited!=="1" || el.value!==String(v)){
+    el.value=String(v);
+    el.dataset.inited="1";
+  }
 }
 
 function setTheme(t){
@@ -297,40 +365,33 @@ function setTheme(t){
   localStorage.setItem(THEME_KEY,t);
 }
 
-function logMsg(text){
-  const el=byId('msg'); if(!el) return;
-  const ts=new Date().toLocaleTimeString();
-  const line=`[${ts}] ${text}`;
-  el.textContent = el.textContent ? (el.textContent+'\n'+line) : line;
-}
-function clearMsg(){ const el=byId('msg'); if(el) el.textContent=''; }
-
-function applyI18n(){
-  // Minimal inline i18n; if you keep /i18n.json, you can expand.
-  const t=I18N[CURR_LANG]||{};
-  if(t.title){ setText('i_title',t.title); setText('t_title',t.title); }
-  setText('langBtn', CURR_LANG.toUpperCase());
-}
-
-async function initI18n(){
-  try{ I18N=await q('/i18n.json'); }catch(e){ I18N={}; }
-  const saved=localStorage.getItem(LANG_KEY);
-  CURR_LANG=(saved && LANGS.includes(saved))?saved:'en';
-  applyI18n();
-}
+function normHex(s){ return (s||'').trim().replace(/\s+/g,'').toUpperCase(); }
+function n(v){ const x=Number(v); return Number.isFinite(x)?x:null; }
+function mmFromX1000(x){ const v=n(x); return (v==null)?null:(v/1000.0); }
+function fmtMm(x){ const v=n(x); return (v==null)?null:v.toFixed(3); }
+function fmtC(x){ const v=n(x); return (v==null)?null:v.toFixed(2); }
 
 function renderLog(log){
   const body=byId('logBody');
   if(!body) return;
   body.innerHTML='';
+
   for(let i=0;i<log.length;i++){
     const r=log[i]||{};
-    const tr=document.createElement('tr');
     const age=(r.age_s!=null)?r.age_s:'-';
     const tc=(r.t_c!=null)?Number(r.t_c).toFixed(2):'-';
-    tr.innerHTML=`<td>${i+1}</td><td>${age}</td><td>${tc}</td>`;
+    // firmware currently returns crack_mm in log rows (we set it in /api/state)
+    const cm=(r.crack_mm!=null)?Number(r.crack_mm).toFixed(3):'-';
+
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td>${i+1}</td><td>${age}</td><td>${tc}</td><td>${cm}</td>`;
     body.appendChild(tr);
   }
+}
+
+function setCrackRow(mmId, xId, mmVal, xVal){
+  if(mmVal==null) setText(mmId,'-'); else setText(mmId, fmtMm(mmVal));
+  if(xVal==null) setText(xId,''); else setText(xId, `(${Math.trunc(Number(xVal))} x1000)`);
 }
 
 async function load(){
@@ -338,47 +399,69 @@ async function load(){
     const s=await q('/api/state');
     setText('t',fmtTime());
 
-    // Firmware
     setText('fw', s.fw || s.version || '—');
     if(s.fw_build){ setTitle('fw', `Build: ${s.fw_build}`); }
 
-    // Top sensor
-    const vRaw=s.DS18B20_Temp;
-    const vNum=Number(vRaw);
-    const hasVal=vRaw!==null && vRaw!==undefined && Number.isFinite(vNum) && vNum>-100 && vNum<125;
-    if(hasVal){
-      setText('ds',vNum.toFixed(2));
+    setText('mode', s.mode||'-');
+    setText('ip', s.ip||'-');
+    setText('up', s.uptime_s??'-');
+    setText('heap', s.heap_free??'-');
+    setText('joined', (s.joined===true)?'yes':((s.joined===false)?'no':'-'));
+    setText('nexttx', (s.next_tx_s!=null)?s.next_tx_s:'-');
+
+    // Battery + DS: firmware exposes batt_mV; temp window exposes t_cur_c etc
+    setText('bat', (s.batt_mV??'-'));
+
+    // DS display: firmware doesn't expose DS18B20_Temp; use window current as DS display
+    if(s.t_cur_c!=null){
+      setText('ds', fmtC(s.t_cur_c));
       setText('ds_unit',' °C');
     }else{
       setText('ds','N/C');
       setText('ds_unit','');
     }
-    setText('bat',(s.batt_mV??'-'));
-    setText('mode',s.mode||'-');
-    setText('ip',s.ip||'-');
-    setText('up',s.uptime_s??'-');
-    setText('heap',s.heap_free??'-');
 
-    // Window + next TX
-    setText('nexttx',(s.next_tx_s!=null)?s.next_tx_s:'-');
+    // Window info
     const wc = (s.window_count!=null)?s.window_count:'-';
     const ws = (s.window_samples!=null)?s.window_samples:'-';
     setText('win',`${wc}/${ws}`);
 
-    // If you also expose last/avg/min/max via /api/state later:
-    if(s.t_cur_c!=null) setText('tcur', Number(s.t_cur_c).toFixed(2));
-    if(s.t_avg_c!=null) setText('tavg', Number(s.t_avg_c).toFixed(2));
-    if(s.t_min_c!=null) setText('tmin', Number(s.t_min_c).toFixed(2));
-    if(s.t_max_c!=null) setText('tmax', Number(s.t_max_c).toFixed(2));
+    // Temperature window
+    setText('tcur', (s.t_cur_c!=null)?fmtC(s.t_cur_c):'-');
+    setText('tavg', (s.t_avg_c!=null)?fmtC(s.t_avg_c):'-');
+    setText('tmin', (s.t_min_c!=null)?fmtC(s.t_min_c):'-');
+    setText('tmax', (s.t_max_c!=null)?fmtC(s.t_max_c):'-');
 
-    // Form from cfg
+    // Crack window:
+    // - firmware provides crack_*_mm (double) and crack_*_x1000 (uint)
+    setCrackRow('ccur','ccur_x', s.crack_cur_mm, s.crack_cur_x1000);
+    setCrackRow('cavg','cavg_x', s.crack_avg_mm, s.crack_avg_x1000);
+    setCrackRow('cmin','cmin_x', s.crack_min_mm, s.crack_min_x1000);
+    setCrackRow('cmax','cmax_x', s.crack_max_mm, s.crack_max_x1000);
+
+    // Optional raw display if firmware adds it later
+    const raw0 = s.crack_raw0;
+    const raw1 = s.crack_raw1;
+    const autoUsed = s.crack_auto_used;
+    const rawEl = byId('crkRaw');
+    if(rawEl && (raw0!=null || raw1!=null || autoUsed!=null)){
+      rawEl.style.display='';
+      rawEl.textContent =
+        `ADS raw: CH0=${raw0!=null?raw0:'-'}  CH1=${raw1!=null?raw1:'-'}\n`+
+        `auto_used=${autoUsed!=null?autoUsed:'-'}`;
+    }else if(rawEl){
+      rawEl.style.display='none';
+    }
+
+    // Config
     if(s.cfg){
       setInputIfIdle('devEuiField', s.cfg.devEui_lsb||'');
       setInputIfIdle('appEuiField', s.cfg.appEui_lsb||'');
       setInputIfIdle('appKeyField', s.cfg.appKey_msb||'');
       setInputIfIdle('minutesField', s.cfg.minutes??10);
-      setInputIfIdle('measField', s.cfg.meas_period_s??10);
+      setInputIfIdle('measField', 10);
 
+      // DR/ADR selector
       const drSel=byId('drField');
       if(drSel && drSel.dataset.dirty!=="1" && document.activeElement!==drSel){
         if(s.cfg.adr===true) drSel.value='auto';
@@ -386,56 +469,62 @@ async function load(){
         else drSel.value='auto';
         drSel.dataset.inited="1";
       }
+
+      // crack settings (nested)
+      const cr = s.cfg.crack || {};
+      const refMode = cr.ref_mode || 'auto';
+      setInputIfIdle('crRefMode', refMode);
+      setInputIfIdle('crLen', cr.len_mm!=null ? Number(cr.len_mm).toFixed(2) : '');
+      setInputIfIdle('crR0', cr.r0!=null ? cr.r0 : '');
+      setInputIfIdle('crR1', cr.r1!=null ? cr.r1 : '');
+      setInputIfIdle('crMm0', cr.mm0!=null ? Number(cr.mm0).toFixed(2) : '');
+      setInputIfIdle('crMm1', cr.mm1!=null ? Number(cr.mm1).toFixed(2) : '');
     }
 
-    // Log table (from firmware web log)
     renderLog(s.log||[]);
   }catch(e){
     logMsg('state error');
   }
 }
 
-function normHex(s){ return (s||'').trim().replace(/\s+/g,'').toUpperCase(); }
-
-async function readDevEUI(){
-  try{
-    const j=await q('/api/deveui');
-    byId('devEuiField').value=j.chip_devEui_lsb||'';
-    logMsg(`chip LSB=${j.chip_devEui_lsb} stored LSB=${j.stored_devEui_lsb}`);
-    clearDirty(byId('devEuiField'));
-  }catch(e){
-    logMsg('Read DevEUI error');
-  }
-}
-
-async function saveChipDevEUI(){
-  try{
-    await fetch('/api/deveui',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({use:'chip'})});
-    logMsg('Saved; rebooting…');
-    clearDirty(byId('devEuiField'));
-  }catch(e){
-    logMsg('Save error');
-  }
-}
-
 async function saveAll(){
-  const sel=byId('drField')?byId('drField').value:'auto';
+  const sel = byId('drField') ? byId('drField').value : 'auto';
 
-  const payload={
-    devEui_lsb:normHex(byId('devEuiField').value),
-    appEui_lsb:normHex(byId('appEuiField').value),
-    appKey_msb:normHex(byId('appKeyField').value),
-    minutes:parseInt(byId('minutesField').value||'10',10),
-    meas_period_s:parseInt(byId('measField').value||'10',10),
+  const payload = {
+    devEui_lsb: normHex(byId('devEuiField').value),
+    appEui_lsb: normHex(byId('appEuiField').value),
+    appKey_msb: normHex(byId('appKeyField').value),
+    minutes: parseInt(byId('minutesField').value||'10',10),
+    meas_period_s: 10, // fixed
+    crack: {
+      ref_mode: (byId('crRefMode').value==='manual') ? 'manual' : 'auto',
+      len_mm: parseFloat(byId('crLen').value||'10'),
+      r0: parseInt(byId('crR0').value||'5',10),
+      r1: parseInt(byId('crR1').value||'25480',10),
+      mm0: parseFloat(byId('crMm0').value||'0'),
+      mm1: parseFloat(byId('crMm1').value||'10'),
+    }
   };
 
-  if(sel==='auto'){ payload.adr=true; }
-  else{ payload.dr=parseInt(sel,10); payload.adr=false; }
+  if(sel==='auto'){
+    payload.adr = true;
+  }else{
+    payload.dr = parseInt(sel,10);
+    payload.adr = false;
+  }
 
   try{
-    await fetch('/api/config/lora',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const r = await fetch('/api/config/lora',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    if(!r.ok) throw new Error(await r.text());
     logMsg('Saved');
-    ['devEuiField','appEuiField','appKeyField','minutesField','measField','drField'].forEach(id=>clearDirty(byId(id)));
+    [
+      'devEuiField','appEuiField','appKeyField','minutesField','measField',
+      'drField','crRefMode','crLen','crR0','crR1','crMm0','crMm1'
+    ].forEach(id=>clearDirty(byId(id)));
   }catch(e){
     logMsg('Save error');
   }
@@ -459,11 +548,12 @@ byId('btnReset').onclick=async()=>{
   }
 };
 
-byId('btnReadChip').onclick=readDevEUI;
-byId('btnSaveChip').onclick=saveChipDevEUI;
 byId('btnSaveAll').onclick=saveAll;
 
-['devEuiField','appEuiField','appKeyField','minutesField','measField','drField'].forEach(bindDirty);
+[
+  'devEuiField','appEuiField','appKeyField','minutesField','drField',
+  'crRefMode','crLen','crR0','crR1','crMm0','crMm1'
+].forEach(bindDirty);
 
 document.addEventListener('DOMContentLoaded',()=>{
   const savedTheme=localStorage.getItem(THEME_KEY);
@@ -473,13 +563,6 @@ document.addEventListener('DOMContentLoaded',()=>{
 
   const y=byId('yr'); if(y) y.textContent=new Date().getFullYear();
 
-  byId('langBtn').onclick=()=>{
-    const idx=LANGS.indexOf(CURR_LANG); CURR_LANG=LANGS[(idx+1)%LANGS.length];
-    localStorage.setItem(LANG_KEY,CURR_LANG);
-    applyI18n();
-  };
-
-  initI18n();
   setInterval(load,1000);
   load();
 });

@@ -1,17 +1,15 @@
 /*
  * =====================================================================
- *  Project: Heltec ESP32-S3 (LoRa V3) — Temperature Monitoring Node
- *  Variant A: AP mode always responsive + mandatory measurement each 10s
+ *  Project: Heltec ESP32-S3 (LoRa V3) — Temperature + ADS1115 Crack Node
+ *  Variant: AP mode (Web UI + OLED) like old + LoRaWAN in field
  * ---------------------------------------------------------------------
- *  Requirements implemented:
- *   - Mandatory measurement every cfg.meas_period_s (default 10s) in BOTH modes
- *   - AP mode: WiFi AP + WebServer + (optional OLED) must stay responsive
- *   - LNS mode: WiFi OFF
- *   - NO ESP32 deep sleep
- *   - LoRaWAN.join retry every 30s until joined (no spam)
- *   - TX every cfg.minutes (and/or via /api/send)
- *   - LoRaMAC/Radio "pump" is done in a dedicated FreeRTOS task
- *     (LoRaWAN.sleep(CLASS_A) is kept there, does NOT block AP/web/measurements)
+ *  NEW LOGIC REQUIREMENT:
+ *    - Measure strictly every 10 seconds (no deep sleep scheduling)
+ *    - Keep Cur/Avg/Min/Max for Temp (int16 x100) and Crack (uint16 mm*1000)
+ *    - Payload 18 bytes (unchanged layout)
+ *
+ *  Everything else (AP + Web UI + LittleFS + OLED + LoRa join/tx policy)
+ *  stays like in the old “Variant A” style.
  * =====================================================================
  */
 
@@ -35,6 +33,9 @@
 #include <Preferences.h>
 #include <LittleFS.h>
 
+#include <Wire.h>
+#include <Adafruit_ADS1X15.h>
+
 #include "HT_SSD1306Wire.h"
 #include <OneWire.h>
 #include <DallasTemperature.h>
@@ -46,7 +47,7 @@
 #include "freertos/semphr.h"
 
 // ========================== Firmware version ======================= //
-static constexpr const char* FW_VER = "1.8.3A-FRTOS";
+static constexpr const char* FW_VER = "1.9.0-AP+OLED+WEB-10sMEAS-18B";
 
 // ========================== LoRaWAN key slots ======================= //
 uint8_t devEui[8] = {0}, appEui[8] = {0};   // Heltec expects globals
@@ -69,10 +70,20 @@ static constexpr uint8_t DS_RES_BITS = 10;
 
 static constexpr float VBAT_ADC_FACTOR = 1.0f / 4096.0f / 0.210282997855762f;
 
+// ADS1115 (I2C1)
+static constexpr int I2C_ADS_SDA = 47;
+static constexpr int I2C_ADS_SCL = 48;
+static constexpr uint32_t I2C_FREQ_HZ = 400000;
+static constexpr uint8_t ADS1115_ADDR = 0x48;
+
+TwoWire I2C_ADS = TwoWire(1);
+Adafruit_ADS1115 ads;
+static bool adsOk = false;
+
 // ============================ System cfg =========================== //
 static constexpr char AP_PSK[] = "12345678";
-static constexpr size_t JSON_STATE_DOC = 2600;
-static constexpr size_t JSON_CFG_DOC   = 1100;
+static constexpr size_t JSON_STATE_DOC = 4700;
+static constexpr size_t JSON_CFG_DOC   = 1900;
 
 static constexpr uint32_t MS_PER_SEC = 1000UL;
 static constexpr uint8_t  UPLINK_PORT = 2;
@@ -80,24 +91,31 @@ static constexpr uint8_t  UPLINK_PORT = 2;
 static inline uint32_t now_sec() { return millis() / MS_PER_SEC; }
 
 // ====================== Measurement / Aggregation ================== //
-static constexpr uint16_t MEAS_PERIOD_MIN_S = 1;
-static constexpr uint16_t MEAS_PERIOD_MAX_S = 3600;
-
+static constexpr uint16_t MEAS_PERIOD_FIXED_S = 10;   // FIXED 10s
 static constexpr uint16_t MEAS_BUF_MAX = 600;
 static constexpr uint32_t MINUTES_MAX  = 100;
 
+// Temperature buffers
 static int16_t  t_buf[MEAS_BUF_MAX];
 static uint16_t t_count = 0;
 static uint16_t t_wr    = 0;
 static uint16_t window_samples = 60;
 static int16_t  t_last_c_x100  = INT16_MIN;
 
-static uint32_t last_meas_ms    = 0;
+// Crack buffers (mm*1000, uint16)
+static uint16_t c_buf[MEAS_BUF_MAX];
+static uint16_t c_count = 0;
+static uint16_t c_wr    = 0;
+static uint16_t c_last  = 0xFFFF;     // sentinel invalid
+static bool     c_last_valid = false;
+
 static uint32_t window_start_ms = 0;
 
 // Web log
 static constexpr uint16_t WEB_LOG_N = 300;
 static int16_t  web_t[WEB_LOG_N];
+static uint16_t web_c[WEB_LOG_N];
+static bool     web_c_ok[WEB_LOG_N];
 static uint32_t web_ts_s[WEB_LOG_N];
 static uint16_t web_wr  = 0;
 static uint16_t web_cnt = 0;
@@ -113,14 +131,35 @@ bool firstDsFound = false;
 bool apMode = false;
 Preferences prefs;
 
+// ========================= Crack mapping (old logic) =============== //
+enum RefMode : uint8_t { REF_AUTO = 0, REF_MANUAL = 1 };
+static constexpr int16_t RAW_MIN_STABLE = 6;
+
+struct CrackMeas {
+  int16_t raw0;
+  int16_t raw1;
+  float mm;
+  bool auto_used;
+};
+static CrackMeas readCrackOnce(); // ensure visible
+
 // ========================= Persisted config ======================== //
 struct Cfg {
   uint8_t devEui[8]  = {0};
   uint8_t appEui[8]  = {0};
   uint8_t appKey[16] = {0};
 
-  uint32_t minutes = 10;
-  uint16_t meas_period_s = 10;
+  uint32_t minutes = 10;     // uplink period (minutes)
+  // kept for backward compat only (fixed runtime)
+  uint16_t meas_period_s = MEAS_PERIOD_FIXED_S;
+
+  // ---- crack calibration ----
+  int16_t  crack_r0 = 5;
+  int16_t  crack_r1 = 25480;
+  uint16_t crack_mm0_x100 = 0;        // 0.01 mm
+  uint16_t crack_mm1_x100 = 1000;     // 10.00 mm default
+  uint16_t crack_len_mm_x100 = 1000;  // L_full in 0.01 mm
+  uint8_t  ref_mode = REF_AUTO;
 
   uint8_t lora_dr = 3;
   bool lora_adr = true; // UI only; policy forces ADR off in TX
@@ -145,13 +184,16 @@ uint8_t appSKey[16] = {0};
 uint32_t devAddr = 0;
 
 // ========================= Scheduling flags ======================== //
-static volatile bool loraInited    = false;
-static volatile bool txPending     = false;
-static volatile bool forceTxOnce   = false; // /api/send
+static volatile bool loraInited  = false;
+static volatile bool forceTxOnce = false; // /api/send
 static uint32_t lastJoinTryMs = 0;
 
 // ========================= Concurrency ============================= //
+// gMux: protects cfg + measurement buffers + window_start_ms + web log
+// gSensMux: protects sensorsPowerOn/Off + DS/ADS reads and I2C ownership
 static SemaphoreHandle_t gMux = nullptr;
+static SemaphoreHandle_t gSensMux = nullptr;
+
 static TaskHandle_t measTaskH = nullptr;
 static TaskHandle_t loraTaskH = nullptr;
 
@@ -161,12 +203,20 @@ static inline void nvsPut(const char* k, const void* p, size_t n) {
   prefs.putBytes(k, p, n);
   prefs.end();
 }
-// === ADD this OLED section (you already have OLED_Display + logoMKP.h) ===
 
+// ============================== OLED =============================== //
 enum OledPhase { OLED_LOGO, OLED_SSID, OLED_SENS };
 static OledPhase oledPhase = OLED_LOGO;
 static uint32_t oledPhaseStart = 0;
 static uint32_t oledRefreshMs = 0;
+
+// forward decls used by OLED / API
+static bool computeStats(int16_t& t_avg, int16_t& t_min, int16_t& t_max);
+static bool computeCrackStats(uint16_t& c_avg, uint16_t& c_min, uint16_t& c_max);
+
+static void sensorsPowerOn();
+static void sensorsPowerOff();
+static uint16_t readBattery_mV();
 
 static void oledSplash() {
   OLED_Display.init();
@@ -193,21 +243,32 @@ static void oledShowSSID(const String& ssid) {
 
 static void oledSensorsOnce() {
   int16_t t_avg=0, t_min=0, t_max=0;
-  bool ok = false;
+  bool tok = false;
   int16_t t_cur = INT16_MIN;
-  uint16_t bufN = 0, bufMax = 0;
+
+  uint16_t c_avg=0, c_min=0, c_max=0;
+  bool cok = false;
+  uint16_t c_cur = 0xFFFF;
+  bool cvalid = false;
 
   if (gMux && xSemaphoreTake(gMux, pdMS_TO_TICKS(80)) == pdTRUE) {
-    ok = computeStats(t_avg, t_min, t_max);
+    tok = computeStats(t_avg, t_min, t_max);
     t_cur = t_last_c_x100;
-    bufN = t_count;
-    bufMax = window_samples;
+
+    cok = computeCrackStats(c_avg, c_min, c_max);
+    cvalid = c_last_valid;
+    c_cur = c_last;
+
     xSemaphoreGive(gMux);
   }
 
-  sensorsPowerOn();
-  uint16_t bat = readBattery_mV();
-  sensorsPowerOff();
+  uint16_t bat = 0;
+  if (gSensMux && xSemaphoreTake(gSensMux, pdMS_TO_TICKS(250)) == pdTRUE) {
+    sensorsPowerOn();
+    bat = readBattery_mV();
+    sensorsPowerOff();
+    xSemaphoreGive(gSensMux);
+  }
 
   OLED_Display.clear();
   OLED_Display.setFont(ArialMT_Plain_10);
@@ -215,28 +276,29 @@ static void oledSensorsOnce() {
 
   int y = 0, dy = 10;
 
-  if (t_cur != INT16_MIN) {
-    OLED_Display.drawString(0, y, String("Cur ") + String((float)t_cur / 100.0f, 1) + " C");
-  } else {
-    OLED_Display.drawString(0, y, "Cur N/C");
-  }
+  if (t_cur != INT16_MIN) OLED_Display.drawString(0, y, String("T Cur ") + String((float)t_cur/100.0f, 1) + "C");
+  else OLED_Display.drawString(0, y, "T Cur N/C");
   y += dy;
 
-  if (ok) {
-    OLED_Display.drawString(0, y, String("Avg ") + String((float)t_avg / 100.0f, 1) + " C"); y += dy;
-    OLED_Display.drawString(0, y, String("Min ") + String((float)t_min / 100.0f, 1) + " C"); y += dy;
-    OLED_Display.drawString(0, y, String("Max ") + String((float)t_max / 100.0f, 1) + " C"); y += dy;
-  } else {
-    OLED_Display.drawString(0, y, "Avg -  Min -  Max -"); y += dy;
-  }
+  if (tok) OLED_Display.drawString(0, y, String("T Avg ") + String((float)t_avg/100.0f, 1) + "C");
+  else OLED_Display.drawString(0, y, "T Avg -");
+  y += dy;
+
+  if (cvalid && c_cur != 0xFFFF) OLED_Display.drawString(0, y, String("Crk Cur ") + String((float)c_cur/1000.0f, 3) + "mm");
+  else OLED_Display.drawString(0, y, "Crk Cur N/C");
+  y += dy;
+
+  if (cok) OLED_Display.drawString(0, y, String("Crk Avg ") + String((float)c_avg/1000.0f, 3) + "mm");
+  else OLED_Display.drawString(0, y, "Crk Avg -");
+  y += dy;
 
   OLED_Display.drawString(0, y, String("Bat ") + String(bat) + " mV"); y += dy;
-  OLED_Display.drawString(0, y, String("TX ") + String(cfg.minutes) + "m  Meas " + String(cfg.meas_period_s) + "s"); y += dy;
-  OLED_Display.drawString(0, y, String("Buf ") + String(bufN) + "/" + String(bufMax));
+  OLED_Display.drawString(0, y, String("TX ") + String(cfg.minutes) + "m  Meas 10s");
 
   OLED_Display.display();
 }
 
+// ============================ Hex helpers ========================== //
 static inline bool parseHexStraight(String s, uint8_t* out, size_t n) {
   s.trim();
   s.replace(" ", ""); s.replace("\n", ""); s.replace("\r", ""); s.replace("\t", "");
@@ -257,25 +319,13 @@ static inline bool parseHexStraight(String s, uint8_t* out, size_t n) {
   }
   return true;
 }
-
-static inline bool parseHexLSB(const String& s, uint8_t* out, size_t n) {
-  return parseHexStraight(s, out, n);
-}
+static inline bool parseHexLSB(const String& s, uint8_t* out, size_t n) { return parseHexStraight(s, out, n); }
 
 static String toHex(const uint8_t* v, size_t n) {
   char b[3];
   String s; s.reserve(n * 2);
   for (size_t i = 0; i < n; i++) { sprintf(b, "%02X", v[i]); s += b; }
   return s;
-}
-
-static void devEuiFromChipMSB(uint8_t out[8]) {
-  uint64_t mac = ESP.getEfuseMac();
-  uint8_t m[6];
-  for (int i = 0; i < 6; i++) m[i] = (mac >> (8 * (5 - i))) & 0xFF;
-  out[0]=m[0]; out[1]=m[1]; out[2]=m[2];
-  out[3]=0xFF; out[4]=0xFE;
-  out[5]=m[3]; out[6]=m[4]; out[7]=m[5];
 }
 
 static String devEuiSuffix6LSB() {
@@ -294,9 +344,28 @@ static inline void SensorsOFF() {
   pinMode(PIN_SENS_EN, INPUT);
 }
 
+// ADS init + read
+static void adsInitOnce() {
+  ads.setGain(GAIN_ONE);
+  ads.setDataRate(RATE_ADS1115_128SPS);
+  (void)ads.readADC_SingleEnded(0);
+  delay(4);
+}
+static inline int16_t readADS_CH(uint8_t ch) {
+  if (!adsOk) return 0;
+  (void)ads.readADC_SingleEnded(ch);   // pre-warm
+  delayMicroseconds(8000);             // >=1 period @128SPS
+  int16_t v = ads.readADC_SingleEnded(ch);
+  return (v < 0) ? 0 : v;
+}
+
 static void sensorsPowerOn() {
   SensorsON();
-  delay(12);
+  delay(40);
+
+  I2C_ADS.begin(I2C_ADS_SDA, I2C_ADS_SCL, I2C_FREQ_HZ);
+  adsOk = ads.begin(ADS1115_ADDR, &I2C_ADS);
+  if (adsOk) adsInitOnce();
 
   if (!firstDsFound) {
     sensors.begin();
@@ -314,6 +383,10 @@ static void sensorsPowerOn() {
 }
 
 static void sensorsPowerOff() {
+  I2C_ADS.end();
+  pinMode(I2C_ADS_SDA, INPUT);
+  pinMode(I2C_ADS_SCL, INPUT);
+
   pinMode(PIN_ONE_WIRE, INPUT);
   SensorsOFF();
 }
@@ -340,15 +413,54 @@ static int16_t readTemp_c_x100_signed() {
   return (int16_t)v;
 }
 
+// ====================== Crack mapping helpers ====================== //
+static inline float mapCrackManual(int M) {
+  const float M0  = (float)cfg.crack_r0;
+  const float M1  = (float)cfg.crack_r1;
+  const float mm0 = (float)cfg.crack_mm0_x100 / 100.0f;
+  const float mm1 = (float)cfg.crack_mm1_x100 / 100.0f;
+  if (M1 == M0) return 0.0f;
+
+  float mm = mm0 + (mm1 - mm0) * ((float)M - M0) / (M1 - M0);
+  if (mm < 0) mm = 0;
+  const float L = (float)cfg.crack_len_mm_x100 / 100.0f;
+  if (mm > L) mm = L;
+  return mm;
+}
+
+static CrackMeas readCrackOnce() {
+  CrackMeas r{0,0,0.0f,false};
+  if (!adsOk) return r;
+
+  const int16_t ch0 = readADS_CH(0);
+  const int16_t ch1 = readADS_CH(1);
+  r.raw0 = ch0;
+  r.raw1 = ch1;
+
+  const float L = (float)cfg.crack_len_mm_x100 / 100.0f;
+
+  if (cfg.ref_mode == REF_MANUAL) {
+    r.mm = mapCrackManual(ch0);
+    r.auto_used = false;
+  } else {
+    int16_t rf = ch1;
+    if (rf < RAW_MIN_STABLE) rf = RAW_MIN_STABLE;
+    float mm = L * ((float)ch0 / (float)rf);
+    if (mm < 0) mm = 0;
+    if (mm > L) mm = L;
+    r.mm = mm;
+    r.auto_used = true;
+  }
+  return r;
+}
+
 // ====================== Window + Web log helpers =================== //
-static uint16_t samplesPerWindowFromCfg() {
+static uint16_t samplesPerWindowFromCfg_locked() {
   uint32_t m = cfg.minutes;
   if (m < 1) m = 1;
   if (m > MINUTES_MAX) m = MINUTES_MAX;
 
-  uint32_t s = cfg.meas_period_s;
-  if (s < MEAS_PERIOD_MIN_S) s = MEAS_PERIOD_MIN_S;
-  if (s > MEAS_PERIOD_MAX_S) s = MEAS_PERIOD_MAX_S;
+  const uint32_t s = MEAS_PERIOD_FIXED_S;
 
   uint32_t n = (m * 60UL) / s;
   if (n < 1) n = 1;
@@ -356,23 +468,30 @@ static uint16_t samplesPerWindowFromCfg() {
   return (uint16_t)n;
 }
 
-static void resetMeasWindow() {
+static void resetMeasWindow_locked() {
   window_start_ms = millis();
-  last_meas_ms = 0;
+
   t_count = 0;
   t_wr = 0;
-  window_samples = samplesPerWindowFromCfg();
+  t_last_c_x100 = INT16_MIN;
+
+  c_count = 0;
+  c_wr = 0;
+
+  window_samples = samplesPerWindowFromCfg_locked();
 }
 
-static void webLogSample(int16_t t_c_x100) {
-  if (t_c_x100 == INT16_MIN) return;
+static void webLogSample2_locked(int16_t t_c_x100, bool cr_ok, uint16_t cr_x1000) {
   web_t[web_wr] = t_c_x100;
+  web_c_ok[web_wr] = cr_ok;
+  web_c[web_wr] = cr_ok ? cr_x1000 : 0;
   web_ts_s[web_wr] = now_sec();
+
   web_wr = (web_wr + 1) % WEB_LOG_N;
   if (web_cnt < WEB_LOG_N) web_cnt++;
 }
 
-static void addTempSample(int16_t t_c_x100) {
+static void addTempSample_locked(int16_t t_c_x100) {
   if (t_c_x100 == INT16_MIN) return;
   t_last_c_x100 = t_c_x100;
 
@@ -380,8 +499,18 @@ static void addTempSample(int16_t t_c_x100) {
   t_wr++;
   if (t_wr >= window_samples) t_wr = 0;
   if (t_count < window_samples) t_count++;
+}
 
-  webLogSample(t_c_x100);
+static void addCrackSample_locked(bool ok, uint16_t cr_x1000) {
+  if (!ok) return;
+
+  c_last = cr_x1000;
+  c_last_valid = true;
+
+  c_buf[c_wr] = cr_x1000;
+  c_wr++;
+  if (c_wr >= window_samples) c_wr = 0;
+  if (c_count < window_samples) c_count++;
 }
 
 static bool computeStats(int16_t& t_avg, int16_t& t_min, int16_t& t_max) {
@@ -407,6 +536,29 @@ static bool computeStats(int16_t& t_avg, int16_t& t_min, int16_t& t_max) {
   return true;
 }
 
+static bool computeCrackStats(uint16_t& c_avg, uint16_t& c_min, uint16_t& c_max) {
+  if (c_count == 0) return false;
+
+  uint32_t sum = 0;
+  c_min = 65535;
+  c_max = 0;
+
+  int32_t idx = (int32_t)c_wr - (int32_t)c_count;
+  while (idx < 0) idx += window_samples;
+
+  for (uint16_t i = 0; i < c_count; i++) {
+    uint16_t v = c_buf[idx];
+    sum += v;
+    if (v < c_min) c_min = v;
+    if (v > c_max) c_max = v;
+    idx++;
+    if (idx >= window_samples) idx = 0;
+  }
+
+  c_avg = (uint16_t)((sum + (c_count/2)) / c_count);
+  return true;
+}
+
 // ============================ LoRa helpers ========================== //
 static inline uint8_t mapDR(uint8_t i) {
   switch (i) {
@@ -415,8 +567,6 @@ static inline uint8_t mapDR(uint8_t i) {
     default: return DR_3;
   }
 }
-
-static inline void applyLoraDR() { LoRaWAN.setDefaultDR(mapDR(cfg.lora_dr)); }
 
 static void enforceTxPolicy() {
   isTxConfirmed = true;
@@ -431,18 +581,30 @@ static bool isJoined() {
   return mibReq.Param.IsNetworkJoined;
 }
 
-// ========================= Uplink payload (10B) ===================== //
-void prepareTxFrame(uint8_t) {
-  const uint16_t vb = readBattery_mV();
-
+// ========================= Uplink payload (18B) ===================== //
+static bool buildPayload18_locked(uint16_t vb_mV) {
+  // Must be called with gMux held
   int16_t t_avg=0, t_min=0, t_max=0;
-  bool ok = computeStats(t_avg, t_min, t_max);
+  bool tok = computeStats(t_avg, t_min, t_max);
 
-  int16_t t_cur = 0;
-  if (t_count > 0 && t_last_c_x100 != INT16_MIN) t_cur = t_last_c_x100;
-  if (!ok) t_avg = t_min = t_max = t_cur;
+  int16_t t_cur = (t_last_c_x100 != INT16_MIN) ? t_last_c_x100 : (int16_t)0;
 
-  appDataSize = 10;
+  if (!tok) {
+    // no samples yet: mark as 0 and keep consistent
+    t_avg = t_min = t_max = t_cur;
+  }
+
+  uint16_t c_avg=0, c_min=0, c_max=0;
+  bool cok = computeCrackStats(c_avg, c_min, c_max);
+
+  uint16_t c_cur = c_last_valid ? c_last : 0xFFFF;
+
+  if (!cok) {
+    if (c_cur == 0xFFFF) { c_avg = c_min = c_max = 0xFFFF; }
+    else { c_avg = c_min = c_max = c_cur; }
+  }
+
+  appDataSize = 18;
 
   auto putI16 = [&](uint8_t idx, int16_t v) {
     uint16_t u = (uint16_t)v;
@@ -458,11 +620,21 @@ void prepareTxFrame(uint8_t) {
   putI16(2, t_avg);
   putI16(4, t_min);
   putI16(6, t_max);
-  putU16(8, vb);
 
-  Serial.printf("TX 10B: Tcur=%d Tavg=%d Tmin=%d Tmax=%d VB=%u HEX=%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X\n",
-    (int)t_cur, (int)t_avg, (int)t_min, (int)t_max, (unsigned)vb,
-    appData[0], appData[1], appData[2], appData[3], appData[4], appData[5], appData[6], appData[7], appData[8], appData[9]);
+  putU16(8,  c_cur);
+  putU16(10, c_avg);
+  putU16(12, c_min);
+  putU16(14, c_max);
+
+  putU16(16, vb_mV);
+
+  Serial.printf(
+    "TX 18B: Tcur=%d Tavg=%d Tmin=%d Tmax=%d | Crk=%u/%u/%u/%u (x1000) | VB=%u\n",
+    (int)t_cur,(int)t_avg,(int)t_min,(int)t_max,
+    (unsigned)c_cur,(unsigned)c_avg,(unsigned)c_min,(unsigned)c_max,
+    (unsigned)vb_mV
+  );
+  return true;
 }
 
 // ============================== Web API ============================ //
@@ -501,18 +673,16 @@ static void api_state() {
   d["heap_free"] = ESP.getFreeHeap();
   d["fw"] = FW_VER;
   d["fw_build"] = String(__DATE__) + " " + String(__TIME__);
-
   d["joined"] = isJoined();
 
-  int16_t t_avg=0, t_min=0, t_max=0;
-  bool ok = false;
+  if (gMux && xSemaphoreTake(gMux, pdMS_TO_TICKS(80)) == pdTRUE) {
+    int16_t t_avg=0, t_min=0, t_max=0;
+    bool tok = computeStats(t_avg, t_min, t_max);
 
-  if (xSemaphoreTake(gMux, pdMS_TO_TICKS(50)) == pdTRUE) {
-    ok = computeStats(t_avg, t_min, t_max);
     if (t_count > 0 && t_last_c_x100 != INT16_MIN) d["t_cur_c"] = (double)t_last_c_x100 / 100.0;
     else d["t_cur_c"] = nullptr;
 
-    if (ok) {
+    if (tok) {
       d["t_avg_c"] = (double)t_avg / 100.0;
       d["t_min_c"] = (double)t_min / 100.0;
       d["t_max_c"] = (double)t_max / 100.0;
@@ -522,10 +692,39 @@ static void api_state() {
       d["t_max_c"] = nullptr;
     }
 
+    uint16_t c_avg=0, c_min=0, c_max=0;
+    bool cok = computeCrackStats(c_avg, c_min, c_max);
+    uint16_t c_cur = (c_last_valid ? c_last : 0xFFFF);
+
+    if (c_cur == 0xFFFF) d["crack_cur_x1000"] = nullptr;
+    else d["crack_cur_x1000"] = (uint32_t)c_cur;
+
+    if (cok) d["crack_avg_x1000"] = (uint32_t)c_avg;
+    else d["crack_avg_x1000"] = nullptr;
+
+    if (cok) d["crack_min_x1000"] = (uint32_t)c_min;
+    else d["crack_min_x1000"] = nullptr;
+
+    if (cok) d["crack_max_x1000"] = (uint32_t)c_max;
+    else d["crack_max_x1000"] = nullptr;
+
+    if (c_cur == 0xFFFF) d["crack_cur_mm"] = nullptr;
+    else d["crack_cur_mm"] = (double)c_cur / 1000.0;
+
+    if (cok) d["crack_avg_mm"] = (double)c_avg / 1000.0;
+    else d["crack_avg_mm"] = nullptr;
+
+    if (cok) d["crack_min_mm"] = (double)c_min / 1000.0;
+    else d["crack_min_mm"] = nullptr;
+
+    if (cok) d["crack_max_mm"] = (double)c_max / 1000.0;
+    else d["crack_max_mm"] = nullptr;
+
     d["tx_period_min"] = cfg.minutes;
-    d["meas_period_s"] = cfg.meas_period_s;
+    d["meas_period_s"] = MEAS_PERIOD_FIXED_S;
     d["window_samples"] = window_samples;
     d["window_count"] = t_count;
+    d["crack_window_count"] = c_count;
 
     const uint32_t reportPeriodMs = max<uint32_t>(60000UL, 60000UL * (uint32_t)cfg.minutes);
     const uint32_t elapsed = millis() - window_start_ms;
@@ -538,12 +737,26 @@ static void api_state() {
       while (idx < 0) idx += WEB_LOG_N;
       JsonObject row = log.createNestedObject();
       row["age_s"] = (nowS >= web_ts_s[idx]) ? (nowS - web_ts_s[idx]) : 0;
-      row["t_c"] = (double)web_t[idx] / 100.0;
+
+      if (web_t[idx] == INT16_MIN) row["t_c"] = nullptr;
+      else row["t_c"] = (double)web_t[idx] / 100.0;
+
+      if (!web_c_ok[idx]) row["crack_mm"] = nullptr;
+      else row["crack_mm"] = (double)web_c[idx] / 1000.0;
     }
 
     JsonObject c = d.createNestedObject("cfg");
     c["minutes"] = cfg.minutes;
-    c["meas_period_s"] = cfg.meas_period_s;
+    c["meas_period_s"] = MEAS_PERIOD_FIXED_S;
+
+    JsonObject cc = c.createNestedObject("crack");
+    cc["ref_mode"] = (cfg.ref_mode == REF_MANUAL) ? "manual" : "auto";
+    cc["len_mm"] = (double)cfg.crack_len_mm_x100 / 100.0;
+    cc["r0"] = cfg.crack_r0;
+    cc["r1"] = cfg.crack_r1;
+    cc["mm0"] = (double)cfg.crack_mm0_x100 / 100.0;
+    cc["mm1"] = (double)cfg.crack_mm1_x100 / 100.0;
+
     c["devEui_lsb"] = toHex(cfg.devEui, 8);
     c["appEui_lsb"] = toHex(cfg.appEui, 8);
     c["appKey_msb"] = toHex(cfg.appKey, 16);
@@ -556,12 +769,19 @@ static void api_state() {
     d["t_avg_c"] = nullptr;
     d["t_min_c"] = nullptr;
     d["t_max_c"] = nullptr;
+    d["crack_cur_mm"] = nullptr;
+    d["crack_avg_mm"] = nullptr;
+    d["crack_min_mm"] = nullptr;
+    d["crack_max_mm"] = nullptr;
   }
 
-  // battery read (kept as in your code)
-  sensorsPowerOn();
-  uint16_t batmV = readBattery_mV();
-  sensorsPowerOff();
+  uint16_t batmV = 0;
+  if (gSensMux && xSemaphoreTake(gSensMux, pdMS_TO_TICKS(250)) == pdTRUE) {
+    sensorsPowerOn();
+    batmV = readBattery_mV();
+    sensorsPowerOff();
+    xSemaphoreGive(gSensMux);
+  }
   d["batt_mV"] = batmV;
 
   String out;
@@ -587,21 +807,33 @@ static void api_cfg_get() {
   d["appEui_lsb"] = toHex(cfg.appEui, 8);
   d["appKey_msb"] = toHex(cfg.appKey, 16);
   d["minutes"] = cfg.minutes;
-  d["meas_period_s"] = cfg.meas_period_s;
+  d["meas_period_s"] = MEAS_PERIOD_FIXED_S;
+
+  JsonObject cr = d.createNestedObject("crack");
+  cr["ref_mode"] = (cfg.ref_mode == REF_MANUAL) ? "manual" : "auto";
+  cr["len_mm"] = (double)cfg.crack_len_mm_x100 / 100.0;
+  cr["r0"] = cfg.crack_r0;
+  cr["r1"] = cfg.crack_r1;
+  cr["mm0"] = (double)cfg.crack_mm0_x100 / 100.0;
+  cr["mm1"] = (double)cfg.crack_mm1_x100 / 100.0;
+
   d["dr"] = cfg.lora_dr;
   d["adr"] = cfg.lora_adr;
+
   String out; serializeJson(d, out);
   http.send(200, "application/json", out);
 }
 
 static void api_cfg_lora() {
   if (!http.hasArg("plain")) { http.send(400, "text/plain", "bad json"); return; }
-  StaticJsonDocument<900> d;
+  StaticJsonDocument<1500> d;
   if (deserializeJson(d, http.arg("plain"))) { http.send(400, "text/plain", "bad json"); return; }
 
   bool okHex = true;
   bool needRestart = false;
   bool needResetWindow = false;
+
+  if (gMux) xSemaphoreTake(gMux, pdMS_TO_TICKS(200));
 
   if (d.containsKey("devEui_lsb")) { okHex &= parseHexLSB((const char*)d["devEui_lsb"], cfg.devEui, 8); needRestart = true; }
   if (d.containsKey("appEui_lsb")) { okHex &= parseHexLSB((const char*)d["appEui_lsb"], cfg.appEui, 8); needRestart = true; }
@@ -609,7 +841,11 @@ static void api_cfg_lora() {
 
   if (d.containsKey("minutes")) {
     uint32_t newM = d["minutes"].as<uint32_t>();
-    if (newM < 1 || newM > MINUTES_MAX) { http.send(400, "text/plain", "minutes range"); return; }
+    if (newM < 1 || newM > MINUTES_MAX) {
+      if (gMux) xSemaphoreGive(gMux);
+      http.send(400, "text/plain", "minutes range");
+      return;
+    }
     if (newM != cfg.minutes) {
       cfg.minutes = newM;
       prefs.begin("uhfb", false); prefs.putUInt("minutes", cfg.minutes); prefs.end();
@@ -619,19 +855,79 @@ static void api_cfg_lora() {
     }
   }
 
+  // meas fixed 10s (reject changes)
   if (d.containsKey("meas_period_s")) {
     int s = d["meas_period_s"].as<int>();
-    if (s < (int)MEAS_PERIOD_MIN_S || s > (int)MEAS_PERIOD_MAX_S) { http.send(400, "text/plain", "meas_period_s range"); return; }
-    if ((uint16_t)s != cfg.meas_period_s) {
-      cfg.meas_period_s = (uint16_t)s;
-      prefs.begin("uhfb", false); prefs.putUShort("meas_s", cfg.meas_period_s); prefs.end();
+    if (s != (int)MEAS_PERIOD_FIXED_S) {
+      if (gMux) xSemaphoreGive(gMux);
+      http.send(400, "text/plain", "meas_period_s fixed=10");
+      return;
+    }
+  }
+
+  if (d.containsKey("crack")) {
+    JsonObject cr = d["crack"].as<JsonObject>();
+
+    if (cr.containsKey("ref_mode")) {
+      String m = cr["ref_mode"].as<String>();
+      cfg.ref_mode = (m == "manual") ? REF_MANUAL : REF_AUTO;
+      prefs.begin("uhfb", false); prefs.putUChar("cr_ref", cfg.ref_mode); prefs.end();
+    }
+
+    if (cr.containsKey("len_mm")) {
+      float L = cr["len_mm"].as<float>();
+      if (!isfinite(L) || L < 0.01f || L > 1000.0f) {
+        if (gMux) xSemaphoreGive(gMux);
+        http.send(400, "text/plain", "len range");
+        return;
+      }
+      cfg.crack_len_mm_x100 = (uint16_t)lrintf(L * 100.0f);
+      prefs.begin("uhfb", false); prefs.putUShort("cr_len_x100", cfg.crack_len_mm_x100); prefs.end();
       needResetWindow = true;
     }
+
+    if (cr.containsKey("r0")) cfg.crack_r0 = cr["r0"].as<int16_t>();
+    if (cr.containsKey("r1")) cfg.crack_r1 = cr["r1"].as<int16_t>();
+    if (cr.containsKey("mm0")) {
+      float v = cr["mm0"].as<float>();
+      if (!isfinite(v) || v < 0 || v > 1000) {
+        if (gMux) xSemaphoreGive(gMux);
+        http.send(400, "text/plain", "mm0 range");
+        return;
+      }
+      cfg.crack_mm0_x100 = (uint16_t)lrintf(v * 100.0f);
+    }
+    if (cr.containsKey("mm1")) {
+      float v = cr["mm1"].as<float>();
+      if (!isfinite(v) || v < 0 || v > 1000) {
+        if (gMux) xSemaphoreGive(gMux);
+        http.send(400, "text/plain", "mm1 range");
+        return;
+      }
+      cfg.crack_mm1_x100 = (uint16_t)lrintf(v * 100.0f);
+    }
+
+    if (cfg.crack_r0 == cfg.crack_r1) {
+      if (gMux) xSemaphoreGive(gMux);
+      http.send(400, "text/plain", "cal error");
+      return;
+    }
+    prefs.begin("uhfb", false);
+    prefs.putShort("cr_r0", cfg.crack_r0);
+    prefs.putShort("cr_r1", cfg.crack_r1);
+    prefs.putUShort("cr_mm0", cfg.crack_mm0_x100);
+    prefs.putUShort("cr_mm1", cfg.crack_mm1_x100);
+    prefs.end();
+    needResetWindow = true;
   }
 
   if (d.containsKey("dr")) {
     int v = d["dr"].as<int>();
-    if (v < 0 || v > 5) { http.send(400, "text/plain", "dr range"); return; }
+    if (v < 0 || v > 5) {
+      if (gMux) xSemaphoreGive(gMux);
+      http.send(400, "text/plain", "dr range");
+      return;
+    }
     cfg.lora_dr = (uint8_t)v;
     prefs.begin("uhfb", false); prefs.putUChar("lora_dr", cfg.lora_dr); prefs.end();
     needRestart = true;
@@ -642,22 +938,21 @@ static void api_cfg_lora() {
     prefs.begin("uhfb", false); prefs.putBool("lora_adr", cfg.lora_adr); prefs.end();
   }
 
-  if (!okHex) { http.send(400, "text/plain", "hex error"); return; }
+  if (!okHex) {
+    if (gMux) xSemaphoreGive(gMux);
+    http.send(400, "text/plain", "hex error");
+    return;
+  }
 
   nvsPut("devEui", cfg.devEui, 8);
   nvsPut("appEui", cfg.appEui, 8);
   nvsPut("appKey", cfg.appKey, 16);
 
-  http.send(200, "text/plain", "ok");
+  if (needResetWindow) resetMeasWindow_locked();
 
-  if (needResetWindow) {
-    if (xSemaphoreTake(gMux, pdMS_TO_TICKS(100)) == pdTRUE) {
-      resetMeasWindow();
-      xSemaphoreGive(gMux);
-    } else {
-      resetMeasWindow();
-    }
-  }
+  if (gMux) xSemaphoreGive(gMux);
+
+  http.send(200, "text/plain", "ok");
 
   if (needRestart) { delay(150); ESP.restart(); }
 }
@@ -686,33 +981,66 @@ static void loadCfg() {
   prefs.getBytes("appEui", cfg.appEui, 8);
   prefs.getBytes("appKey", cfg.appKey, 16);
   cfg.minutes = prefs.getUInt("minutes", cfg.minutes);
-  cfg.meas_period_s = prefs.getUShort("meas_s", cfg.meas_period_s);
+
+  cfg.meas_period_s = prefs.getUShort("meas_s", MEAS_PERIOD_FIXED_S);
+  cfg.meas_period_s = MEAS_PERIOD_FIXED_S;
+
+  cfg.crack_len_mm_x100 = prefs.getUShort("cr_len_x100", cfg.crack_len_mm_x100);
+  cfg.crack_r0 = prefs.getShort("cr_r0", cfg.crack_r0);
+  cfg.crack_r1 = prefs.getShort("cr_r1", cfg.crack_r1);
+  cfg.crack_mm0_x100 = prefs.getUShort("cr_mm0", cfg.crack_mm0_x100);
+  cfg.crack_mm1_x100 = prefs.getUShort("cr_mm1", cfg.crack_mm1_x100);
+  cfg.ref_mode = prefs.getUChar("cr_ref", cfg.ref_mode);
+
   cfg.lora_dr = prefs.getUChar("lora_dr", cfg.lora_dr);
   cfg.lora_adr = prefs.getBool("lora_adr", cfg.lora_adr);
   prefs.end();
 
   if (cfg.minutes < 1) cfg.minutes = 1;
   if (cfg.minutes > MINUTES_MAX) cfg.minutes = MINUTES_MAX;
-  if (cfg.meas_period_s < MEAS_PERIOD_MIN_S) cfg.meas_period_s = MEAS_PERIOD_MIN_S;
-  if (cfg.meas_period_s > MEAS_PERIOD_MAX_S) cfg.meas_period_s = MEAS_PERIOD_MAX_S;
+
+  if (cfg.crack_r0 == cfg.crack_r1) cfg.crack_r1 = 25480;
 }
 
 // ========================= Mandatory measurement task ============== //
 static void measTask(void*) {
+  const TickType_t periodTicks = pdMS_TO_TICKS((uint32_t)MEAS_PERIOD_FIXED_S * 1000UL);
+
   for (;;) {
-    uint32_t periodMs = (uint32_t)cfg.meas_period_s * 1000UL;
-    if (periodMs < 1000UL) periodMs = 1000UL;
+    int16_t t = INT16_MIN;
 
-    sensorsPowerOn();
-    int16_t t = readTemp_c_x100_signed();
-    sensorsPowerOff();
+    bool cr_ok = false;
+    uint16_t cr_x1000 = 0;
 
-    if (xSemaphoreTake(gMux, pdMS_TO_TICKS(100)) == pdTRUE) {
-      addTempSample(t);
+    // take sensor mutex to prevent races with OLED/API
+    if (gSensMux && xSemaphoreTake(gSensMux, pdMS_TO_TICKS(800)) == pdTRUE) {
+      sensorsPowerOn();
+
+      t = readTemp_c_x100_signed();
+
+      if (adsOk) {
+        CrackMeas cr = readCrackOnce();
+        float mm = cr.mm;
+        if (isfinite(mm)) {
+          if (mm < 0) mm = 0;
+          if (mm > 65.535f) mm = 65.535f;
+          cr_x1000 = (uint16_t)lroundf(mm * 1000.0f);
+          cr_ok = true;
+        }
+      }
+
+      sensorsPowerOff();
+      xSemaphoreGive(gSensMux);
+    }
+
+    if (gMux && xSemaphoreTake(gMux, pdMS_TO_TICKS(200)) == pdTRUE) {
+      addTempSample_locked(t);
+      addCrackSample_locked(cr_ok, cr_x1000);
+      webLogSample2_locked(t, cr_ok, cr_x1000);
       xSemaphoreGive(gMux);
     }
 
-    vTaskDelay(pdMS_TO_TICKS(periodMs));
+    vTaskDelay(periodTicks);
   }
 }
 
@@ -729,7 +1057,7 @@ static void loraInitOnce() {
 
   loraWanAdr = cfg.lora_adr;
   LoRaWAN.init(CLASS_A, ACTIVE_REGION);
-  applyLoraDR();
+  LoRaWAN.setDefaultDR(mapDR(cfg.lora_dr));
   enforceTxPolicy();
 
   Serial.println("[LoRa] join()");
@@ -753,41 +1081,49 @@ static void loraTask(void*) {
         lastJoinTryMs = now;
       }
     } else {
-      // periodic TX trigger (minutes window) OR forced TX
       uint32_t reportPeriodMs = 60000UL * (uint32_t)cfg.minutes;
       if (reportPeriodMs < 60000UL) reportPeriodMs = 60000UL;
 
       bool due = false;
-      if ((now - window_start_ms) >= reportPeriodMs) due = true;
+
+      uint32_t ws = 0;
+      uint32_t m  = 10;
+
+      if (gMux && xSemaphoreTake(gMux, pdMS_TO_TICKS(120)) == pdTRUE) {
+        ws = window_start_ms;
+        m  = cfg.minutes;
+        xSemaphoreGive(gMux);
+      } else {
+        ws = window_start_ms;
+        m  = cfg.minutes;
+      }
+
+      reportPeriodMs = 60000UL * m;
+      if (reportPeriodMs < 60000UL) reportPeriodMs = 60000UL;
+
+      if ((now - ws) >= reportPeriodMs) due = true;
       if (forceTxOnce) due = true;
 
       if (due) {
         enforceTxPolicy();
 
-        if (xSemaphoreTake(gMux, pdMS_TO_TICKS(200)) == pdTRUE) {
-          prepareTxFrame(UPLINK_PORT);
+        uint16_t vb = readBattery_mV();
+
+        if (gMux && xSemaphoreTake(gMux, pdMS_TO_TICKS(250)) == pdTRUE) {
+          buildPayload18_locked(vb);
+          LoRaWAN.send();
+          resetMeasWindow_locked();
+          forceTxOnce = false;
           xSemaphoreGive(gMux);
         } else {
-          prepareTxFrame(UPLINK_PORT);
+          // if we cannot lock, don't TX garbage; just skip this cycle
+          Serial.println("[LoRa] payload lock timeout; skip TX");
         }
-
-        LoRaWAN.send();
-
-        if (xSemaphoreTake(gMux, pdMS_TO_TICKS(200)) == pdTRUE) {
-          resetMeasWindow();
-          xSemaphoreGive(gMux);
-        } else {
-          resetMeasWindow();
-        }
-
-        forceTxOnce = false;
       }
     }
 
-    // pump LoRaMAC/Radio; does NOT stop WiFi task/measurements because we are in a separate task
+    // No deep sleep scheduling. Keep very short idle.
     LoRaWAN.sleep(CLASS_A);
-
-    // avoid 100% CPU
     vTaskDelay(pdMS_TO_TICKS(10));
   }
 }
@@ -800,6 +1136,7 @@ void setup() {
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
 
   gMux = xSemaphoreCreateMutex();
+  gSensMux = xSemaphoreCreateMutex();
 
   pinMode(PIN_MODE_OUT, OUTPUT);
   digitalWrite(PIN_MODE_OUT, LOW);
@@ -813,17 +1150,24 @@ void setup() {
   analogReadResolution(12);
   loadCfg();
 
+  cfg.meas_period_s = MEAS_PERIOD_FIXED_S;
+
   appTxDutyCycle = 60000UL * (uint32_t)cfg.minutes;
   if (appTxDutyCycle < 60000UL) appTxDutyCycle = 60000UL;
 
-  resetMeasWindow();
+  if (gMux) {
+    xSemaphoreTake(gMux, pdMS_TO_TICKS(200));
+    resetMeasWindow_locked();
+    xSemaphoreGive(gMux);
+  } else {
+    window_samples = 60;
+    window_start_ms = millis();
+  }
 
   if (apMode) {
-    // Power for OLED (Heltec): enable Vext FIRST
     pinMode(Vext, OUTPUT);
     digitalWrite(Vext, LOW);   // Vext ON
 
-    // WiFi AP + FS + HTTP
     WiFi.mode(WIFI_AP);
     WiFi.setTxPower(WIFI_POWER_7dBm);
 
@@ -834,7 +1178,6 @@ void setup() {
     String ssid = String(AP_SSID_PREFIX) + devEuiSuffix6LSB();
     WiFi.softAP(ssid.c_str(), AP_PSK);
 
-    // OLED init AFTER Vext ON, and AFTER AP is up (so IP is valid)
     oledSplash();
     oledPhase = OLED_SSID;
     oledPhaseStart = millis();
@@ -844,22 +1187,16 @@ void setup() {
     WiFi.persistent(false);
     WiFi.disconnect(true, true);
     WiFi.mode(WIFI_OFF);
-  #if defined(CONFIG_BT_ENABLED) && CONFIG_BT_ENABLED
+#if defined(CONFIG_BT_ENABLED) && CONFIG_BT_ENABLED
     btStop();
-  #endif
+#endif
     pinMode(Vext, OUTPUT);
     digitalWrite(Vext, HIGH); // Vext OFF
   }
 
-
-  // start tasks
   xTaskCreatePinnedToCore(measTask, "meas", 4096, nullptr, 2, &measTaskH, 1);
   xTaskCreatePinnedToCore(loraTask, "lora", 6144, nullptr, 1, &loraTaskH, 0);
-
-  // Note: AP/web remains in loop() (non-blocking); could be moved to a task if needed
 }
-
-// === REPLACE loop() with this (keeps AP web + OLED refresh non-blocking) ===
 
 void loop() {
   if (apMode) {
@@ -867,14 +1204,12 @@ void loop() {
 
     const uint32_t now = millis();
 
-    // after SSID screen -> sensor screen
     if (oledPhase == OLED_SSID && (now - oledPhaseStart) >= 1500UL) {
       oledPhase = OLED_SENS;
       oledRefreshMs = 0;
       oledSensorsOnce();
     }
 
-    // refresh sensors screen ~1 Hz
     if (oledPhase == OLED_SENS && (now - oledRefreshMs) >= 1000UL) {
       oledRefreshMs = now;
       oledSensorsOnce();
@@ -883,4 +1218,3 @@ void loop() {
 
   delay(5);
 }
-
