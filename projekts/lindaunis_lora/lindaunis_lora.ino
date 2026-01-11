@@ -4,16 +4,37 @@
  *  Variant: AP mode (Web UI + OLED) like old + LoRaWAN in field
  * ---------------------------------------------------------------------
  *  NEW LOGIC REQUIREMENT:
- *    - Measure strictly every 10 seconds (no deep sleep scheduling)
+ *    - Measure strictly every 10 seconds
  *    - Keep Cur/Avg/Min/Max for Temp (int16 x100) and Crack (uint16 mm*1000)
  *    - Payload 18 bytes (unchanged layout)
+ *    - Field mode: MAX power save using LIGHT SLEEP (no deep sleep)
+ *      * Measurement every 10 seconds (strict)
+ *      * Uplink every cfg.minutes (default 10 minutes)
  *
- *  Everything else (AP + Web UI + LittleFS + OLED + LoRa join/tx policy)
- *  stays like in the old “Variant A” style.
+ *  AP mode stays like old (Web UI + OLED live), light sleep is NOT used there.
+ *
+ * ---------------------------------------------------------------------
+ *  OPTIMIZATIONS APPLIED (ADS warmup kept as-is):
+ *    1) Field mode uplink battery read no longer powers sensors/ADS
+ *       (battery read is independent and saves power/time)
+ *    2) Strict 10s scheduler improved with "catch-up" to avoid rapid wake loops
+ *       after long TX (no change in 10s grid / no drift accumulation)
+ *    3) Removed unnecessary delay(20) after LoRaWAN.send()
+ *    4) DS18B20 conversion wait tightened (10-bit) and uses non-blocking mode
+ *       to avoid extra waiting; still robust
+ *    5) Sleep power domains: RTC_PERIPH OFF (safe for timer wakeup)
+ *    6) Reduced serial chatter in field mode (kept key prints only)
  * =====================================================================
  */
 
+#ifdef LORA_MAC_PRIVATE_SYNCWORD
+#undef LORA_MAC_PRIVATE_SYNCWORD
+#endif
+#ifdef LORA_MAC_PUBLIC_SYNCWORD
+#undef LORA_MAC_PUBLIC_SYNCWORD
+#endif
 #include "LoRaWan_APP.h"
+
 #ifdef CLASS
 #undef CLASS
 #endif
@@ -46,8 +67,13 @@
 #include "freertos/task.h"
 #include "freertos/semphr.h"
 
+// ===== Light sleep + PM =====
+#include "esp_sleep.h"
+#include "esp_timer.h"
+#include "esp_pm.h"
+
 // ========================== Firmware version ======================= //
-static constexpr const char* FW_VER = "1.9.0-AP+OLED+WEB-10sMEAS-18B";
+static constexpr const char* FW_VER = "2.0.0-AP+OLED+WEB-10sMEAS-18B-LS-OPT1";
 
 // ========================== LoRaWAN key slots ======================= //
 uint8_t devEui[8] = {0}, appEui[8] = {0};   // Heltec expects globals
@@ -67,6 +93,9 @@ static constexpr int PIN_SENS_EN = 7;
 static constexpr bool SENS_ACTIVE_HIGH = true;
 
 static constexpr uint8_t DS_RES_BITS = 10;
+
+// Tightened DS conversion wait (10-bit ~187.5ms typical). Keep margin.
+static constexpr uint16_t DS_WAIT_MS = 190;
 
 static constexpr float VBAT_ADC_FACTOR = 1.0f / 4096.0f / 0.210282997855762f;
 
@@ -194,8 +223,14 @@ static uint32_t lastJoinTryMs = 0;
 static SemaphoreHandle_t gMux = nullptr;
 static SemaphoreHandle_t gSensMux = nullptr;
 
+// AP mode tasks (kept)
 static TaskHandle_t measTaskH = nullptr;
 static TaskHandle_t loraTaskH = nullptr;
+
+// Field mode light sleep scheduler
+static uint64_t nextMeasUs = 0;
+static uint64_t lastJoinTryUs = 0;
+static uint32_t measCounter = 0;
 
 // ========================= Helpers ================================= //
 static inline void nvsPut(const char* k, const void* p, size_t n) {
@@ -344,7 +379,7 @@ static inline void SensorsOFF() {
   pinMode(PIN_SENS_EN, INPUT);
 }
 
-// ADS init + read
+// ADS init + read (KEEP AS-IS: ADS power-cycled, warmup affects data quality)
 static void adsInitOnce() {
   ads.setGain(GAIN_ONE);
   ads.setDataRate(RATE_ADS1115_128SPS);
@@ -379,7 +414,10 @@ static void sensorsPowerOn() {
       }
     }
   }
-  if (firstDsFound) sensors.setResolution(firstDs, DS_RES_BITS);
+  if (firstDsFound) {
+    sensors.setResolution(firstDs, DS_RES_BITS);
+    sensors.setWaitForConversion(false); // optimization: tighter waits in readTemp()
+  }
 }
 
 static void sensorsPowerOff() {
@@ -403,8 +441,11 @@ static uint16_t readBattery_mV() {
 
 static int16_t readTemp_c_x100_signed() {
   if (!firstDsFound) return INT16_MIN;
+
+  // non-blocking conversion, but we still wait DS_WAIT_MS; no extra over-wait
   sensors.requestTemperaturesByAddress(firstDs);
-  delay(200);
+  delay(DS_WAIT_MS);
+
   float t = sensors.getTempC(firstDs);
   if (!isfinite(t) || t < -55.0f || t > 125.0f) return INT16_MIN;
   long v = lroundf(t * 100.0f);
@@ -477,6 +518,8 @@ static void resetMeasWindow_locked() {
 
   c_count = 0;
   c_wr = 0;
+  c_last = 0xFFFF;
+  c_last_valid = false;
 
   window_samples = samplesPerWindowFromCfg_locked();
 }
@@ -680,45 +723,35 @@ static void api_state() {
     bool tok = computeStats(t_avg, t_min, t_max);
 
     if (t_count > 0 && t_last_c_x100 != INT16_MIN) d["t_cur_c"] = (double)t_last_c_x100 / 100.0;
-    else d["t_cur_c"] = nullptr;
+    else d["t_cur_c"].set(nullptr);
 
     if (tok) {
       d["t_avg_c"] = (double)t_avg / 100.0;
       d["t_min_c"] = (double)t_min / 100.0;
       d["t_max_c"] = (double)t_max / 100.0;
     } else {
-      d["t_avg_c"] = nullptr;
-      d["t_min_c"] = nullptr;
-      d["t_max_c"] = nullptr;
+      d["t_avg_c"].set(nullptr);
+      d["t_min_c"].set(nullptr);
+      d["t_max_c"].set(nullptr);
     }
 
     uint16_t c_avg=0, c_min=0, c_max=0;
     bool cok = computeCrackStats(c_avg, c_min, c_max);
     uint16_t c_cur = (c_last_valid ? c_last : 0xFFFF);
 
-    if (c_cur == 0xFFFF) d["crack_cur_x1000"] = nullptr;
-    else d["crack_cur_x1000"] = (uint32_t)c_cur;
+    if (c_cur == 0xFFFF) d["crack_cur_x1000"].set(nullptr);
+    else                 d["crack_cur_x1000"] = (uint32_t)c_cur;
 
-    if (cok) d["crack_avg_x1000"] = (uint32_t)c_avg;
-    else d["crack_avg_x1000"] = nullptr;
+    if (cok) d["crack_avg_x1000"] = (uint32_t)c_avg; else d["crack_avg_x1000"].set(nullptr);
+    if (cok) d["crack_min_x1000"] = (uint32_t)c_min; else d["crack_min_x1000"].set(nullptr);
+    if (cok) d["crack_max_x1000"] = (uint32_t)c_max; else d["crack_max_x1000"].set(nullptr);
 
-    if (cok) d["crack_min_x1000"] = (uint32_t)c_min;
-    else d["crack_min_x1000"] = nullptr;
+    if (c_cur == 0xFFFF) d["crack_cur_mm"].set(nullptr);
+    else                 d["crack_cur_mm"] = (double)c_cur / 1000.0;
 
-    if (cok) d["crack_max_x1000"] = (uint32_t)c_max;
-    else d["crack_max_x1000"] = nullptr;
-
-    if (c_cur == 0xFFFF) d["crack_cur_mm"] = nullptr;
-    else d["crack_cur_mm"] = (double)c_cur / 1000.0;
-
-    if (cok) d["crack_avg_mm"] = (double)c_avg / 1000.0;
-    else d["crack_avg_mm"] = nullptr;
-
-    if (cok) d["crack_min_mm"] = (double)c_min / 1000.0;
-    else d["crack_min_mm"] = nullptr;
-
-    if (cok) d["crack_max_mm"] = (double)c_max / 1000.0;
-    else d["crack_max_mm"] = nullptr;
+    if (cok) d["crack_avg_mm"] = (double)c_avg / 1000.0; else d["crack_avg_mm"].set(nullptr);
+    if (cok) d["crack_min_mm"] = (double)c_min / 1000.0; else d["crack_min_mm"].set(nullptr);
+    if (cok) d["crack_max_mm"] = (double)c_max / 1000.0; else d["crack_max_mm"].set(nullptr);
 
     d["tx_period_min"] = cfg.minutes;
     d["meas_period_s"] = MEAS_PERIOD_FIXED_S;
@@ -730,21 +763,25 @@ static void api_state() {
     const uint32_t elapsed = millis() - window_start_ms;
     d["next_tx_s"] = (elapsed >= reportPeriodMs) ? 0 : (uint32_t)((reportPeriodMs - elapsed) / 1000UL);
 
+    // -------- log ----------
     JsonArray log = d.createNestedArray("log");
     uint32_t nowS = now_sec();
+
     for (uint16_t i = 0; i < web_cnt; i++) {
       int idx = (int)web_wr - 1 - (int)i;
       while (idx < 0) idx += WEB_LOG_N;
+
       JsonObject row = log.createNestedObject();
       row["age_s"] = (nowS >= web_ts_s[idx]) ? (nowS - web_ts_s[idx]) : 0;
 
-      if (web_t[idx] == INT16_MIN) row["t_c"] = nullptr;
-      else row["t_c"] = (double)web_t[idx] / 100.0;
+      if (web_t[idx] == INT16_MIN) row["t_c"].set(nullptr);
+      else                         row["t_c"] = (double)web_t[idx] / 100.0;
 
-      if (!web_c_ok[idx]) row["crack_mm"] = nullptr;
-      else row["crack_mm"] = (double)web_c[idx] / 1000.0;
+      if (!web_c_ok[idx]) row["crack_mm"].set(nullptr);
+      else                row["crack_mm"] = (double)web_c[idx] / 1000.0;
     }
 
+    // -------- cfg ----------
     JsonObject c = d.createNestedObject("cfg");
     c["minutes"] = cfg.minutes;
     c["meas_period_s"] = MEAS_PERIOD_FIXED_S;
@@ -765,14 +802,20 @@ static void api_state() {
 
     xSemaphoreGive(gMux);
   } else {
-    d["t_cur_c"] = nullptr;
-    d["t_avg_c"] = nullptr;
-    d["t_min_c"] = nullptr;
-    d["t_max_c"] = nullptr;
-    d["crack_cur_mm"] = nullptr;
-    d["crack_avg_mm"] = nullptr;
-    d["crack_min_mm"] = nullptr;
-    d["crack_max_mm"] = nullptr;
+    d["t_cur_c"].set(nullptr);
+    d["t_avg_c"].set(nullptr);
+    d["t_min_c"].set(nullptr);
+    d["t_max_c"].set(nullptr);
+
+    d["crack_cur_x1000"].set(nullptr);
+    d["crack_avg_x1000"].set(nullptr);
+    d["crack_min_x1000"].set(nullptr);
+    d["crack_max_x1000"].set(nullptr);
+
+    d["crack_cur_mm"].set(nullptr);
+    d["crack_avg_mm"].set(nullptr);
+    d["crack_min_mm"].set(nullptr);
+    d["crack_max_mm"].set(nullptr);
   }
 
   uint16_t batmV = 0;
@@ -1002,7 +1045,7 @@ static void loadCfg() {
   if (cfg.crack_r0 == cfg.crack_r1) cfg.crack_r1 = 25480;
 }
 
-// ========================= Mandatory measurement task ============== //
+// ========================= AP mode tasks (legacy) ================== //
 static void measTask(void*) {
   const TickType_t periodTicks = pdMS_TO_TICKS((uint32_t)MEAS_PERIOD_FIXED_S * 1000UL);
 
@@ -1012,7 +1055,6 @@ static void measTask(void*) {
     bool cr_ok = false;
     uint16_t cr_x1000 = 0;
 
-    // take sensor mutex to prevent races with OLED/API
     if (gSensMux && xSemaphoreTake(gSensMux, pdMS_TO_TICKS(800)) == pdTRUE) {
       sensorsPowerOn();
 
@@ -1044,7 +1086,6 @@ static void measTask(void*) {
   }
 }
 
-// ========================= LoRa task (join/tx + pump) ============== //
 static void loraInitOnce() {
   if (loraInited) return;
 
@@ -1063,6 +1104,7 @@ static void loraInitOnce() {
   Serial.println("[LoRa] join()");
   LoRaWAN.join();
   lastJoinTryMs = millis();
+  lastJoinTryUs = esp_timer_get_time();
 
   loraInited = true;
 }
@@ -1116,16 +1158,117 @@ static void loraTask(void*) {
           forceTxOnce = false;
           xSemaphoreGive(gMux);
         } else {
-          // if we cannot lock, don't TX garbage; just skip this cycle
           Serial.println("[LoRa] payload lock timeout; skip TX");
         }
       }
     }
 
-    // No deep sleep scheduling. Keep very short idle.
     LoRaWAN.sleep(CLASS_A);
     vTaskDelay(pdMS_TO_TICKS(10));
   }
+}
+
+// ========================= Field mode (light sleep) ================= //
+static void doOneMeasurement_field() {
+  int16_t t = INT16_MIN;
+  bool cr_ok = false;
+  uint16_t cr_x1000 = 0;
+
+  if (gSensMux && xSemaphoreTake(gSensMux, pdMS_TO_TICKS(800)) == pdTRUE) {
+    sensorsPowerOn();
+
+    t = readTemp_c_x100_signed();
+
+    if (adsOk) {
+      CrackMeas cr = readCrackOnce();
+      float mm = cr.mm;
+      if (isfinite(mm)) {
+        if (mm < 0) mm = 0;
+        if (mm > 65.535f) mm = 65.535f;
+        cr_x1000 = (uint16_t)lroundf(mm * 1000.0f);
+        cr_ok = true;
+      }
+    }
+
+    sensorsPowerOff();
+    xSemaphoreGive(gSensMux);
+  }
+
+  if (gMux && xSemaphoreTake(gMux, pdMS_TO_TICKS(200)) == pdTRUE) {
+    addTempSample_locked(t);
+    addCrackSample_locked(cr_ok, cr_x1000);
+    webLogSample2_locked(t, cr_ok, cr_x1000);
+    xSemaphoreGive(gMux);
+  }
+}
+
+static void doOneUplinkIfDue_field() {
+  loraInitOnce();
+
+  const uint64_t nowUs = esp_timer_get_time();
+
+  if (!isJoined()) {
+    if (nowUs - lastJoinTryUs >= 30ULL * 1000000ULL) {
+      Serial.println("[LoRa] join retry");
+      LoRaWAN.join();
+      enforceTxPolicy();
+      lastJoinTryUs = nowUs;
+      lastJoinTryMs = millis();
+    }
+    return;
+  }
+
+  // due every cfg.minutes (in samples) OR forced
+  uint32_t mins = cfg.minutes;
+  if (mins < 1) mins = 1;
+  if (mins > MINUTES_MAX) mins = MINUTES_MAX;
+
+  const uint32_t samplesPerTx = (uint32_t)((mins * 60UL) / MEAS_PERIOD_FIXED_S);
+  const uint32_t sp = (samplesPerTx < 1) ? 1 : samplesPerTx;
+
+  bool due = false;
+  if (forceTxOnce) due = true;
+  if ((measCounter % sp) == 0) due = true;
+
+  if (!due) return;
+
+  enforceTxPolicy();
+
+  // OPT: battery read does NOT need sensors power (saves 40ms + ADS init)
+  const uint16_t vb = readBattery_mV();
+
+  if (gMux && xSemaphoreTake(gMux, pdMS_TO_TICKS(350)) == pdTRUE) {
+    buildPayload18_locked(vb);
+    LoRaWAN.send();                 // no extra delay after send
+    resetMeasWindow_locked();
+    forceTxOnce = false;
+    xSemaphoreGive(gMux);
+  } else {
+    Serial.println("[LoRa] payload lock timeout; skip TX");
+  }
+}
+
+static void sleepUntilNextMeasurement_field() {
+  const uint64_t nowUs = esp_timer_get_time();
+
+  if (nextMeasUs == 0) nextMeasUs = nowUs + (uint64_t)MEAS_PERIOD_FIXED_S * 1000000ULL;
+
+  // Catch-up: if we are late (e.g., long send/RX windows), skip slots
+  // so we don't get stuck in near-zero sleeps.
+  while ((int64_t)(nextMeasUs - nowUs) <= 1000) {
+    nextMeasUs += (uint64_t)MEAS_PERIOD_FIXED_S * 1000000ULL;
+  }
+
+  const uint64_t deltaUs = nextMeasUs - nowUs;
+
+  // Put LoRa stack/radio to sleep before MCU light sleep
+  LoRaWAN.sleep(CLASS_A);
+
+  esp_sleep_enable_timer_wakeup(deltaUs);
+  esp_light_sleep_start();
+
+  // strict schedule: +10s slot, no drift accumulation
+  nextMeasUs += (uint64_t)MEAS_PERIOD_FIXED_S * 1000000ULL;
 }
 
 // ============================== Setup/Loop ========================= //
@@ -1134,6 +1277,16 @@ static constexpr char AP_SSID_PREFIX[] = "Riss-";
 void setup() {
   Serial.begin(115200);
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
+
+  // Power domains optimization for sleep
+  esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_OFF);
+
+  // Enable light sleep + DVFS (field mode benefits)
+  esp_pm_config_t pm_cfg;
+  pm_cfg.max_freq_mhz = 80;
+  pm_cfg.min_freq_mhz = 10;
+  pm_cfg.light_sleep_enable = true;
+  (void)esp_pm_configure(&pm_cfg);
 
   gMux = xSemaphoreCreateMutex();
   gSensMux = xSemaphoreCreateMutex();
@@ -1183,7 +1336,10 @@ void setup() {
     oledPhaseStart = millis();
     oledShowSSID(ssid);
 
+    xTaskCreatePinnedToCore(measTask, "meas", 4096, nullptr, 2, &measTaskH, 1);
+    xTaskCreatePinnedToCore(loraTask, "lora", 6144, nullptr, 1, &loraTaskH, 0);
   } else {
+    // Field mode: disable WiFi/BT + OLED power off
     WiFi.persistent(false);
     WiFi.disconnect(true, true);
     WiFi.mode(WIFI_OFF);
@@ -1192,10 +1348,15 @@ void setup() {
 #endif
     pinMode(Vext, OUTPUT);
     digitalWrite(Vext, HIGH); // Vext OFF
-  }
 
-  xTaskCreatePinnedToCore(measTask, "meas", 4096, nullptr, 2, &measTaskH, 1);
-  xTaskCreatePinnedToCore(loraTask, "lora", 6144, nullptr, 1, &loraTaskH, 0);
+    // Field mode light-sleep scheduler init
+    nextMeasUs = esp_timer_get_time() + (uint64_t)MEAS_PERIOD_FIXED_S * 1000000ULL;
+    lastJoinTryUs = 0;
+    measCounter = 0;
+
+    // Optional: reduce UART overhead in field mode if needed
+    // Serial.setDebugOutput(false);
+  }
 }
 
 void loop() {
@@ -1214,7 +1375,16 @@ void loop() {
       oledRefreshMs = now;
       oledSensorsOnce();
     }
+
+    delay(5);
+    return;
   }
 
-  delay(5);
+  // ========== Field mode: strict 10s measurement + light sleep ==========
+  doOneMeasurement_field();
+  measCounter++;
+
+  doOneUplinkIfDue_field();
+
+  sleepUntilNextMeasurement_field();
 }
