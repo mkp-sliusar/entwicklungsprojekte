@@ -3,27 +3,25 @@
  *  Project: Heltec ESP32-S3 (LoRa V3) — Temperature + ADS1115 Crack Node
  *  Variant: AP mode (Web UI + OLED) like old + LoRaWAN in field
  * ---------------------------------------------------------------------
- *  NEW LOGIC REQUIREMENT:
- *    - Measure strictly every 10 seconds
- *    - Keep Cur/Avg/Min/Max for Temp (int16 x100) and Crack (uint16 mm*1000)
- *    - Payload 18 bytes (unchanged layout)
- *    - Field mode: MAX power save using LIGHT SLEEP (no deep sleep)
- *      * Measurement every 10 seconds (strict)
- *      * Uplink every cfg.minutes (default 10 minutes)
+ *  REQUIREMENTS
+ *   - Measure strictly every 10 seconds (Temp + Crack)
+ *   - Keep Cur/Avg/Min/Max for:
+ *        Temp:  int16  x100 (°C)
+ *        Crack: uint16 x1000 (mm)
+ *   - Payload 18 bytes (unchanged layout)
+ *   - AP mode: Web UI + OLED live (NO light sleep)
+ *   - Field mode: MAX power save using LIGHT SLEEP (NO deep sleep)
+ *        * Measurement every 10 seconds (strict)
+ *        * Uplink every cfg.minutes (default 10 minutes)
  *
- *  AP mode stays like old (Web UI + OLED live), light sleep is NOT used there.
- *
- * ---------------------------------------------------------------------
- *  OPTIMIZATIONS APPLIED (ADS warmup kept as-is):
- *    1) Field mode uplink battery read no longer powers sensors/ADS
- *       (battery read is independent and saves power/time)
- *    2) Strict 10s scheduler improved with "catch-up" to avoid rapid wake loops
- *       after long TX (no change in 10s grid / no drift accumulation)
- *    3) Removed unnecessary delay(20) after LoRaWAN.send()
- *    4) DS18B20 conversion wait tightened (10-bit) and uses non-blocking mode
- *       to avoid extra waiting; still robust
- *    5) Sleep power domains: RTC_PERIPH OFF (safe for timer wakeup)
- *    6) Reduced serial chatter in field mode (kept key prints only)
+ *  POWER/OPTIMIZATION CHANGES (FIELD MODE)
+ *   - No debug Serial prints / no heartbeat / no extra pump loops
+ *   - LoRaWAN stack is processed only when needed:
+ *        * during join (incl. short keep-awake after join request)
+ *        * during RX1/RX2 keep-awake after send
+ *        * when MAC is busy
+ *     Otherwise device sleeps until the next strict 10s slot.
+ *   - Battery read uses the known-good AP-like power context (vbatContextOn/Off)
  * =====================================================================
  */
 
@@ -71,9 +69,20 @@
 #include "esp_sleep.h"
 #include "esp_timer.h"
 #include "esp_pm.h"
+#include "esp_system.h"
+
+// ------------------------------ LoRa MAC busy ------------------------------
+static bool loraMacBusy() {
+  extern uint32_t LoRaMacState; // from LoRaMac-node inside Heltec core
+  return (LoRaMacState != 0);
+}
+
+// ------------------------------ Join flags ------------------------------
+static volatile bool gJoinInProgress = false;
+static volatile bool gJoinedEver = false;
 
 // ========================== Firmware version ======================= //
-static constexpr const char* FW_VER = "2.0.0-AP+OLED+WEB-10sMEAS-18B-LS-OPT1";
+static constexpr const char* FW_VER = "2.0.0-AP+OLED+WEB-10sMEAS-18B-LS-FINAL";
 
 // ========================== LoRaWAN key slots ======================= //
 uint8_t devEui[8] = {0}, appEui[8] = {0};   // Heltec expects globals
@@ -93,10 +102,9 @@ static constexpr int PIN_SENS_EN = 7;
 static constexpr bool SENS_ACTIVE_HIGH = true;
 
 static constexpr uint8_t DS_RES_BITS = 10;
-
-// Tightened DS conversion wait (10-bit ~187.5ms typical). Keep margin.
 static constexpr uint16_t DS_WAIT_MS = 190;
 
+// ADC factor (your value)
 static constexpr float VBAT_ADC_FACTOR = 1.0f / 4096.0f / 0.210282997855762f;
 
 // ADS1115 (I2C1)
@@ -108,6 +116,23 @@ static constexpr uint8_t ADS1115_ADDR = 0x48;
 TwoWire I2C_ADS = TwoWire(1);
 Adafruit_ADS1115 ads;
 static bool adsOk = false;
+
+// ------------------------------ LoRa callbacks ------------------------------
+static volatile bool gTxDone = false;
+
+void McpsConfirm(McpsConfirm_t *mcpsConfirm) {
+  (void)mcpsConfirm;
+  gTxDone = true;
+}
+
+void MlmeConfirm(MlmeConfirm_t *mlmeConfirm) {
+  if (mlmeConfirm && mlmeConfirm->MlmeRequest == MLME_JOIN) {
+    gJoinInProgress = false;
+    if (mlmeConfirm->Status == LORAMAC_EVENT_INFO_STATUS_OK) {
+      gJoinedEver = true;
+    }
+  }
+}
 
 // ============================ System cfg =========================== //
 static constexpr char AP_PSK[] = "12345678";
@@ -140,7 +165,7 @@ static bool     c_last_valid = false;
 
 static uint32_t window_start_ms = 0;
 
-// Web log
+// Web log (AP mode only consumption; still filled in both modes to keep API consistent)
 static constexpr uint16_t WEB_LOG_N = 300;
 static int16_t  web_t[WEB_LOG_N];
 static uint16_t web_c[WEB_LOG_N];
@@ -170,7 +195,7 @@ struct CrackMeas {
   float mm;
   bool auto_used;
 };
-static CrackMeas readCrackOnce(); // ensure visible
+static CrackMeas readCrackOnce(); // forward
 
 // ========================= Persisted config ======================== //
 struct Cfg {
@@ -179,8 +204,7 @@ struct Cfg {
   uint8_t appKey[16] = {0};
 
   uint32_t minutes = 10;     // uplink period (minutes)
-  // kept for backward compat only (fixed runtime)
-  uint16_t meas_period_s = MEAS_PERIOD_FIXED_S;
+  uint16_t meas_period_s = MEAS_PERIOD_FIXED_S; // kept; runtime fixed
 
   // ---- crack calibration ----
   int16_t  crack_r0 = 5;
@@ -215,24 +239,25 @@ uint32_t devAddr = 0;
 // ========================= Scheduling flags ======================== //
 static volatile bool loraInited  = false;
 static volatile bool forceTxOnce = false; // /api/send
-static uint32_t lastJoinTryMs = 0;
 
 // ========================= Concurrency ============================= //
-// gMux: protects cfg + measurement buffers + window_start_ms + web log
-// gSensMux: protects sensorsPowerOn/Off + DS/ADS reads and I2C ownership
 static SemaphoreHandle_t gMux = nullptr;
 static SemaphoreHandle_t gSensMux = nullptr;
 
-// AP mode tasks (kept)
+// AP mode tasks
 static TaskHandle_t measTaskH = nullptr;
 static TaskHandle_t loraTaskH = nullptr;
 
-// Field mode light sleep scheduler
+// Field mode scheduler
 static uint64_t nextMeasUs = 0;
 static uint64_t lastJoinTryUs = 0;
 static uint32_t measCounter = 0;
+static uint32_t lastTxMeasCounter = 0xFFFFFFFF;
+static uint64_t loraCooldownUntilUs = 0;
 
 // ========================= Helpers ================================= //
+static inline bool verboseNow() { return apMode; } // Serial prints only in AP mode
+
 static inline void nvsPut(const char* k, const void* p, size_t n) {
   prefs.begin("uhfb", false);
   prefs.putBytes(k, p, n);
@@ -245,7 +270,7 @@ static OledPhase oledPhase = OLED_LOGO;
 static uint32_t oledPhaseStart = 0;
 static uint32_t oledRefreshMs = 0;
 
-// forward decls used by OLED / API
+// forward decls
 static bool computeStats(int16_t& t_avg, int16_t& t_min, int16_t& t_max);
 static bool computeCrackStats(uint16_t& c_avg, uint16_t& c_min, uint16_t& c_max);
 
@@ -379,7 +404,7 @@ static inline void SensorsOFF() {
   pinMode(PIN_SENS_EN, INPUT);
 }
 
-// ADS init + read (KEEP AS-IS: ADS power-cycled, warmup affects data quality)
+// ADS init + read (kept)
 static void adsInitOnce() {
   ads.setGain(GAIN_ONE);
   ads.setDataRate(RATE_ADS1115_128SPS);
@@ -389,7 +414,7 @@ static void adsInitOnce() {
 static inline int16_t readADS_CH(uint8_t ch) {
   if (!adsOk) return 0;
   (void)ads.readADC_SingleEnded(ch);   // pre-warm
-  delayMicroseconds(8000);             // >=1 period @128SPS
+  delayMicroseconds(8000);             // >= 1 period @ 128SPS
   int16_t v = ads.readADC_SingleEnded(ch);
   return (v < 0) ? 0 : v;
 }
@@ -416,7 +441,7 @@ static void sensorsPowerOn() {
   }
   if (firstDsFound) {
     sensors.setResolution(firstDs, DS_RES_BITS);
-    sensors.setWaitForConversion(false); // optimization: tighter waits in readTemp()
+    sensors.setWaitForConversion(false);
   }
 }
 
@@ -439,15 +464,31 @@ static uint16_t readBattery_mV() {
   return (uint16_t)(VBAT_ADC_FACTOR * raw * 1000.0f);
 }
 
+// Known-good “AP-like” context for VBAT in field mode
+static inline void vbatContextOn() {
+  SensorsON();
+  delay(5);
+
+  pinMode(PIN_VBAT_ADC, INPUT);
+
+  pinMode(PIN_ADC_CTRL, OUTPUT);
+  digitalWrite(PIN_ADC_CTRL, LOW);
+  delay(2);
+}
+static inline void vbatContextOff() {
+  digitalWrite(PIN_ADC_CTRL, LOW);
+  SensorsOFF();
+}
+
 static int16_t readTemp_c_x100_signed() {
   if (!firstDsFound) return INT16_MIN;
 
-  // non-blocking conversion, but we still wait DS_WAIT_MS; no extra over-wait
   sensors.requestTemperaturesByAddress(firstDs);
   delay(DS_WAIT_MS);
 
   float t = sensors.getTempC(firstDs);
   if (!isfinite(t) || t < -55.0f || t > 125.0f) return INT16_MIN;
+
   long v = lroundf(t * 100.0f);
   if (v < -32768) v = -32768;
   if (v >  32767) v =  32767;
@@ -502,7 +543,6 @@ static uint16_t samplesPerWindowFromCfg_locked() {
   if (m > MINUTES_MAX) m = MINUTES_MAX;
 
   const uint32_t s = MEAS_PERIOD_FIXED_S;
-
   uint32_t n = (m * 60UL) / s;
   if (n < 1) n = 1;
   if (n > MEAS_BUF_MAX) n = MEAS_BUF_MAX;
@@ -612,9 +652,9 @@ static inline uint8_t mapDR(uint8_t i) {
 }
 
 static void enforceTxPolicy() {
-  isTxConfirmed = true;
-  confirmedNbTrials = 3;
-  loraWanAdr = false;
+  isTxConfirmed = false;
+  confirmedNbTrials = 1;
+  loraWanAdr = false; // force ADR off for deterministic behavior
 }
 
 static bool isJoined() {
@@ -624,22 +664,48 @@ static bool isJoined() {
   return mibReq.Param.IsNetworkJoined;
 }
 
+// Heltec: LoRaWAN.sleep(CLASS_A) is effectively a process pump
+static inline void loraPump_ms(uint32_t ms) {
+  const uint32_t t0 = millis();
+  while ((millis() - t0) < ms) {
+    LoRaWAN.sleep(CLASS_A);
+    delay(1);
+  }
+}
+
+static void loraInitOnce() {
+  if (loraInited) return;
+
+  memcpy(devEui, cfg.devEui, 8);
+  memcpy(appEui, cfg.appEui, 8);
+  memcpy(appKey, cfg.appKey, 16);
+  memcpy(DevEui, devEui, 8);
+  memcpy(AppEui, appEui, 8);
+  memcpy(AppKey, appKey, 16);
+
+  loraWanAdr = cfg.lora_adr;
+  LoRaWAN.init(CLASS_A, ACTIVE_REGION);
+  LoRaWAN.setDefaultDR(mapDR(cfg.lora_dr));
+  enforceTxPolicy();
+
+  if (verboseNow()) Serial.println("[LoRa] join()");
+  LoRaWAN.join();
+  gJoinInProgress = true;
+
+  lastJoinTryUs = esp_timer_get_time();
+  loraInited = true;
+}
+
 // ========================= Uplink payload (18B) ===================== //
 static bool buildPayload18_locked(uint16_t vb_mV) {
-  // Must be called with gMux held
   int16_t t_avg=0, t_min=0, t_max=0;
   bool tok = computeStats(t_avg, t_min, t_max);
 
   int16_t t_cur = (t_last_c_x100 != INT16_MIN) ? t_last_c_x100 : (int16_t)0;
-
-  if (!tok) {
-    // no samples yet: mark as 0 and keep consistent
-    t_avg = t_min = t_max = t_cur;
-  }
+  if (!tok) { t_avg = t_min = t_max = t_cur; }
 
   uint16_t c_avg=0, c_min=0, c_max=0;
   bool cok = computeCrackStats(c_avg, c_min, c_max);
-
   uint16_t c_cur = c_last_valid ? c_last : 0xFFFF;
 
   if (!cok) {
@@ -671,12 +737,16 @@ static bool buildPayload18_locked(uint16_t vb_mV) {
 
   putU16(16, vb_mV);
 
-  Serial.printf(
-    "TX 18B: Tcur=%d Tavg=%d Tmin=%d Tmax=%d | Crk=%u/%u/%u/%u (x1000) | VB=%u\n",
-    (int)t_cur,(int)t_avg,(int)t_min,(int)t_max,
-    (unsigned)c_cur,(unsigned)c_avg,(unsigned)c_min,(unsigned)c_max,
-    (unsigned)vb_mV
-  );
+  // Serial print only in AP mode (field mode silent)
+  if (verboseNow()) {
+    Serial.printf(
+      "TX 18B: Tcur=%d Tavg=%d Tmin=%d Tmax=%d | Crk=%u/%u/%u/%u (x1000) | VB=%u\n",
+      (int)t_cur,(int)t_avg,(int)t_min,(int)t_max,
+      (unsigned)c_cur,(unsigned)c_avg,(unsigned)c_min,(unsigned)c_max,
+      (unsigned)vb_mV
+    );
+  }
+
   return true;
 }
 
@@ -763,7 +833,6 @@ static void api_state() {
     const uint32_t elapsed = millis() - window_start_ms;
     d["next_tx_s"] = (elapsed >= reportPeriodMs) ? 0 : (uint32_t)((reportPeriodMs - elapsed) / 1000UL);
 
-    // -------- log ----------
     JsonArray log = d.createNestedArray("log");
     uint32_t nowS = now_sec();
 
@@ -781,7 +850,6 @@ static void api_state() {
       else                row["crack_mm"] = (double)web_c[idx] / 1000.0;
     }
 
-    // -------- cfg ----------
     JsonObject c = d.createNestedObject("cfg");
     c["minutes"] = cfg.minutes;
     c["meas_period_s"] = MEAS_PERIOD_FIXED_S;
@@ -898,7 +966,6 @@ static void api_cfg_lora() {
     }
   }
 
-  // meas fixed 10s (reject changes)
   if (d.containsKey("meas_period_s")) {
     int s = d["meas_period_s"].as<int>();
     if (s != (int)MEAS_PERIOD_FIXED_S) {
@@ -1041,17 +1108,14 @@ static void loadCfg() {
 
   if (cfg.minutes < 1) cfg.minutes = 1;
   if (cfg.minutes > MINUTES_MAX) cfg.minutes = MINUTES_MAX;
-
   if (cfg.crack_r0 == cfg.crack_r1) cfg.crack_r1 = 25480;
 }
 
-// ========================= AP mode tasks (legacy) ================== //
+// ========================= AP mode tasks =========================== //
 static void measTask(void*) {
   const TickType_t periodTicks = pdMS_TO_TICKS((uint32_t)MEAS_PERIOD_FIXED_S * 1000UL);
-
   for (;;) {
     int16_t t = INT16_MIN;
-
     bool cr_ok = false;
     uint16_t cr_x1000 = 0;
 
@@ -1086,48 +1150,28 @@ static void measTask(void*) {
   }
 }
 
-static void loraInitOnce() {
-  if (loraInited) return;
-
-  memcpy(devEui, cfg.devEui, 8);
-  memcpy(appEui, cfg.appEui, 8);
-  memcpy(appKey, cfg.appKey, 16);
-  memcpy(DevEui, devEui, 8);
-  memcpy(AppEui, appEui, 8);
-  memcpy(AppKey, appKey, 16);
-
-  loraWanAdr = cfg.lora_adr;
-  LoRaWAN.init(CLASS_A, ACTIVE_REGION);
-  LoRaWAN.setDefaultDR(mapDR(cfg.lora_dr));
-  enforceTxPolicy();
-
-  Serial.println("[LoRa] join()");
-  LoRaWAN.join();
-  lastJoinTryMs = millis();
-  lastJoinTryUs = esp_timer_get_time();
-
-  loraInited = true;
-}
-
 static void loraTask(void*) {
   for (;;) {
     loraInitOnce();
 
-    const uint32_t now = millis();
-
     if (!isJoined()) {
-      if (now - lastJoinTryMs >= 30000UL) {
+      const uint64_t nowUs = esp_timer_get_time();
+      if (!gJoinInProgress && (nowUs - lastJoinTryUs) >= 30ULL * 1000000ULL) {
         Serial.println("[LoRa] join retry");
-        LoRaWAN.join();
         enforceTxPolicy();
-        lastJoinTryMs = now;
+        LoRaWAN.join();
+        gJoinInProgress = true;
+        lastJoinTryUs = nowUs;
+        loraCooldownUntilUs = nowUs + 3000000ULL;
+        loraPump_ms(3000);
+      } else {
+        loraPump_ms(20);
       }
     } else {
       uint32_t reportPeriodMs = 60000UL * (uint32_t)cfg.minutes;
       if (reportPeriodMs < 60000UL) reportPeriodMs = 60000UL;
 
       bool due = false;
-
       uint32_t ws = 0;
       uint32_t m  = 10;
 
@@ -1143,12 +1187,11 @@ static void loraTask(void*) {
       reportPeriodMs = 60000UL * m;
       if (reportPeriodMs < 60000UL) reportPeriodMs = 60000UL;
 
-      if ((now - ws) >= reportPeriodMs) due = true;
+      if ((millis() - ws) >= reportPeriodMs) due = true;
       if (forceTxOnce) due = true;
 
-      if (due) {
+      if (due && !loraMacBusy()) {
         enforceTxPolicy();
-
         uint16_t vb = readBattery_mV();
 
         if (gMux && xSemaphoreTake(gMux, pdMS_TO_TICKS(250)) == pdTRUE) {
@@ -1157,18 +1200,17 @@ static void loraTask(void*) {
           resetMeasWindow_locked();
           forceTxOnce = false;
           xSemaphoreGive(gMux);
-        } else {
-          Serial.println("[LoRa] payload lock timeout; skip TX");
         }
       }
+
+      loraPump_ms(10);
     }
 
-    LoRaWAN.sleep(CLASS_A);
     vTaskDelay(pdMS_TO_TICKS(10));
   }
 }
 
-// ========================= Field mode (light sleep) ================= //
+// ========================= Field mode (optimized) =================== //
 static void doOneMeasurement_field() {
   int16_t t = INT16_MIN;
   bool cr_ok = false;
@@ -1202,73 +1244,133 @@ static void doOneMeasurement_field() {
   }
 }
 
-static void doOneUplinkIfDue_field() {
-  loraInitOnce();
+static inline uint16_t readBattery_field_fast() {
+  uint16_t vb = 0;
+  if (gSensMux && xSemaphoreTake(gSensMux, pdMS_TO_TICKS(200)) == pdTRUE) {
+    vbatContextOn();
+    vb = readBattery_mV();   // unchanged
+    vbatContextOff();
+    xSemaphoreGive(gSensMux);
+  } else {
+    vb = readBattery_mV();
+  }
+  return vb;
+}
 
+// Field LoRa service:
+// - handle join retries (every 30s) and keep-awake after join request
+// - handle TX when due (based on measCounter grid) and keep-awake after send (RX1/RX2)
+static void fieldLoRaService(bool txCheckAllowed) {
+  loraInitOnce();
   const uint64_t nowUs = esp_timer_get_time();
 
+  // join timeout safety
+  if (gJoinInProgress && (nowUs - lastJoinTryUs) > 25ULL * 1000000ULL) {
+    gJoinInProgress = false;
+  }
+
+  // If in cooldown window (after join request or after send), keep stack running
+  if (nowUs < loraCooldownUntilUs) {
+    const uint32_t remainMs = (uint32_t)((loraCooldownUntilUs - nowUs) / 1000ULL);
+    loraPump_ms((remainMs > 20) ? 20 : remainMs);
+    return;
+  }
+
+  // ---- NOT JOINED ----
   if (!isJoined()) {
-    if (nowUs - lastJoinTryUs >= 30ULL * 1000000ULL) {
-      Serial.println("[LoRa] join retry");
-      LoRaWAN.join();
+    // retry join every 30s if not in progress
+    if (!gJoinInProgress && (nowUs - lastJoinTryUs) >= 30ULL * 1000000ULL) {
       enforceTxPolicy();
+      LoRaWAN.join();
+      gJoinInProgress = true;
       lastJoinTryUs = nowUs;
-      lastJoinTryMs = millis();
+
+      // keep awake so JoinAccept + MlmeConfirm can happen
+      loraCooldownUntilUs = nowUs + 3000000ULL; // 3s
+      loraPump_ms(3000);
+    } else {
+      // just process sometimes while waiting (no sleep when not joined)
+      loraPump_ms(20);
     }
     return;
   }
 
-  // due every cfg.minutes (in samples) OR forced
+  // ---- JOINED ----
+  if (!txCheckAllowed) return;
+
   uint32_t mins = cfg.minutes;
   if (mins < 1) mins = 1;
   if (mins > MINUTES_MAX) mins = MINUTES_MAX;
 
-  const uint32_t samplesPerTx = (uint32_t)((mins * 60UL) / MEAS_PERIOD_FIXED_S);
-  const uint32_t sp = (samplesPerTx < 1) ? 1 : samplesPerTx;
-
-  bool due = false;
-  if (forceTxOnce) due = true;
-  if ((measCounter % sp) == 0) due = true;
+  const uint32_t sp = max<uint32_t>(1, (mins * 60UL) / MEAS_PERIOD_FIXED_S);
+  const bool due = forceTxOnce || ((measCounter % sp) == 0);
 
   if (!due) return;
 
+  // one TX per measCounter
+  if (lastTxMeasCounter == measCounter) return;
+
+  // if MAC busy, process a bit and return
+  if (loraMacBusy()) {
+    loraPump_ms(20);
+    return;
+  }
+
+  // Gate: require at least something measured (unless forced)
+  if (!forceTxOnce) {
+    bool haveAny = false;
+    if (gMux && xSemaphoreTake(gMux, pdMS_TO_TICKS(50)) == pdTRUE) {
+      haveAny = (t_count > 0) || (c_count > 0) || c_last_valid;
+      xSemaphoreGive(gMux);
+    }
+    if (!haveAny) return;
+  }
+
   enforceTxPolicy();
 
-  // OPT: battery read does NOT need sensors power (saves 40ms + ADS init)
-  const uint16_t vb = readBattery_mV();
+  const uint16_t vb = readBattery_field_fast();
 
   if (gMux && xSemaphoreTake(gMux, pdMS_TO_TICKS(350)) == pdTRUE) {
     buildPayload18_locked(vb);
-    LoRaWAN.send();                 // no extra delay after send
-    resetMeasWindow_locked();
-    forceTxOnce = false;
+    LoRaWAN.send();
+    lastTxMeasCounter = measCounter;
+
+    // RX1/RX2 keep awake
+    loraCooldownUntilUs = esp_timer_get_time() + 3000000ULL;
     xSemaphoreGive(gMux);
-  } else {
-    Serial.println("[LoRa] payload lock timeout; skip TX");
+
+    loraPump_ms(3000);
+
+    // reset window after TX
+    if (gMux && xSemaphoreTake(gMux, pdMS_TO_TICKS(200)) == pdTRUE) {
+      resetMeasWindow_locked();
+      xSemaphoreGive(gMux);
+    } else {
+      resetMeasWindow_locked();
+    }
+
+    forceTxOnce = false;
   }
 }
 
-static void sleepUntilNextMeasurement_field() {
+static void fieldSleepUntil(uint64_t targetUs) {
   const uint64_t nowUs = esp_timer_get_time();
+  int64_t remain = (int64_t)(targetUs - nowUs);
+  if (remain <= 1500) return;
 
-  if (nextMeasUs == 0) nextMeasUs = nowUs + (uint64_t)MEAS_PERIOD_FIXED_S * 1000000ULL;
-
-  // Catch-up: if we are late (e.g., long send/RX windows), skip slots
-  // so we don't get stuck in near-zero sleeps.
-  while ((int64_t)(nextMeasUs - nowUs) <= 1000) {
-    nextMeasUs += (uint64_t)MEAS_PERIOD_FIXED_S * 1000000ULL;
+  // do not light sleep when not joined (join/RX handling)
+  if (!isJoined()) {
+    // minimal processing already done by fieldLoRaService(); just yield a bit
+    delay(10);
+    return;
   }
 
-  const uint64_t deltaUs = nextMeasUs - nowUs;
+  // do not sleep during cooldown or MAC busy
+  if (nowUs < loraCooldownUntilUs) return;
+  if (loraMacBusy()) return;
 
-  // Put LoRa stack/radio to sleep before MCU light sleep
-  LoRaWAN.sleep(CLASS_A);
-
-  esp_sleep_enable_timer_wakeup(deltaUs);
+  esp_sleep_enable_timer_wakeup((uint64_t)remain);
   esp_light_sleep_start();
-
-  // strict schedule: +10s slot, no drift accumulation
-  nextMeasUs += (uint64_t)MEAS_PERIOD_FIXED_S * 1000000ULL;
 }
 
 // ============================== Setup/Loop ========================= //
@@ -1276,38 +1378,44 @@ static constexpr char AP_SSID_PREFIX[] = "Riss-";
 
 void setup() {
   Serial.begin(115200);
-  Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
+  delay(2000);
+  Serial.setDebugOutput(false);
 
-  // Power domains optimization for sleep
-  esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_OFF);
-
-  // Enable light sleep + DVFS (field mode benefits)
-  esp_pm_config_t pm_cfg;
-  pm_cfg.max_freq_mhz = 80;
-  pm_cfg.min_freq_mhz = 10;
-  pm_cfg.light_sleep_enable = true;
-  (void)esp_pm_configure(&pm_cfg);
-
-  gMux = xSemaphoreCreateMutex();
-  gSensMux = xSemaphoreCreateMutex();
-
+  // ---- Decide mode EARLY ----
   pinMode(PIN_MODE_OUT, OUTPUT);
   digitalWrite(PIN_MODE_OUT, LOW);
   pinMode(PIN_MODE_IN, INPUT_PULLUP);
   delay(5);
 
-  Serial.printf("FW %s build %s %s\n", FW_VER, __DATE__, __TIME__);
-
+  apMode = false;
   for (int i = 0; i < 5; i++) { apMode |= (digitalRead(PIN_MODE_IN) == LOW); delay(2); }
 
+  // ---- Heltec core init ----
+  Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
+
+  // RTC power domain
+  esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_AUTO);
+
+  // ---- Power management ----
+  esp_pm_config_t pm_cfg = {};
+  pm_cfg.max_freq_mhz = 80;
+  pm_cfg.min_freq_mhz = 10;
+  pm_cfg.light_sleep_enable = apMode ? false : true;
+  esp_pm_configure(&pm_cfg);
+
+  // ---- RTOS primitives ----
+  gMux = xSemaphoreCreateMutex();
+  gSensMux = xSemaphoreCreateMutex();
+
+  // ---- ADC + config ----
   analogReadResolution(12);
   loadCfg();
-
   cfg.meas_period_s = MEAS_PERIOD_FIXED_S;
 
   appTxDutyCycle = 60000UL * (uint32_t)cfg.minutes;
   if (appTxDutyCycle < 60000UL) appTxDutyCycle = 60000UL;
 
+  // ---- reset window ----
   if (gMux) {
     xSemaphoreTake(gMux, pdMS_TO_TICKS(200));
     resetMeasWindow_locked();
@@ -1318,15 +1426,15 @@ void setup() {
   }
 
   if (apMode) {
+    // ---------------- AP MODE ----------------
     pinMode(Vext, OUTPUT);
-    digitalWrite(Vext, LOW);   // Vext ON
+    digitalWrite(Vext, LOW);   // Vext ON (OLED powered)
 
     WiFi.mode(WIFI_AP);
     WiFi.setTxPower(WIFI_POWER_7dBm);
 
-    bool fsOk = LittleFS.begin(true);
+    const bool fsOk = LittleFS.begin(true);
     if (fsOk) attachHttpFS();
-    else Serial.println("[FS] mount failed");
 
     String ssid = String(AP_SSID_PREFIX) + devEuiSuffix6LSB();
     WiFi.softAP(ssid.c_str(), AP_PSK);
@@ -1338,39 +1446,50 @@ void setup() {
 
     xTaskCreatePinnedToCore(measTask, "meas", 4096, nullptr, 2, &measTaskH, 1);
     xTaskCreatePinnedToCore(loraTask, "lora", 6144, nullptr, 1, &loraTaskH, 0);
+
+    // AP prints enabled
+    Serial.println("=== AP MODE ===");
+    Serial.printf("FW %s build %s %s\n", FW_VER, __DATE__, __TIME__);
+    Serial.printf("SSID %s  PSK %s\n", ssid.c_str(), AP_PSK);
+
   } else {
-    // Field mode: disable WiFi/BT + OLED power off
+    // ---------------- FIELD MODE ----------------
     WiFi.persistent(false);
     WiFi.disconnect(true, true);
     WiFi.mode(WIFI_OFF);
-#if defined(CONFIG_BT_ENABLED) && CONFIG_BT_ENABLED
+  #if defined(CONFIG_BT_ENABLED) && CONFIG_BT_ENABLED
     btStop();
-#endif
-    pinMode(Vext, OUTPUT);
-    digitalWrite(Vext, HIGH); // Vext OFF
+  #endif
 
-    // Field mode light-sleep scheduler init
-    nextMeasUs = esp_timer_get_time() + (uint64_t)MEAS_PERIOD_FIXED_S * 1000000ULL;
+    pinMode(Vext, OUTPUT);
+    digitalWrite(Vext, HIGH); // Vext OFF (OLED off)
+
+    // Strict 10s grid alignment
+    const uint64_t nowUs = esp_timer_get_time();
+    const uint64_t step  = (uint64_t)MEAS_PERIOD_FIXED_S * 1000000ULL;
+    nextMeasUs = ((nowUs / step) + 1) * step;
+
     lastJoinTryUs = 0;
     measCounter = 0;
+    lastTxMeasCounter = 0xFFFFFFFF;
+    loraCooldownUntilUs = 0;
+    gJoinInProgress = false;
 
-    // Optional: reduce UART overhead in field mode if needed
-    // Serial.setDebugOutput(false);
+    // Field mode silent (no Serial prints)
   }
 }
 
 void loop() {
+  /* ===================== AP MODE ===================== */
   if (apMode) {
     http.handleClient();
 
     const uint32_t now = millis();
-
     if (oledPhase == OLED_SSID && (now - oledPhaseStart) >= 1500UL) {
       oledPhase = OLED_SENS;
       oledRefreshMs = 0;
       oledSensorsOnce();
     }
-
     if (oledPhase == OLED_SENS && (now - oledRefreshMs) >= 1000UL) {
       oledRefreshMs = now;
       oledSensorsOnce();
@@ -1380,11 +1499,49 @@ void loop() {
     return;
   }
 
-  // ========== Field mode: strict 10s measurement + light sleep ==========
+  /* ===================== FIELD MODE ===================== */
+
+  // ensure next slot initialized
+  if (nextMeasUs == 0) {
+    nextMeasUs = esp_timer_get_time() + (uint64_t)MEAS_PERIOD_FIXED_S * 1000000ULL;
+  }
+
+  // 1) While waiting for next strict 10s slot:
+  //    - service LoRaWAN only as needed
+  //    - otherwise sleep until slot
+  for (;;) {
+    const uint64_t nowUs = esp_timer_get_time();
+    const int64_t remain = (int64_t)(nextMeasUs - nowUs);
+
+    if (remain <= 1500) break;
+
+    // LoRa service without forcing TX check (TX check is done after measurement)
+    fieldLoRaService(false);
+
+    // Try to sleep the rest
+    fieldSleepUntil(nextMeasUs);
+
+    // loop again (in case we couldn't sleep due to join/cooldown/macbusy)
+  }
+
+  // 2) Measurement at strict slot
   doOneMeasurement_field();
   measCounter++;
 
-  doOneUplinkIfDue_field();
+  // 3) After measurement, allow TX decision & send (if due)
+  fieldLoRaService(true);
 
-  sleepUntilNextMeasurement_field();
+  // 4) Schedule next slot (catch-up, no drift)
+  const uint64_t step = (uint64_t)MEAS_PERIOD_FIXED_S * 1000000ULL;
+  nextMeasUs += step;
+
+  // If we are already late (e.g., long TX), catch up to the next future slot
+  uint64_t now2 = esp_timer_get_time();
+  while ((int64_t)(nextMeasUs - now2) <= 1500) {
+    nextMeasUs += step;
+    now2 = esp_timer_get_time();
+  }
+
+  // 5) Sleep until next slot (if possible)
+  fieldSleepUntil(nextMeasUs);
 }
