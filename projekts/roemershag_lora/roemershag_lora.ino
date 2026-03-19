@@ -22,10 +22,12 @@
  *    DevEUI, AppEUI — LSB order end-to-end (UI, storage, prints)
  *    AppKey         — MSB order end-to-end (UI, storage, prints)
  * ---------------------------------------------------------------------
- *  Version:      1.7.1
- *  Date:         2025-10-26
+ *  Version:      1.7.2
+ *  Date:         2026-03-19
  *  Changes:      unified TX policy for unstable networks: confirmed uplink, NbTrans=1, retries=3
  *                removed AP/field TX divergence; enforced policy at init and before each send
+ *                added low-power auto-rejoin watchdog: after 5 consecutive missed network responses
+ *                the node performs a controlled reboot and OTAA join without increasing TX cadence
  *  Contributors: Bernd Schinköthe, Roman Sliusar, Evgenij Koloda
  * =====================================================================
  */
@@ -61,7 +63,7 @@
 #include <math.h>
 
 // ========================== Frimware version ======================= //
-static constexpr const char* FW_VER = "1.7.1";  // sync with header
+static constexpr const char* FW_VER = "1.7.2";  // sync with header
 
 // ========================== LoRaWAN key slots ======================= //
 // The Heltec core expects these globals. Keep LSB/MSB conventions.
@@ -176,6 +178,17 @@ uint32_t appTxDutyCycle = 60000UL * 2;  // unused, see cycle() path
 uint8_t nwkSKey[16] = { 0 };  // left for potential ABP compatibility
 uint8_t appSKey[16] = { 0 };
 uint32_t devAddr = 0;
+
+// ===================== Auto-rejoin watchdog ====================== //
+// Energy-neutral strategy: keep the same reporting interval and only
+// trigger a recovery after 5 consecutive uplinks without any network
+// response (ACK, MAC command, or application downlink). Recovery is
+// done by a controlled reboot, which forces a fresh OTAA join on boot.
+static constexpr uint8_t REJOIN_MISS_LIMIT = 5;
+volatile uint8_t netMissCount = 0;
+volatile bool rejoinRebootRequested = false;
+volatile uint32_t lastNetRxMs = 0;
+
 
 // ========================= NVS small helpers ======================= //
 static inline void nvsPut(const char* k, const void* p, size_t n) {
@@ -467,11 +480,39 @@ volatile bool lora_has_rx = false;
 volatile int16_t lora_last_rssi = 0;
 volatile int8_t lora_last_snr = 0;
 volatile uint32_t lora_last_rx_ms = 0;
-extern "C" void downLinkDataHandle(McpsIndication_t* ind) {
+
+static void scheduleRejoinReboot(const char* reason) {
+  Serial.printf("[REJOIN] scheduled after %u missed responses (%s)\n",
+                (unsigned)netMissCount, reason ? reason : "unknown");
+  rejoinRebootRequested = true;
+}
+
+static void onNetworkResponse() {
+  netMissCount = 0;
   lora_has_rx = true;
+  lastNetRxMs = millis();
+}
+
+static void onUplinkAttempt() {
+  if (netMissCount < 255) netMissCount++;
+  Serial.printf("[TX] waiting for network response, miss=%u/%u\n",
+                (unsigned)netMissCount,
+                (unsigned)REJOIN_MISS_LIMIT);
+  if (netMissCount >= REJOIN_MISS_LIMIT) {
+    scheduleRejoinReboot("miss threshold reached");
+  }
+}
+
+extern "C" void downLinkDataHandle(McpsIndication_t* ind) {
   lora_last_rssi = ind->Rssi;
   lora_last_snr = ind->Snr;
   lora_last_rx_ms = millis();
+  onNetworkResponse();
+  Serial.printf("[DL] port=%u size=%u rssi=%d snr=%d\n",
+                (unsigned)ind->Port,
+                (unsigned)ind->BufferSize,
+                (int)ind->Rssi,
+                (int)ind->Snr);
 }
 
 // ============================== OLED =============================== //
@@ -1034,6 +1075,12 @@ void loop() {
   static uint32_t appTxDutyCycleCached = 0;
   if (appTxDutyCycleCached == 0) appTxDutyCycleCached = 60000UL * cfg.minutes;
 
+  if (rejoinRebootRequested) {
+    Serial.println("[REJOIN] rebooting to force fresh OTAA join");
+    delay(100);
+    ESP.restart();
+  }
+
   if (apMode) {
     http.handleClient();
     oledMarqueeTick();
@@ -1053,6 +1100,8 @@ void loop() {
   switch (deviceState) {
     case DEVICE_STATE_INIT:
       // Initialize LoRaWAN and join parameters
+      netMissCount = 0;
+      rejoinRebootRequested = false;
       memcpy(DevEui, cfg.devEui, 8);
       memcpy(AppEui, cfg.appEui, 8);
       memcpy(AppKey, cfg.appKey, 16);
@@ -1060,11 +1109,13 @@ void loop() {
       LoRaWAN.init(CLASS_A, ACTIVE_REGION);
       applyLoraDR();
       enforceTxPolicy();  // ensure policy at init
+      Serial.println("[LORA] DEVICE_STATE_INIT");
       deviceState = DEVICE_STATE_JOIN;
       break;
 
     case DEVICE_STATE_JOIN:
       // Start OTAA join; some stacks reset MIB around join
+      Serial.println("[LORA] DEVICE_STATE_JOIN");
       LoRaWAN.join();
       enforceTxPolicy();  // re-apply policy around join
       break;
@@ -1073,6 +1124,7 @@ void loop() {
       // Prepare and send uplink once per cycle
       enforceTxPolicy();  // enforce before each TX
       prepareTxFrame(UPLINK_PORT);
+      onUplinkAttempt();
       LoRaWAN.send();
       deviceState = DEVICE_STATE_CYCLE;
       break;
