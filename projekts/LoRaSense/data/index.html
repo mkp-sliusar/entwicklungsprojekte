@@ -7,206 +7,343 @@
 <title>MKP LoRaSense Node</title>
 <style>
 :root{
-  --ff:system-ui,Arial,sans-serif; --fs:14px; --lh:1.35;
-  --in-fs:14px; --in-lh:1; --in-pad-y:8px; --in-pad-x:16px; --in-radius:12px;
-  --g0:#f6f7f8; --g1:#eef0f1; --g2:#e3e5e7; --g3:#d8dadc; --g4:#cdd0d3; --g5:#c2c5c8;
+  --ff:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+  --fs:14px;
+  --radius:16px;
+  --shadow:0 10px 24px rgba(0,0,0,.14);
+  --header-h:50px;
+  --accent:#54b8e6;
+  --accent-2:#1a8fc7;
+  --ok:#1bb15f;
+  --bad:#e05b5b;
 }
 html[data-theme="dark"]{
   color-scheme:dark;
-  --bg:#111; --fg:#eee; --card:#1a1a1a; --border:#333; --muted:#9aa; --field:#222; --btn:#222;
+  --bg:#090c10;
+  --fg:#edf2f8;
+  --muted:#9eb0c2;
+  --line:#24303d;
+  --card:#111821;
+  --card-2:#131d28;
+  --field:#0d141d;
+  --btn:#192330;
+  --btn-h:#213142;
+  --chip:#0f1620;
+  --plot-bg:#0c131c;
 }
 html[data-theme="light"]{
   color-scheme:light;
-  --bg:var(--g0); --fg:#111; --border:#ddd; --muted:#556; --field:#fff; --btn:#f3f4f6; --card:var(--g3);
+  --bg:#eef4f8;
+  --fg:#172331;
+  --muted:#607384;
+  --line:#c8d5df;
+  --card:#ffffff;
+  --card-2:#f7fbfd;
+  --field:#ffffff;
+  --btn:#eef5fa;
+  --btn-h:#e4edf4;
+  --chip:#ffffff;
+  --plot-bg:#f4f9fc;
 }
 *{box-sizing:border-box}
-html,body{height:100%;font-family:var(--ff);font-size:var(--fs);line-height:var(--lh)}
-body{margin:16px;background:var(--bg);color:var(--fg);display:flex;flex-direction:column;min-height:100svh}
-.main{flex:1}
-h1{font-size:20px;margin:0 0 12px;display:flex;align-items:center;justify-content:space-between;gap:8px;line-height:1.2;font-weight:700}
-h3{margin:0 0 8px;font-size:18px;line-height:1.2;font-weight:600}
-.header-ctrl{display:flex;align-items:baseline;justify-content:center;gap:8px}
-.fw-info{font-size:12px;color:var(--muted);line-height:1;margin:0;display:flex;align-items:end}
-.grid{display:grid;grid-template-columns:repeat(4,minmax(260px,1fr));gap:12px;align-items:start}
-.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px;display:flex;flex-direction:column;min-height:100%}
-.grid>.card{background:var(--cardTone,var(--card))}
-.grid>.card:nth-of-type(5n+1){--cardTone:var(--g5)}
-.grid>.card:nth-of-type(5n+2){--cardTone:var(--g4)}
-.grid>.card:nth-of-type(5n+3){--cardTone:var(--g3)}
-.grid>.card:nth-of-type(5n+4){--cardTone:var(--g2)}
-.grid>.card:nth-of-type(5n+5){--cardTone:var(--g1)}
-.k,small,label{font:inherit}
-.hr{height:1px;background:var(--border);margin:10px 0}
-button,input,select,textarea{font:inherit;line-height:inherit;color:inherit}
-input,select,textarea{font-size:var(--in-fs);line-height:var(--in-lh);padding:var(--in-pad-y) var(--in-pad-x);border:1px solid var(--border);border-radius:var(--in-radius);background:var(--field);color:var(--fg)}
-input:focus,select:focus,textarea:focus{outline:none;box-shadow:0 0 0 2px inset var(--border)}
-select{-webkit-appearance:none;-moz-appearance:none;appearance:none}
-.field{display:flex;gap:8px;align-items:center;margin-top:8px}
-.field label{min-width:145px;font-size:15px}
-.field input,.field select{flex:1;min-width:0}
+html,body{margin:0;min-height:100%;font-family:var(--ff);font-size:var(--fs);background:var(--bg);color:var(--fg)}
+body{padding:8px 16px 6px;display:flex;flex-direction:column;overflow-x:hidden}
+a{color:inherit}
+button,input,select,textarea{font:inherit;color:inherit}
+button,input,select,textarea{border:1px solid var(--line);background:var(--field);border-radius:14px;min-width:0}
+button,input,select,textarea:focus{outline:none;box-shadow:0 0 0 2px rgba(84,184,230,.18)}
+button{cursor:pointer}
+.main{flex:1 1 auto}
+.header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;min-height:var(--header-h)}
+.brand{display:flex;align-items:center;gap:12px;text-decoration:none;color:inherit;min-width:0}
+.brand img{height:30px;width:auto;display:block}
+.title-wrap{display:flex;flex-direction:column;min-width:0}
+.title{font-size:18px;font-weight:800;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sub{font-size:12px;color:var(--muted)}
+.header-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.fw-chip{display:flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:var(--chip);white-space:nowrap}
+.icon-btn,.lang-btn{height:34px;min-width:46px;padding:0 12px;border-radius:999px;background:var(--btn);font-weight:700}
+.icon-btn:hover,.lang-btn:hover{background:var(--btn-h)}
+.grid{display:grid;grid-template-columns:repeat(4,minmax(270px,1fr));gap:12px;align-items:start}
+.card{background:linear-gradient(180deg,var(--card),var(--card-2));border:1px solid var(--line);border-radius:var(--radius);padding:12px;box-shadow:var(--shadow);min-height:0}
+.card h3{margin:0 0 8px;font-size:17px;line-height:1.2;font-weight:800}
+.hr{height:1px;background:var(--line);margin:9px 0}
+.kv{display:grid;grid-template-columns:minmax(102px,auto) 1fr;gap:4px 10px;align-items:start}
+.kv .k{color:var(--muted)}
+.kv .v{font-weight:600;word-break:break-word}
+.stack{display:flex;flex-direction:column;gap:7px}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.btn{padding:8px 12px;border:1px solid var(--border);border-radius:10px;background:var(--field);color:var(--fg);font-weight:600;margin-top:8px;cursor:pointer}
-.btn:hover{background:var(--btn)}
+.btn{height:40px;padding:0 14px;background:var(--btn);font-weight:700}
+.btn:hover{background:var(--btn-h)}
 .btn-block{display:block;width:100%}
-.badge{display:inline-block;padding:2px 8px;border:1px solid var(--border);border-radius:999px;font-size:12px;background:var(--btn)}
-.badge.ok{color:#1b7f2a}.badge.bad{color:#b12a2a}
-small{color:var(--muted)}
-#themeBtn,#langBtn{font-size:14px;line-height:1;padding:6px 10px}
-.status{display:block;margin-bottom:6px;color:var(--muted);word-break:break-word;white-space:pre-line;max-height:calc(10em * var(--lh));overflow:auto;padding-right:4px}
+.btn-pair{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.badge{display:inline-flex;align-items:center;justify-content:center;min-height:28px;padding:0 10px;border:1px solid var(--line);border-radius:999px;background:var(--btn);font-size:12px;font-weight:800}
+.badge.ok{color:var(--ok)}
+.badge.bad{color:var(--bad)}
+.badge.off{color:var(--muted)}
+.small{font-size:12px;color:var(--muted)}
+.note{font-size:12px;color:var(--muted);line-height:1.45}
+.status{font-size:12px;color:var(--muted);white-space:pre-line;word-break:break-word;min-height:2.4em}
 .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.plot-wrap{margin-top:7px;border:1px solid var(--line);border-radius:14px;background:var(--plot-bg);padding:8px}
+#dmsPlot{display:block;width:100%;height:112px}
+.compact-group{display:grid;gap:8px}
+.sensor-box{border:1px solid var(--line);border-radius:14px;padding:9px;background:rgba(127,127,127,.04)}
+.sensor-head{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:7px}
+.sensor-title{font-weight:800}
+.sensor-meta{font-size:12px;color:var(--muted)}
+.field{display:grid;grid-template-columns:minmax(112px,auto) 1fr;gap:8px;align-items:center}
+.field label{color:var(--muted)}
+.field input,.field select{height:38px;padding:0 12px;width:100%}
+.field .fixed{height:38px;display:flex;align-items:center;padding:0 12px;border:1px solid var(--line);background:var(--field);border-radius:14px}
+.switch{position:relative;display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-weight:700}
+.switch input{position:absolute;opacity:0;pointer-events:none}
+.switch-ui{position:relative;width:42px;height:24px;border-radius:999px;background:var(--btn);border:1px solid var(--line);transition:.18s}
+.switch-ui:after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:var(--muted);transition:.18s}
+.switch input:checked + .switch-ui{background:rgba(84,184,230,.2);border-color:rgba(84,184,230,.5)}
+.switch input:checked + .switch-ui:after{left:20px;background:var(--accent)}
+.summary{padding:9px 12px;border:1px dashed var(--line);border-radius:14px;background:rgba(84,184,230,.04);font-size:12px;line-height:1.45}
 .hidden{display:none !important}
-.footer{margin-top:16px;padding-top:12px;border-top:1px solid var(--border);font-size:12px;color:var(--muted);display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:center}
-.footer a{color:inherit;text-decoration:none}.footer a:hover{text-decoration:underline}
-.note{font-size:12px;color:var(--muted);margin-top:8px;white-space:pre-line}
-@media (max-width:1400px){.grid{grid-template-columns:repeat(2,minmax(260px,1fr));}}
-@media (max-width:760px){body{margin:8px}.grid{grid-template-columns:1fr}.field{flex-direction:column;align-items:stretch}.field label{min-width:unset}input,.btn,select{width:100%;max-width:100%}h1{flex-direction:column;align-items:flex-start}.header-ctrl{width:100%;justify-content:space-between}}
+.footer{margin-top:8px;padding-top:8px;border-top:1px solid var(--line);font-size:12px;color:var(--muted);display:flex;justify-content:center;gap:8px;flex-wrap:wrap;align-items:center}
+.footer a{text-decoration:none}
+.footer a:hover{text-decoration:underline}
+@media (max-width:1460px){.grid{grid-template-columns:repeat(2,minmax(270px,1fr));}}
+@media (max-width:780px){
+  body{padding:8px 10px 6px}
+  .header{flex-direction:column;align-items:flex-start}
+  .header-tools{width:100%;justify-content:space-between}
+  .grid{grid-template-columns:1fr}
+  .btn-pair{grid-template-columns:1fr}
+  .field,.kv{grid-template-columns:1fr}
+  .title{white-space:normal}
+}
 </style>
 </head>
 <body>
-<h1>
-  <a href="https://www.marxkrontal.com/de/" target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;text-decoration:none;color:inherit;gap:8px">
-    <img src="/logo.svg" alt="MKP" style="height:28px;vertical-align:middle">
-    <span id="i_title">MKP LoRaSense Node</span>
+<header class="header">
+  <a class="brand" href="https://www.marxkrontal.com/de/" target="_blank" rel="noopener noreferrer">
+    <img src="/logo.svg" alt="MKP">
+    <div class="title-wrap">
+      <div class="title" id="i_title">MKP LoRaSense Node</div>
+      <div class="sub" id="sub_title">AP live measurement / FIELD LoRa snapshot</div>
+    </div>
   </a>
-  <div class="header-ctrl">
-    <small class="fw-info"><span id="lab_fw">Firmware</span>: <b id="fw">-</b></small>
-    <button id="langBtn" class="btn" type="button">EN</button>
-    <button id="themeBtn" class="btn" type="button">🌙</button>
+  <div class="header-tools">
+    <div class="fw-chip"><span id="lab_fw">Firmware</span>: <b id="fw">-</b></div>
+    <button id="langBtn" class="lang-btn" type="button">DE</button>
+    <button id="themeBtn" class="icon-btn" type="button" aria-label="Theme">☀️</button>
   </div>
-</h1>
+</header>
 
 <main class="main">
-<div class="grid">
+  <datalist id="hzList">
+    <option value="0.1"><option value="0.2"><option value="0.5"><option value="1"><option value="2"><option value="5"><option value="10"><option value="20"><option value="25"><option value="50"><option value="100"><option value="150"><option value="200">
+  </datalist>
 
-  <section class="card">
-    <h3 id="h_measurements">Measurements</h3>
-    <div><span class="k" id="lab_time">Time</span>: <b id="time">--:--:--</b></div>
-    <div class="hr"></div>
-    <div><span class="k" id="lab_selftest">Self-test</span>: <span id="selftest" class="badge">-</span></div>
-    <div><span class="k" id="lab_delta">Delta</span>: <b id="selftest_delta">-</b> mV</div>
-    <div class="hr"></div>
-    <div><span class="k" id="lab_dms_raw">DMS raw</span>: <b id="dms_raw">-</b></div>
-    <div><span class="k" id="lab_dms_mvv">DMS mV/V</span>: <b id="dms_mvv">-</b></div>
-    <div><span class="k" id="lab_dms_mv">DMS est. mV</span>: <b id="dms_mv">-</b></div>
-    <div><span class="k" id="lab_fps">frames/s</span>: <b id="fps">-</b></div>
-    <div class="hr"></div>
-    <div><span class="k" id="lab_ain2_raw">AIN2 raw</span>: <b id="ain2_raw">-</b></div>
-    <div><span class="k" id="lab_ain2_adc">AIN2 ADC</span>: <b id="ain2_mv">-</b> mV</div>
-    <div><span class="k" id="lab_ain2_scaled">AIN2 scaled</span>: <b id="ain2_scaled">-</b> <span id="ain2_unit">-</span></div>
-    <div class="hr"></div>
-    <div><span class="k" id="lab_temp">Temperature</span>: <span id="temp">-</span> °C</div>
-  </section>
+  <div class="grid">
+    <section class="card">
+      <h3 id="h_measurements">Measurements</h3>
+      <div class="kv">
+        <div class="k" id="lab_time">Time</div><div class="v" id="time">--:--:--</div>
+        <div class="k" id="lab_selftest">Self-test</div><div class="v"><span id="selftest" class="badge">-</span></div>
+        <div class="k" id="lab_delta">Delta</div><div class="v"><span id="selftest_delta">-</span> mV</div>
+      </div>
+      <div class="hr"></div>
+      <div class="kv">
+        <div class="k" id="lab_dms_raw">DMS raw</div><div class="v" id="dms_raw">-</div>
+        <div class="k" id="lab_dms_mvv">DMS mV/V</div><div class="v" id="dms_mvv">-</div>
+        <div class="k" id="lab_dms_mv">DMS est. mV</div><div class="v" id="dms_mv">-</div>
+        <div class="k" id="lab_dms_actual">DMS actual</div><div class="v"><span id="dms_actual">-</span> Hz</div>
+      </div>
+      <div class="plot-wrap">
+        <canvas id="dmsPlot" width="640" height="112"></canvas>
+        <div class="small" id="plot_caption">Live trend: DMS mV/V</div>
+      </div>
+      <div class="hr"></div>
+      <div class="kv">
+        <div class="k" id="lab_ain2_raw">AIN2 raw</div><div class="v" id="ain2_raw">-</div>
+        <div class="k" id="lab_ain2_adc">AIN2 ADC</div><div class="v"><span id="ain2_mv">-</span> mV</div>
+        <div class="k" id="lab_ain2_scaled">AIN2 scaled</div><div class="v"><span id="ain2_scaled">-</span> <span id="ain2_unit">-</span></div>
+        <div class="k" id="lab_ain2_actual">AIN2 actual</div><div class="v"><span id="ain2_actual">-</span> Hz</div>
+      </div>
+      <div class="hr"></div>
+      <div class="kv">
+        <div class="k" id="lab_temp">Temperature</div><div class="v"><span id="temp">-</span> °C</div>
+        <div class="k" id="lab_total_actual">Total actual</div><div class="v"><span id="total_actual">-</span> Hz</div>
+      </div>
+    </section>
 
-  <section class="card">
-    <h3 id="h_controller">Controller</h3>
-    <div><span class="k" id="lab_mode">Mode</span>: <b id="mode">-</b></div>
-    <div><span class="k" id="lab_ip">IP</span>: <b id="ip">-</b></div>
-    <div><span class="k" id="lab_uptime">Uptime</span>: <b id="uptime">-</b> s</div>
-    <div><span class="k" id="lab_heap">Heap</span>: <b id="heap">-</b> B</div>
-    <div class="hr"></div>
-    <small id="statusMsg" class="status" aria-live="polite" role="status"></small>
-    <button id="resetBtn" class="btn btn-block" type="button">Reboot</button>
-    <small id="ctrlMsg" class="status"></small>
-  </section>
+    <section class="card">
+      <h3 id="h_controller">Controller</h3>
+      <div class="kv">
+        <div class="k" id="lab_mode">Mode</div><div class="v" id="mode">-</div>
+        <div class="k" id="lab_ip">IP</div><div class="v mono" id="ip">-</div>
+        <div class="k" id="lab_uptime">Uptime</div><div class="v"><span id="uptime">-</span> s</div>
+        <div class="k" id="lab_heap">Heap</div><div class="v"><span id="heap">-</span> B</div>
+        <div class="k" id="lab_board">Board</div><div class="v" id="board">-</div>
+        <div class="k" id="lab_chip">Chip</div><div class="v" id="chip">-</div>
+        <div class="k" id="lab_cpu">CPU</div><div class="v"><span id="cpu">-</span> MHz</div>
+        <div class="k" id="lab_flash">Flash</div><div class="v"><span id="flash">-</span> MB</div>
+        <div class="k" id="lab_apssid">AP SSID</div><div class="v mono" id="apssid">-</div>
+        <div class="k" id="lab_sdst">SD</div><div class="v" id="sdstate">-</div>
+        <div class="k" id="lab_chipmac">Chip MAC</div><div class="v mono" id="chipmac">-</div>
+        <div class="k" id="lab_chipeui">Chip DevEUI</div><div class="v mono" id="chipeui">-</div>
+      </div>
+      <div class="hr"></div>
+      <div id="statusMsg" class="status" role="status" aria-live="polite"></div>
+      <div id="ctrlMsg" class="status"></div>
+      <button id="resetBtn" class="btn btn-block" type="button">Reboot</button>
+    </section>
 
-  <section class="card">
-    <h3 id="h_lora">LoRa</h3>
-    <div class="row">
-      <button id="readChipBtn" class="btn" type="button">Read chip DevEUI</button>
-      <button id="useChipBtn" class="btn" type="button">Use chip DevEUI</button>
-    </div>
-    <div class="field"><label for="devEui" id="lab_deveui">DevEUI</label><input id="devEui" class="mono" inputmode="latin" autocomplete="off"></div>
-    <div class="field"><label for="appEui" id="lab_appeui">AppEUI</label><input id="appEui" class="mono" inputmode="latin" autocomplete="off"></div>
-    <div class="field"><label for="appKey" id="lab_appkey">AppKey</label><input id="appKey" class="mono" inputmode="latin" autocomplete="off"></div>
-    <div class="field"><label for="minutes" id="lab_interval">Send interval, min</label><input id="minutes" type="number" min="1" max="1440" step="1"></div>
-    <div class="field"><label for="drMode" id="lab_drate">Data rate</label>
-      <select id="drMode">
-        <option value="auto">ADR / Auto</option>
-        <option value="0">DR0 (SF12)</option>
-        <option value="1">DR1 (SF11)</option>
-        <option value="2">DR2 (SF10)</option>
-        <option value="3">DR3 (SF9)</option>
-        <option value="4">DR4 (SF8)</option>
-        <option value="5">DR5 (SF7)</option>
-      </select>
-    </div>
-    <small class="note" id="lora_note">Saved in AP mode, used later in FIELD mode.</small>
-    <button id="saveLoRaBtn" class="btn btn-block" type="button">Save LoRa settings</button>
-    <small id="loraMsg" class="status"></small>
-  </section>
-
-  <section class="card">
-    <h3 id="h_measure_cfg">Measurement settings</h3>
-    <div class="field"><label for="dmsPeriod" id="lab_dms_period">Differential DMS, ms</label><input id="dmsPeriod" type="number" min="5" step="1"></div>
-    <div class="field"><label for="ain2Period" id="lab_ain2_period">Single AIN2, ms</label><input id="ain2Period" type="number" min="20" step="1"></div>
-    <div class="field"><label for="tempFixed" id="lab_temp_period">Temperature</label><input id="tempFixed" readonly></div>
-    <div class="hr"></div>
-    <div class="field"><label for="ain2Mode" id="lab_ain2_type">AIN2 type</label>
-      <select id="ain2Mode">
-        <option value="pot" id="opt_ain2_pot">Potentiometer / Wegsensor</option>
-        <option value="volt" id="opt_ain2_volt">0-10 V input</option>
-      </select>
-    </div>
-    <div id="potBlock">
-      <div class="field"><label for="potPreset" id="lab_preset">Sensor length preset</label>
-        <select id="potPreset">
-          <option value="5">5 mm</option>
-          <option value="10">10 mm</option>
-          <option value="25">25 mm</option>
-          <option value="50">50 mm</option>
-          <option value="75">75 mm</option>
-          <option value="100">100 mm</option>
-          <option value="150">150 mm</option>
-          <option value="200">200 mm</option>
-          <option value="custom" id="opt_custom">Custom</option>
+    <section class="card">
+      <h3 id="h_lora">LoRa</h3>
+      <div class="btn-pair">
+        <button id="readChipBtn" class="btn" type="button">Read chip DevEUI</button>
+        <button id="useChipBtn" class="btn" type="button">Use chip DevEUI</button>
+      </div>
+      <div class="field"><label for="devEui" id="lab_deveui">DevEUI</label><input id="devEui" class="mono" inputmode="latin" autocomplete="off"></div>
+      <div class="field"><label for="appEui" id="lab_appeui">AppEUI</label><input id="appEui" class="mono" inputmode="latin" autocomplete="off"></div>
+      <div class="field"><label for="appKey" id="lab_appkey">AppKey</label><input id="appKey" class="mono" inputmode="latin" autocomplete="off"></div>
+      <div class="field"><label for="minutes" id="lab_interval">Send interval, min</label><input id="minutes" type="number" min="1" max="1440" step="1"></div>
+      <div class="field"><label for="drMode" id="lab_drate">Data rate</label>
+        <select id="drMode">
+          <option value="auto">ADR / Auto</option>
+          <option value="0">DR0 (SF12)</option>
+          <option value="1">DR1 (SF11)</option>
+          <option value="2">DR2 (SF10)</option>
+          <option value="3">DR3 (SF9)</option>
+          <option value="4">DR4 (SF8)</option>
+          <option value="5">DR5 (SF7)</option>
         </select>
       </div>
-      <div class="field"><label for="ain2Len" id="lab_length">Length, mm</label><input id="ain2Len" type="number" min="0.01" step="0.01"></div>
-    </div>
-    <div id="voltBlock">
-      <div class="field"><label for="adcFs" id="lab_adc_fs">ADC full-scale, V</label><input id="adcFs" type="number" min="0.05" step="0.001"></div>
-      <div class="field"><label for="inputFs" id="lab_input_fs">Input full-scale, V</label><input id="inputFs" type="number" min="0.05" step="0.1"></div>
-      <small class="note" id="volt_note">Example: if the adapter maps 0-10 V to 0-3.123 V, keep 3.123 and 10.0.</small>
-    </div>
-    <button id="saveMeasBtn" class="btn btn-block" type="button">Save measurement settings</button>
-    <small id="measMsg" class="status"></small>
-  </section>
+      <div class="summary" id="lora_note">Saved in AP mode. FIELD mode takes one fresh sensor snapshot immediately before each LoRa send and then returns to LoRaWAN sleep.</div>
+      <div id="chipInfo" class="status mono"></div>
+      <div id="loraMsg" class="status"></div>
+      <button id="saveLoRaBtn" class="btn btn-block" type="button">Save LoRa settings</button>
+    </section>
 
-</div>
+    <section class="card">
+      <h3 id="h_measure_cfg">Measurement settings</h3>
+      <div class="compact-group">
+        <div class="sensor-box">
+          <div class="sensor-head">
+            <div>
+              <div class="sensor-title" id="tit_dms">DMS / AIN0-AIN1</div>
+              <div class="sensor-meta" id="dms_hint">Fast differential channel</div>
+            </div>
+            <label class="switch"><input id="dmsOn" type="checkbox"><span class="switch-ui"></span><span id="sw_on_off_dms">On</span></label>
+          </div>
+          <div class="field"><label for="dmsHz" id="lab_dms_hz">Frequency, Hz</label><input id="dmsHz" type="number" min="0.1" max="200" step="0.1" list="hzList"></div>
+        </div>
+
+        <div class="sensor-box">
+          <div class="sensor-head">
+            <div>
+              <div class="sensor-title" id="tit_ain2">AIN2</div>
+              <div class="sensor-meta" id="ain2_hint">Potentiometer or 0-10 V input</div>
+            </div>
+            <label class="switch"><input id="ain2On" type="checkbox"><span class="switch-ui"></span><span id="sw_on_off_ain2">On</span></label>
+          </div>
+          <div class="field"><label for="ain2Hz" id="lab_ain2_hz">Frequency, Hz</label><input id="ain2Hz" type="number" min="0.1" max="100" step="0.1" list="hzList"></div>
+          <div class="field"><label for="ain2Mode" id="lab_ain2_type">AIN2 type</label>
+            <select id="ain2Mode">
+              <option value="pot" id="opt_ain2_pot">Potentiometer / Wegsensor</option>
+              <option value="volt" id="opt_ain2_volt">0-10 V input</option>
+            </select>
+          </div>
+          <div id="potBlock" class="stack">
+            <div class="field"><label for="potPreset" id="lab_preset">Sensor length preset</label>
+              <select id="potPreset">
+                <option value="5">5 mm</option>
+                <option value="10">10 mm</option>
+                <option value="25">25 mm</option>
+                <option value="50">50 mm</option>
+                <option value="75">75 mm</option>
+                <option value="100">100 mm</option>
+                <option value="150">150 mm</option>
+                <option value="200">200 mm</option>
+                <option value="custom" id="opt_custom">Custom</option>
+              </select>
+            </div>
+            <div class="field"><label for="ain2Len" id="lab_length">Length, mm</label><input id="ain2Len" type="number" min="0.01" step="0.01"></div>
+          </div>
+          <div id="voltBlock" class="stack hidden">
+            <div class="field"><label for="adcFs" id="lab_adc_fs">ADC full-scale, V</label><input id="adcFs" type="number" min="0.1" step="0.001"></div>
+            <div class="field"><label for="inputFs" id="lab_input_fs">Input full-scale, V</label><input id="inputFs" type="number" min="0.1" step="0.1"></div>
+            <div class="note" id="volt_note">Example: if the adapter maps 0-10 V to 0-3.123 V, keep 3.123 and 10.0.</div>
+          </div>
+        </div>
+
+        <div class="sensor-box">
+          <div class="sensor-head">
+            <div>
+              <div class="sensor-title" id="tit_temp">Temperature</div>
+              <div class="sensor-meta" id="temp_hint">DS18B20 fixed rate</div>
+            </div>
+            <label class="switch"><input id="tempOn" type="checkbox"><span class="switch-ui"></span><span id="sw_on_off_temp">On</span></label>
+          </div>
+          <div class="field"><label id="lab_temp_fixed">Frequency, Hz</label><div class="fixed" id="tempFixed">1.0 Hz (fixed)</div></div>
+        </div>
+
+        <div class="sensor-box">
+          <div class="sensor-head">
+            <div>
+              <div class="sensor-title" id="tit_sd">SD logging</div>
+              <div class="sensor-meta" id="sd_hint">AP mode only, CSV rotation</div>
+            </div>
+            <label class="switch"><input id="sdOn" type="checkbox"><span class="switch-ui"></span><span id="sw_on_off_sd">On</span></label>
+          </div>
+          <div class="field"><label for="sdBase" id="lab_sd_base">Base filename</label><input id="sdBase" maxlength="24"></div>
+          <div class="field"><label for="sdRotateKB" id="lab_sd_rotate">Rotate at, KB</label><input id="sdRotateKB" type="number" min="64" step="64"></div>
+          <div class="note" id="sd_note">A file with suffix _001, _002, ... is created automatically when the size limit is reached.</div>
+        </div>
+
+        <div class="summary" id="perfBox">Estimated AP speed: -</div>
+        <div id="measMsg" class="status"></div>
+        <button id="saveMeasBtn" class="btn btn-block" type="button">Save measurement settings</button>
+      </div>
+    </section>
+  </div>
 </main>
 
 <footer class="footer">
   <a href="https://www.marxkrontal.com/de/" target="_blank" rel="noopener noreferrer">© <span id="yr"></span> MKP GmbH</a>
-  <span id="footer_by">developed by</span>
+  <span id="i_footer_by">developed by</span>
   <a href="mailto:roman.sliusar@marxkrontal.com">SLR</a>
   <a href="mailto:evgenij.koloda@marxkrontal.com">KOE</a>
   <a href="mailto:Bernd.Schinkoethe@marxkrontal.com">SCE</a>
 </footer>
 
 <script>
-var THEME_KEY = 'theme';
-var LANG_KEY = 'lang';
-var LANGS = ['en', 'de', 'uk'];
-var I18N = {};
-var currentLang = 'en';
-var configLoaded = false;
+var THEME_KEY = 'lora_theme';
+var LANG_KEY = 'lora_lang';
+var currentLang = 'de';
+var I18N = null;
+var LANGS = ['de','en','uk'];
 var liveBusy = false;
 var metaBusy = false;
+var configLoaded = false;
+var plotValues = [];
+var PLOT_MAX = 160;
+window.__lastCfg = null;
 
 function $(id){ return document.getElementById(id); }
 function setText(id, value){ var el = $(id); if (el) el.textContent = value; }
 function setMsg(id, value){ var el = $(id); if (el) el.textContent = value || ''; }
-function num(v, d){ return (typeof v === 'number' && isFinite(v)) ? v.toFixed(d) : '-'; }
+function num(v, d){ return (typeof v === 'number' && isFinite(v)) ? Number(v).toFixed(d) : '-'; }
 function intNum(v){ return (typeof v === 'number' && isFinite(v)) ? String(Math.round(v)) : '-'; }
-function fmtTime(){ var d = new Date(); var p = function(n){ return String(n).padStart(2, '0'); }; return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()); }
+function fmtTime(){ var d = new Date(); var p = function(n){ return String(n).padStart(2,'0'); }; return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()); }
 function normalizeHex(s){ return (s || '').replace(/\s+/g, '').toUpperCase(); }
 function exactHex(s, len){ return new RegExp('^[0-9A-F]{' + len + '}$').test(normalizeHex(s)); }
+function boolNum(v){ return v === true || v === 1 || v === '1'; }
+function tr(key, fallback){ var pack = I18N && I18N[currentLang]; return (pack && pack[key]) || fallback || key; }
 
 async function api(url, opt){
   var r = await fetch(url, opt || {});
   var txt = await r.text();
   var data = {};
-  try { data = txt ? JSON.parse(txt) : {}; } catch (e) { throw new Error(txt || ('HTTP ' + r.status)); }
+  try { data = txt ? JSON.parse(txt) : {}; }
+  catch (e) { throw new Error(txt || ('HTTP ' + r.status)); }
   if (!r.ok || data.ok === false) throw new Error(data.error || ('HTTP ' + r.status));
   return data;
 }
@@ -215,6 +352,7 @@ function setTheme(t){
   document.documentElement.dataset.theme = t;
   $('themeBtn').textContent = t === 'dark' ? '☀️' : '🌙';
   localStorage.setItem(THEME_KEY, t);
+  drawPlot();
 }
 
 async function loadI18n(){
@@ -224,66 +362,95 @@ async function loadI18n(){
   } catch (e) {}
 }
 
-function tr(key, fallback){
-  var pack = I18N && I18N[currentLang];
-  return (pack && pack[key]) || fallback || key;
-}
-
 function applyLang(){
   document.documentElement.lang = currentLang;
   $('langBtn').textContent = currentLang.toUpperCase();
-  document.title = tr('title', 'MKP LoRaSense Node');
-  setText('i_title', tr('title', 'MKP LoRaSense Node'));
-  setText('lab_fw', tr('firmware', 'Firmware'));
-  setText('h_measurements', tr('measurements', 'Measurements'));
-  setText('lab_time', tr('time', 'Time'));
-  setText('lab_selftest', tr('selftest', 'Self-test'));
-  setText('lab_delta', tr('delta', 'Delta'));
-  setText('lab_dms_raw', tr('dms_raw', 'DMS raw'));
-  setText('lab_dms_mvv', tr('dms_mvv', 'DMS mV/V'));
-  setText('lab_dms_mv', tr('dms_mv', 'DMS est. mV'));
-  setText('lab_fps', tr('fps', 'frames/s'));
-  setText('lab_ain2_raw', tr('ain2_raw', 'AIN2 raw'));
-  setText('lab_ain2_adc', tr('ain2_adc', 'AIN2 ADC'));
-  setText('lab_ain2_scaled', tr('ain2_scaled', 'AIN2 scaled'));
-  setText('lab_temp', tr('temperature', 'Temperature'));
-  setText('h_controller', tr('controller', 'Controller'));
-  setText('lab_mode', tr('mode', 'Mode'));
-  setText('lab_ip', tr('ip', 'IP'));
-  setText('lab_uptime', tr('uptime', 'Uptime'));
-  setText('lab_heap', tr('heap', 'Heap'));
-  setText('resetBtn', tr('reboot', 'Reboot'));
-  setText('h_lora', tr('lora', 'LoRa'));
-  setText('readChipBtn', tr('read_chip', 'Read chip DevEUI'));
-  setText('useChipBtn', tr('use_chip', 'Use chip DevEUI'));
-  setText('lab_deveui', tr('deveui', 'DevEUI'));
-  setText('lab_appeui', tr('appeui', 'AppEUI'));
-  setText('lab_appkey', tr('appkey', 'AppKey'));
-  setText('lab_interval', tr('interval', 'Send interval, min'));
-  setText('lab_drate', tr('drate', 'Data rate'));
-  setText('lora_note', tr('lora_note', 'Saved in AP mode, used later in FIELD mode.'));
-  setText('saveLoRaBtn', tr('save_lora', 'Save LoRa settings'));
-  setText('h_measure_cfg', tr('measure_cfg', 'Measurement settings'));
-  setText('lab_dms_period', tr('dms_period', 'Differential DMS, ms'));
-  setText('lab_ain2_period', tr('ain2_period', 'Single AIN2, ms'));
-  setText('lab_temp_period', tr('temperature', 'Temperature'));
-  $('tempFixed').value = tr('temp_fixed', '1000 ms (fixed)');
-  setText('lab_ain2_type', tr('ain2_type', 'AIN2 type'));
-  setText('opt_ain2_pot', tr('ain2_pot', 'Potentiometer / Wegsensor'));
-  setText('opt_ain2_volt', tr('ain2_volt', '0-10 V input'));
-  setText('lab_preset', tr('preset', 'Sensor length preset'));
-  setText('lab_length', tr('length', 'Length, mm'));
-  setText('opt_custom', tr('custom', 'Custom'));
-  setText('lab_adc_fs', tr('adc_fs', 'ADC full-scale, V'));
-  setText('lab_input_fs', tr('input_fs', 'Input full-scale, V'));
-  setText('volt_note', tr('volt_note', 'Example: if the adapter maps 0-10 V to 0-3.123 V, keep 3.123 and 10.0.'));
-  setText('saveMeasBtn', tr('save_meas', 'Save measurement settings'));
-  setText('footer_by', tr('footer_by', 'developed by'));
-  $('devEui').placeholder = tr('ph_deveui', 'DevEUI');
-  $('appEui').placeholder = tr('ph_appeui', 'AppEUI');
-  $('appKey').placeholder = tr('ph_appkey', 'AppKey');
-  $('minutes').placeholder = tr('ph_minutes', 'Interval, min');
-  updateStatusText();
+  setText('i_title', tr('title','MKP LoRaSense Node'));
+  setText('sub_title', tr('subtitle','AP live measurement / FIELD LoRa snapshot'));
+  setText('lab_fw', tr('firmware','Firmware'));
+  setText('h_measurements', tr('measurements','Measurements'));
+  setText('lab_time', tr('time','Time'));
+  setText('lab_selftest', tr('selftest','Self-test'));
+  setText('lab_delta', tr('delta','Delta'));
+  setText('lab_dms_raw', tr('dms_raw','DMS raw'));
+  setText('lab_dms_mvv', tr('dms_mvv','DMS mV/V'));
+  setText('lab_dms_mv', tr('dms_mv','DMS est. mV'));
+  setText('lab_dms_actual', tr('dms_actual','DMS actual'));
+  setText('plot_caption', tr('plot_caption','Live trend: DMS mV/V'));
+  setText('lab_ain2_raw', tr('ain2_raw','AIN2 raw'));
+  setText('lab_ain2_adc', tr('ain2_adc','AIN2 ADC'));
+  setText('lab_ain2_scaled', tr('ain2_scaled','AIN2 scaled'));
+  setText('lab_ain2_actual', tr('ain2_actual','AIN2 actual'));
+  setText('lab_temp', tr('temperature','Temperature'));
+  setText('lab_total_actual', tr('total_actual','Total actual'));
+
+  setText('h_controller', tr('controller','Controller'));
+  setText('lab_mode', tr('mode','Mode'));
+  setText('lab_ip', tr('ip','IP'));
+  setText('lab_uptime', tr('uptime','Uptime'));
+  setText('lab_heap', tr('heap','Heap'));
+  setText('lab_board', tr('board','Board'));
+  setText('lab_chip', tr('chip','Chip'));
+  setText('lab_cpu', tr('cpu','CPU'));
+  setText('lab_flash', tr('flash','Flash'));
+  setText('lab_apssid', tr('ap_ssid','AP SSID'));
+  setText('lab_sdst', tr('sd_state','SD'));
+  setText('lab_chipmac', tr('chip_mac','Chip MAC'));
+  setText('lab_chipeui', tr('chip_eui','Chip DevEUI'));
+  setText('resetBtn', tr('reboot','Reboot'));
+
+  setText('h_lora', tr('lora','LoRa'));
+  setText('readChipBtn', tr('read_chip','Read chip DevEUI'));
+  setText('useChipBtn', tr('use_chip','Use chip DevEUI'));
+  setText('lab_deveui', tr('deveui','DevEUI'));
+  setText('lab_appeui', tr('appeui','AppEUI'));
+  setText('lab_appkey', tr('appkey','AppKey'));
+  setText('lab_interval', tr('interval','Send interval, min'));
+  setText('lab_drate', tr('drate','Data rate'));
+  setText('lora_note', tr('lora_note','Saved in AP mode. FIELD mode takes one fresh sensor snapshot immediately before each LoRa send and then returns to LoRaWAN sleep.'));
+  setText('saveLoRaBtn', tr('save_lora','Save LoRa settings'));
+
+  setText('h_measure_cfg', tr('measure_cfg','Measurement settings'));
+  setText('tit_dms', tr('tit_dms','DMS / AIN0-AIN1'));
+  setText('dms_hint', tr('dms_hint','Fast differential channel'));
+  setText('sw_on_off_dms', tr('on','On'));
+  setText('lab_dms_hz', tr('dms_hz','Frequency, Hz'));
+  setText('tit_ain2', tr('tit_ain2','AIN2'));
+  setText('ain2_hint', tr('ain2_hint','Potentiometer or 0-10 V input'));
+  setText('sw_on_off_ain2', tr('on','On'));
+  setText('lab_ain2_hz', tr('ain2_hz','Frequency, Hz'));
+  setText('lab_ain2_type', tr('ain2_type','AIN2 type'));
+  setText('opt_ain2_pot', tr('ain2_pot','Potentiometer / Wegsensor'));
+  setText('opt_ain2_volt', tr('ain2_volt','0-10 V input'));
+  setText('lab_preset', tr('preset','Sensor length preset'));
+  setText('lab_length', tr('length','Length, mm'));
+  setText('opt_custom', tr('custom','Custom'));
+  setText('lab_adc_fs', tr('adc_fs','ADC full-scale, V'));
+  setText('lab_input_fs', tr('input_fs','Input full-scale, V'));
+  setText('volt_note', tr('volt_note','Example: if the adapter maps 0-10 V to 0-3.123 V, keep 3.123 and 10.0.'));
+  setText('tit_temp', tr('tit_temp','Temperature'));
+  setText('temp_hint', tr('temp_hint','DS18B20 fixed rate'));
+  setText('sw_on_off_temp', tr('on','On'));
+  setText('lab_temp_fixed', tr('dms_hz','Frequency, Hz'));
+  setText('tempFixed', tr('temp_fixed','1.0 Hz (fixed)'));
+  setText('tit_sd', tr('tit_sd','SD logging'));
+  setText('sd_hint', tr('sd_hint','AP mode only, CSV rotation'));
+  setText('sw_on_off_sd', tr('on','On'));
+  setText('lab_sd_base', tr('sd_base','Base filename'));
+  setText('lab_sd_rotate', tr('sd_rotate','Rotate at, KB'));
+  setText('sd_note', tr('sd_note','A file with suffix _001, _002, ... is created automatically when the size limit is reached.'));
+  setText('saveMeasBtn', tr('save_meas','Save measurement settings'));
+  setText('footer_by', tr('footer_by','developed by'));
+
+  $('devEui').placeholder = tr('ph_deveui','DevEUI');
+  $('appEui').placeholder = tr('ph_appeui','AppEUI');
+  $('appKey').placeholder = tr('ph_appkey','AppKey');
+  $('minutes').placeholder = tr('ph_minutes','Interval, min');
+  $('sdBase').placeholder = tr('sd_base','Base filename');
+
+  updateStatusText($('mode').textContent || 'CONFIG');
+  updatePerfBox(window.__lastLive || null, window.__lastCfg || null);
+  drawPlot();
 }
 
 function syncPreset(){
@@ -301,36 +468,54 @@ function updateAin2Mode(){
 }
 
 function fillConfig(cfg){
+  window.__lastCfg = cfg || null;
   $('devEui').value = cfg.devEui || '';
   $('appEui').value = cfg.appEui || '';
   $('appKey').value = cfg.appKey || '';
   $('minutes').value = cfg.minutes != null ? cfg.minutes : 15;
-  $('dmsPeriod').value = cfg.dms_period_ms != null ? cfg.dms_period_ms : 20;
-  $('ain2Period').value = cfg.ain2_period_ms != null ? cfg.ain2_period_ms : 200;
+  $('dmsOn').checked = boolNum(cfg.dms_enabled);
+  $('dmsHz').value = Number(cfg.dms_hz != null ? cfg.dms_hz : 200).toFixed(1);
+  $('ain2On').checked = boolNum(cfg.ain2_enabled);
+  $('ain2Hz').value = Number(cfg.ain2_hz != null ? cfg.ain2_hz : 1).toFixed(1);
   $('ain2Mode').value = cfg.ain2_mode || 'pot';
   $('ain2Len').value = Number(cfg.ain2_length_mm != null ? cfg.ain2_length_mm : 10).toFixed(2);
   $('adcFs').value = Number(cfg.ain2_adc_fullscale_v != null ? cfg.ain2_adc_fullscale_v : 3.123).toFixed(3);
   $('inputFs').value = Number(cfg.ain2_input_fullscale_v != null ? cfg.ain2_input_fullscale_v : 10).toFixed(1);
-  $('drMode').value = cfg.adr ? 'auto' : String(cfg.dr != null ? cfg.dr : 5);
-  $('tempFixed').value = tr('temp_fixed', '1000 ms (fixed)');
+  $('tempOn').checked = boolNum(cfg.temp_enabled);
+  $('tempFixed').textContent = tr('temp_fixed','1.0 Hz (fixed)');
+  $('sdOn').checked = boolNum(cfg.sd_log_enabled);
+  $('sdBase').value = cfg.sd_base || 'lorasense';
+  $('sdRotateKB').value = cfg.sd_rotate_kb != null ? cfg.sd_rotate_kb : 1024;
+  $('drMode').value = boolNum(cfg.adr) ? 'auto' : String(cfg.dr != null ? cfg.dr : 5);
   syncPreset();
   updateAin2Mode();
+  updatePerfBox(window.__lastLive || null, cfg);
 }
 
 function updateLive(s){
+  window.__lastLive = s || null;
   setText('time', fmtTime());
-  $('selftest').textContent = s.selftest_ok ? tr('ok', 'OK') : tr('fail', 'FAIL');
+  $('selftest').textContent = s.selftest_ok ? tr('ok','OK') : tr('fail','FAIL');
   $('selftest').className = 'badge ' + (s.selftest_ok ? 'ok' : 'bad');
   setText('selftest_delta', num(s.selftest_delta_mV, 6));
-  setText('dms_raw', intNum(s.dms_raw));
-  setText('dms_mvv', s.dms_valid ? num(s.dms_mV_per_V, 6) : '-');
-  setText('dms_mv', s.dms_valid ? num(s.dms_mV, 6) : '-');
-  setText('fps', intNum(s.frames_s));
-  setText('ain2_raw', intNum(s.ain2_raw));
-  setText('ain2_mv', s.ain2_valid ? num(s.ain2_mV, 3) : '-');
-  setText('ain2_scaled', s.ain2_valid ? num(s.ain2_value, s.ain2_mode === 'volt' ? 3 : 2) : '-');
-  setText('ain2_unit', s.ain2_unit || '-');
-  setText('temp', s.temp_valid ? num(s.temp_C, 2) : '-');
+
+  setText('dms_raw', boolNum(s.dms_enabled) ? intNum(s.dms_raw) : tr('off','OFF'));
+  setText('dms_mvv', boolNum(s.dms_enabled) ? (boolNum(s.dms_valid) ? num(s.dms_mV_per_V, 6) : '-') : tr('off','OFF'));
+  setText('dms_mv', boolNum(s.dms_enabled) ? (boolNum(s.dms_valid) ? num(s.dms_mV, 6) : '-') : tr('off','OFF'));
+  setText('dms_actual', boolNum(s.dms_enabled) ? num(s.dms_rate_hz_actual, 0) : tr('off','OFF'));
+
+  setText('ain2_raw', boolNum(s.ain2_enabled) ? intNum(s.ain2_raw) : tr('off','OFF'));
+  setText('ain2_mv', boolNum(s.ain2_enabled) ? (boolNum(s.ain2_valid) ? num(s.ain2_mV, 3) : '-') : tr('off','OFF'));
+  setText('ain2_scaled', boolNum(s.ain2_enabled) ? (boolNum(s.ain2_valid) ? num(s.ain2_value, s.ain2_mode === 'volt' ? 3 : 2) : '-') : tr('off','OFF'));
+  setText('ain2_unit', boolNum(s.ain2_enabled) ? (s.ain2_unit || '-') : '');
+  setText('ain2_actual', boolNum(s.ain2_enabled) ? num(s.ain2_rate_hz_actual, 0) : tr('off','OFF'));
+
+  setText('temp', boolNum(s.temp_enabled) ? (boolNum(s.temp_valid) ? num(s.temp_C, 2) : '-') : tr('off','OFF'));
+  setText('total_actual', num(s.total_rate_hz_actual, 0));
+  setText('sdstate', s.sd_status || '-');
+
+  pushPlot(boolNum(s.dms_enabled) && boolNum(s.dms_valid) ? Number(s.dms_mV_per_V) : null);
+  updatePerfBox(s, window.__lastCfg || null);
 }
 
 function updateMeta(s){
@@ -339,13 +524,99 @@ function updateMeta(s){
   setText('ip', s.ip || '-');
   setText('uptime', intNum(s.uptime_s));
   setText('heap', intNum(s.heap_free));
+
+  var c = s.controller || {};
+  setText('board', c.board || '-');
+  var chipTxt = c.chip_model || '-';
+  if (c.chip_rev != null) chipTxt += ' rev ' + c.chip_rev;
+  setText('chip', chipTxt);
+  setText('cpu', intNum(c.cpu_mhz));
+  setText('flash', intNum(c.flash_mb));
+  setText('apssid', c.ap_ssid || '-');
+  setText('sdstate', c.sd_status || s.sd_status || '-');
+  setText('chipmac', c.chip_mac48 || '-');
+  setText('chipeui', c.chip_eui64 || '-');
   updateStatusText(s.mode || 'CONFIG');
 }
 
+function updatePerfBox(live, cfg){
+  var src = (live && live.perf) || (cfg && cfg.perf) || null;
+  if (!src) { setText('perfBox', tr('perf_est','Estimated AP speed') + ': -'); return; }
+  var parts = [];
+  parts.push(tr('perf_est','Estimated AP speed') + ': ' + num(src.total_est_hz, 1) + ' Hz');
+  parts.push(tr('perf_dms','DMS') + ' ' + num(src.dms_est_hz, 1));
+  parts.push(tr('perf_ain2','AIN2') + ' ' + num(src.ain2_est_hz, 1));
+  parts.push(tr('perf_load','ADS load') + ' ' + num(src.ads_load_pct, 0) + '%');
+  setText('perfBox', parts.join(' | '));
+}
+
 function updateStatusText(mode){
-  var m = mode || $('mode').textContent || 'CONFIG';
-  var text = (m === 'CONFIG') ? tr('status_ap', 'AP mode active. Edit settings here; FIELD mode will use the saved values.') : tr('status_field', 'FIELD mode active. Device sends LoRa using the saved values.');
+  var m = mode || 'CONFIG';
+  var text = (m === 'FIELD')
+    ? tr('status_field','FIELD mode active. Device sends one fresh snapshot per LoRa interval and then returns to LoRaWAN sleep.')
+    : tr('status_ap','AP mode active. Web UI, fast measurement and optional SD CSV logging are available here.');
   setMsg('statusMsg', text);
+}
+
+function pushPlot(value){
+  plotValues.push({ t: Date.now(), v: value });
+  while (plotValues.length > PLOT_MAX) plotValues.shift();
+  drawPlot();
+}
+
+function drawPlot(){
+  var c = $('dmsPlot');
+  if (!c) return;
+  var ctx = c.getContext('2d');
+  var w = c.width, h = c.height;
+  var theme = getComputedStyle(document.documentElement);
+  var bg = theme.getPropertyValue('--plot-bg').trim();
+  var fg = theme.getPropertyValue('--muted').trim();
+  var line = theme.getPropertyValue('--line').trim();
+  var accent = theme.getPropertyValue('--accent').trim();
+  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle = bg;
+  ctx.fillRect(0,0,w,h);
+
+  ctx.strokeStyle = line;
+  ctx.lineWidth = 1;
+  for (var i=1;i<4;i++){
+    var y = Math.round(i*h/4)+0.5;
+    ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke();
+  }
+
+  var vals = plotValues.map(function(p){ return p.v; }).filter(function(v){ return typeof v === 'number' && isFinite(v); });
+  if (!vals.length) {
+    ctx.fillStyle = fg;
+    ctx.font = '12px system-ui';
+    ctx.fillText(tr('plot_wait','Waiting for DMS data...'), 10, 20);
+    return;
+  }
+
+  var min = Math.min.apply(null, vals);
+  var max = Math.max.apply(null, vals);
+  if (Math.abs(max - min) < 1e-9) { max += 1; min -= 1; }
+  var pad = (max - min) * 0.12;
+  min -= pad; max += pad;
+
+  ctx.strokeStyle = accent;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  var started = false;
+  for (var j=0;j<plotValues.length;j++){
+    var p = plotValues[j];
+    if (!(typeof p.v === 'number' && isFinite(p.v))) { started = false; continue; }
+    var x = plotValues.length <= 1 ? 0 : (j / (plotValues.length - 1)) * (w - 1);
+    var yv = h - ((p.v - min) / (max - min)) * (h - 1);
+    if (!started) { ctx.moveTo(x, yv); started = true; }
+    else ctx.lineTo(x, yv);
+  }
+  ctx.stroke();
+
+  ctx.fillStyle = fg;
+  ctx.font = '12px system-ui';
+  ctx.fillText(max.toFixed(4), 8, 14);
+  ctx.fillText(min.toFixed(4), 8, h - 6);
 }
 
 async function loadConfig(){
@@ -388,57 +659,64 @@ async function saveLoRa(){
   var devEui = normalizeHex($('devEui').value);
   var appEui = normalizeHex($('appEui').value);
   var appKey = normalizeHex($('appKey').value);
-  if (!exactHex(devEui, 16)) throw new Error(tr('invalid_deveui', 'DevEUI must be 16 hex characters.'));
-  if (!exactHex(appEui, 16)) throw new Error(tr('invalid_appeui', 'AppEUI must be 16 hex characters.'));
-  if (!exactHex(appKey, 32)) throw new Error(tr('invalid_appkey', 'AppKey must be 32 hex characters.'));
+  if (!exactHex(devEui, 16)) throw new Error(tr('invalid_deveui','DevEUI must be 16 hex characters.'));
+  if (!exactHex(appEui, 16)) throw new Error(tr('invalid_appeui','AppEUI must be 16 hex characters.'));
+  if (!exactHex(appKey, 32)) throw new Error(tr('invalid_appkey','AppKey must be 32 hex characters.'));
+
   var payload = {
     devEui: devEui,
     appEui: appEui,
     appKey: appKey,
     minutes: Number($('minutes').value || 15)
   };
-  if ($('drMode').value === 'auto') {
-    payload.adr = true;
-    payload.dr = 5;
-  } else {
-    payload.adr = false;
-    payload.dr = Number($('drMode').value || 5);
-  }
+  if ($('drMode').value === 'auto') { payload.adr = true; payload.dr = 5; }
+  else { payload.adr = false; payload.dr = Number($('drMode').value || 5); }
+
   var r = await api('/api/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
   if (r.cfg) fillConfig(r.cfg);
-  setMsg('loraMsg', tr('lora_saved', 'LoRa settings saved to controller.'));
+  setMsg('loraMsg', tr('lora_saved','LoRa settings saved to controller.'));
 }
 
 async function saveMeas(){
   var payload = {
-    dms_period_ms: Number($('dmsPeriod').value || 20),
-    ain2_period_ms: Number($('ain2Period').value || 200),
+    dms_enabled: $('dmsOn').checked ? 1 : 0,
+    dms_hz: Number($('dmsHz').value || 200),
+    ain2_enabled: $('ain2On').checked ? 1 : 0,
+    ain2_hz: Number($('ain2Hz').value || 1),
     ain2_mode: $('ain2Mode').value,
     ain2_length_mm: Number($('ain2Len').value || 10),
     ain2_adc_fullscale_v: Number($('adcFs').value || 3.123),
-    ain2_input_fullscale_v: Number($('inputFs').value || 10)
+    ain2_input_fullscale_v: Number($('inputFs').value || 10),
+    temp_enabled: $('tempOn').checked ? 1 : 0,
+    sd_log_enabled: $('sdOn').checked ? 1 : 0,
+    sd_base: $('sdBase').value || 'lorasense',
+    sd_rotate_kb: Number($('sdRotateKB').value || 1024)
   };
   var r = await api('/api/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
   if (r.cfg) fillConfig(r.cfg);
-  setMsg('measMsg', tr('meas_saved', 'Measurement settings saved to controller.'));
+  setMsg('measMsg', tr('meas_saved','Measurement settings saved to controller.'));
 }
 
 $('saveLoRaBtn').addEventListener('click', async function(){
   try { await saveLoRa(); }
-  catch (e) { setMsg('loraMsg', tr('save_error', 'Save error') + ': ' + e.message); }
+  catch (e) { setMsg('loraMsg', tr('save_error','Save error') + ': ' + e.message); }
 });
 
 $('saveMeasBtn').addEventListener('click', async function(){
   try { await saveMeas(); }
-  catch (e) { setMsg('measMsg', tr('save_error', 'Save error') + ': ' + e.message); }
+  catch (e) { setMsg('measMsg', tr('save_error','Save error') + ': ' + e.message); }
 });
 
 $('readChipBtn').addEventListener('click', async function(){
   try {
     var r = await api('/api/deveui');
-    setMsg('loraMsg', tr('chip_active', 'Active DevEUI') + ': ' + (r.activeLoRaDevEUI || '-') + '\n' + tr('chip_hw', 'Chip DevEUI') + ': ' + (r.chipEUI || '-'));
+    var msg = tr('chip_active','Active DevEUI') + ': ' + (r.activeLoRaDevEUI || '-') + '\n' +
+      tr('chip_hw','Chip DevEUI') + ': ' + (r.chipEUI || '-') + '\n' +
+      tr('chip_mac','Chip MAC') + ': ' + (r.chipMac48 || '-');
+    setMsg('chipInfo', msg);
+    setMsg('loraMsg', '');
   } catch (e) {
-    setMsg('loraMsg', tr('save_error', 'Save error') + ': ' + e.message);
+    setMsg('loraMsg', tr('save_error','Save error') + ': ' + e.message);
   }
 });
 
@@ -446,18 +724,21 @@ $('useChipBtn').addEventListener('click', async function(){
   try {
     var r = await api('/api/deveui', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ use:'chip' }) });
     if (r.storedDevEUI) $('devEui').value = r.storedDevEUI;
-    setMsg('loraMsg', tr('use_chip_saved', 'Chip DevEUI stored in controller.'));
+    var msg = tr('chip_active','Active DevEUI') + ': ' + (r.activeLoRaDevEUI || '-') + '\n' +
+      tr('chip_hw','Chip DevEUI') + ': ' + (r.chipEUI || '-');
+    setMsg('chipInfo', msg);
+    setMsg('loraMsg', tr('use_chip_saved','Chip DevEUI stored in controller.'));
   } catch (e) {
-    setMsg('loraMsg', tr('save_error', 'Save error') + ': ' + e.message);
+    setMsg('loraMsg', tr('save_error','Save error') + ': ' + e.message);
   }
 });
 
 $('resetBtn').addEventListener('click', async function(){
   try {
     await api('/api/reset', { method:'POST' });
-    setMsg('ctrlMsg', tr('reset_msg', 'Controller restarting...'));
+    setMsg('ctrlMsg', tr('reset_msg','Controller restarting...'));
   } catch (e) {
-    setMsg('ctrlMsg', tr('save_error', 'Save error') + ': ' + e.message);
+    setMsg('ctrlMsg', tr('save_error','Save error') + ': ' + e.message);
   }
 });
 
@@ -475,18 +756,19 @@ $('langBtn').addEventListener('click', function(){
   localStorage.setItem(LANG_KEY, currentLang);
   applyLang();
 });
+window.addEventListener('resize', drawPlot);
 
 async function boot(){
   setText('yr', new Date().getFullYear());
   var savedTheme = localStorage.getItem(THEME_KEY) || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
   setTheme(savedTheme);
-  currentLang = localStorage.getItem(LANG_KEY) || 'en';
+  currentLang = localStorage.getItem(LANG_KEY) || 'de';
   await loadI18n();
   applyLang();
   updateAin2Mode();
-  try { await loadConfig(); } catch (e) { setMsg('loraMsg', tr('save_error', 'Save error') + ': ' + e.message); }
-  try { await loadStateOnce(); } catch (e) { setMsg('ctrlMsg', tr('save_error', 'Save error') + ': ' + e.message); }
-  setInterval(pollLive, 300);
+  try { await loadConfig(); } catch (e) { setMsg('loraMsg', tr('save_error','Save error') + ': ' + e.message); }
+  try { await loadStateOnce(); } catch (e) { setMsg('ctrlMsg', tr('save_error','Save error') + ': ' + e.message); }
+  setInterval(pollLive, 250);
   setInterval(pollMeta, 5000);
 }
 
