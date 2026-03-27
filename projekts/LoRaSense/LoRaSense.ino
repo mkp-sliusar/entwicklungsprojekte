@@ -1,3 +1,4 @@
+@ -1,1633 +1,1757 @@
 #include <Arduino.h>
 #include <SPI.h>
 #include <SD.h>
@@ -45,6 +46,10 @@ static constexpr uint8_t AIN2_MODE_VOLT = 1;
 
 static constexpr float TEMP_FIXED_HZ = 1.0f;
 static constexpr float DMS_MIN_HZ = 0.1f;
+static constexpr float DMS_MAX_HZ = 200.0f;
+static constexpr float AIN2_MIN_HZ = 0.1f;
+static constexpr float AIN2_MAX_HZ = 100.0f;
+static constexpr float ADS_BUDGET_CONVERSIONS_HZ = 200.0f;
 static constexpr float DMS_MAX_HZ = 500.0f;
 static constexpr float AIN2_MIN_HZ = 1.0f;
 static constexpr float AIN2_MAX_HZ = 500.0f;
@@ -1177,6 +1182,7 @@ static bool openNextLogFile() {
       g_logFileName = String(path);
       g_logLineCount = 0;
 
+      g_logFile.println("t_ms,mode,dms_on,dms_raw,dms_mV,dms_mV_per_V,ain2_on,ain2_mode,ain2_raw,ain2_mV,ain2_value,ain2_unit,temp_on,temp_C,selftest_ok");
       g_logFile.println("t_ms,mode,dms_on,dms_valid,dms_raw,dms_mV,dms_mV_per_V,ain2_on,ain2_valid,ain2_mode,ain2_raw,ain2_mV,ain2_value,ain2_unit,temp_on,temp_valid,temp_C,selftest_ok");
       g_logFile.flush();
       g_logLastFlushMs = millis();
@@ -1225,6 +1231,9 @@ static void loggerLoop() {
   if (g_logBufCount == 0) return;
 
   const uint32_t now = millis();
+
+  if (g_lastLoggedSampleSeq == g_lastSampleSeq) return;
+  if ((uint32_t)(now - g_lastLogWriteMs) < g_logPeriodMs) return;
   if (g_logBufCount < LOG_BATCH_SIZE && (uint32_t)(now - g_logLastDrainMs) < LOG_FORCE_FLUSH_MS) {
     return;
   }
@@ -1245,6 +1254,30 @@ static void loggerLoop() {
     sdSpiBegin();
   }
 
+  char line[256];
+  snprintf(
+    line, sizeof(line),
+    "%lu,CONFIG,%d,%ld,%.6f,%.6f,%d,%s,%ld,%.6f,%.3f,%s,%d,%.3f,%d",
+    (unsigned long)now,
+    cfg.dmsEnabled ? 1 : 0,
+    (long)lastDmsRaw,
+    dms_valid ? dms_mV : NAN,
+    dms_valid ? dms_mV_per_V : NAN,
+    cfg.ain2Enabled ? 1 : 0,
+    ain2ModeName(),
+    (long)lastAin2Raw,
+    ain2_valid ? ain2_mV : NAN,
+    ain2_valid ? ain2DerivedValue() : NAN,
+    ain2DerivedUnit(),
+    cfg.tempEnabled ? 1 : 0,
+    temp_valid ? ds_temp_c : NAN,
+    selfTestOk ? 1 : 0
+  );
+
+  g_logFile.println(line);
+  g_logLineCount++;
+  g_lastLoggedSampleSeq = g_lastSampleSeq;
+  g_lastLogWriteMs = now;
   char out[4096];
   size_t pos = 0;
   uint16_t writtenSamples = 0;
