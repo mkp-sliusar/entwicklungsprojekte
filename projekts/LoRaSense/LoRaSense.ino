@@ -1,4 +1,3 @@
-@ -1,1633 +1,1757 @@
 #include <Arduino.h>
 #include <SPI.h>
 #include <SD.h>
@@ -46,10 +45,6 @@ static constexpr uint8_t AIN2_MODE_VOLT = 1;
 
 static constexpr float TEMP_FIXED_HZ = 1.0f;
 static constexpr float DMS_MIN_HZ = 0.1f;
-static constexpr float DMS_MAX_HZ = 200.0f;
-static constexpr float AIN2_MIN_HZ = 0.1f;
-static constexpr float AIN2_MAX_HZ = 100.0f;
-static constexpr float ADS_BUDGET_CONVERSIONS_HZ = 200.0f;
 static constexpr float DMS_MAX_HZ = 500.0f;
 static constexpr float AIN2_MIN_HZ = 1.0f;
 static constexpr float AIN2_MAX_HZ = 500.0f;
@@ -1182,7 +1177,6 @@ static bool openNextLogFile() {
       g_logFileName = String(path);
       g_logLineCount = 0;
 
-      g_logFile.println("t_ms,mode,dms_on,dms_raw,dms_mV,dms_mV_per_V,ain2_on,ain2_mode,ain2_raw,ain2_mV,ain2_value,ain2_unit,temp_on,temp_C,selftest_ok");
       g_logFile.println("t_ms,mode,dms_on,dms_valid,dms_raw,dms_mV,dms_mV_per_V,ain2_on,ain2_valid,ain2_mode,ain2_raw,ain2_mV,ain2_value,ain2_unit,temp_on,temp_valid,temp_C,selftest_ok");
       g_logFile.flush();
       g_logLastFlushMs = millis();
@@ -1231,9 +1225,6 @@ static void loggerLoop() {
   if (g_logBufCount == 0) return;
 
   const uint32_t now = millis();
-
-  if (g_lastLoggedSampleSeq == g_lastSampleSeq) return;
-  if ((uint32_t)(now - g_lastLogWriteMs) < g_logPeriodMs) return;
   if (g_logBufCount < LOG_BATCH_SIZE && (uint32_t)(now - g_logLastDrainMs) < LOG_FORCE_FLUSH_MS) {
     return;
   }
@@ -1254,30 +1245,6 @@ static void loggerLoop() {
     sdSpiBegin();
   }
 
-  char line[256];
-  snprintf(
-    line, sizeof(line),
-    "%lu,CONFIG,%d,%ld,%.6f,%.6f,%d,%s,%ld,%.6f,%.3f,%s,%d,%.3f,%d",
-    (unsigned long)now,
-    cfg.dmsEnabled ? 1 : 0,
-    (long)lastDmsRaw,
-    dms_valid ? dms_mV : NAN,
-    dms_valid ? dms_mV_per_V : NAN,
-    cfg.ain2Enabled ? 1 : 0,
-    ain2ModeName(),
-    (long)lastAin2Raw,
-    ain2_valid ? ain2_mV : NAN,
-    ain2_valid ? ain2DerivedValue() : NAN,
-    ain2DerivedUnit(),
-    cfg.tempEnabled ? 1 : 0,
-    temp_valid ? ds_temp_c : NAN,
-    selfTestOk ? 1 : 0
-  );
-
-  g_logFile.println(line);
-  g_logLineCount++;
-  g_lastLoggedSampleSeq = g_lastSampleSeq;
-  g_lastLogWriteMs = now;
   char out[4096];
   size_t pos = 0;
   uint16_t writtenSamples = 0;
@@ -1337,6 +1304,405 @@ static void loggerLoop() {
   g_logLastDrainMs = now;
   sdSpiEnd();
   g_sdBusy = false;
+}
+
+
+static bool isSafeCsvPath(const String& name) {
+  if (!name.length()) return false;
+  if (name.indexOf("..") >= 0) return false;
+  if (name.indexOf('\\') >= 0) return false;
+  if (!name.startsWith("/")) return false;
+  if (!name.endsWith(".csv")) return false;
+  return true;
+}
+
+static uint32_t crc32Update(uint32_t crc, const uint8_t* data, size_t len) {
+  crc = ~crc;
+  for (size_t i = 0; i < len; ++i) {
+    crc ^= data[i];
+    for (int b = 0; b < 8; ++b) {
+      crc = (crc & 1U) ? ((crc >> 1) ^ 0xEDB88320UL) : (crc >> 1);
+    }
+  }
+  return ~crc;
+}
+
+static void zipWriteLe16(WiFiClient& client, uint16_t v) {
+  uint8_t b[2] = { (uint8_t)(v & 0xFF), (uint8_t)((v >> 8) & 0xFF) };
+  client.write(b, sizeof(b));
+}
+
+static void zipWriteLe32(WiFiClient& client, uint32_t v) {
+  uint8_t b[4] = {
+    (uint8_t)(v & 0xFF),
+    (uint8_t)((v >> 8) & 0xFF),
+    (uint8_t)((v >> 16) & 0xFF),
+    (uint8_t)((v >> 24) & 0xFF)
+  };
+  client.write(b, sizeof(b));
+}
+
+static String zipBaseName(const String& path) {
+  String out = path;
+  int slash = out.lastIndexOf('/');
+  if (slash >= 0) out = out.substring(slash + 1);
+  if (!out.length()) out = "file.csv";
+  return out;
+}
+
+static void zipWriteLocalHeader(WiFiClient& client, const String& name, uint32_t crc, uint32_t size) {
+  client.write((const uint8_t*)"PK", 4);
+  zipWriteLe16(client, 20);
+  zipWriteLe16(client, 0);
+  zipWriteLe16(client, 0);
+  zipWriteLe16(client, 0);
+  zipWriteLe16(client, 0);
+  zipWriteLe32(client, crc);
+  zipWriteLe32(client, size);
+  zipWriteLe32(client, size);
+  zipWriteLe16(client, (uint16_t)name.length());
+  zipWriteLe16(client, 0);
+  client.write((const uint8_t*)name.c_str(), name.length());
+}
+
+static void zipWriteCentralHeader(WiFiClient& client, const String& name, uint32_t crc, uint32_t size, uint32_t localOffset) {
+  client.write((const uint8_t*)"PK", 4);
+  zipWriteLe16(client, 20);
+  zipWriteLe16(client, 20);
+  zipWriteLe16(client, 0);
+  zipWriteLe16(client, 0);
+  zipWriteLe16(client, 0);
+  zipWriteLe16(client, 0);
+  zipWriteLe32(client, crc);
+  zipWriteLe32(client, size);
+  zipWriteLe32(client, size);
+  zipWriteLe16(client, (uint16_t)name.length());
+  zipWriteLe16(client, 0);
+  zipWriteLe16(client, 0);
+  zipWriteLe16(client, 0);
+  zipWriteLe16(client, 0);
+  zipWriteLe32(client, 0);
+  zipWriteLe32(client, localOffset);
+  client.write((const uint8_t*)name.c_str(), name.length());
+}
+
+static void zipWriteEndOfCentralDir(WiFiClient& client, uint16_t entryCount, uint32_t centralSize, uint32_t centralOffset) {
+  client.write((const uint8_t*)"PK", 4);
+  zipWriteLe16(client, 0);
+  zipWriteLe16(client, 0);
+  zipWriteLe16(client, entryCount);
+  zipWriteLe16(client, entryCount);
+  zipWriteLe32(client, centralSize);
+  zipWriteLe32(client, centralOffset);
+  zipWriteLe16(client, 0);
+}
+
+static void handleApiSdArchive() {
+  if (g_mode != RunMode::CONFIG) {
+    sendJsonError(403, "archive_available_in_config_only");
+    return;
+  }
+  if (!sdMountIfNeeded()) {
+    sendJsonError(503, "sd_not_mounted");
+    return;
+  }
+
+  static constexpr int MAX_SEL = 24;
+  struct ZipMeta {
+    String path;
+    String name;
+    uint32_t size;
+    uint32_t crc;
+    uint32_t offset;
+    bool valid;
+  } meta[MAX_SEL];
+
+  int selCount = 0;
+  for (int i = 0; i < server.args() && selCount < MAX_SEL; ++i) {
+    if (server.argName(i) == "name") {
+      String n = server.arg(i);
+      n.trim();
+      if (!isSafeCsvPath(n)) continue;
+      bool dup = false;
+      for (int j = 0; j < selCount; ++j) if (meta[j].path == n) { dup = true; break; }
+      if (!dup) {
+        meta[selCount].path = n;
+        meta[selCount].name = zipBaseName(n);
+        meta[selCount].size = 0;
+        meta[selCount].crc = 0;
+        meta[selCount].offset = 0;
+        meta[selCount].valid = false;
+        ++selCount;
+      }
+    }
+  }
+  if (selCount <= 0) {
+    sendJsonError(400, "no_csv_selected");
+    return;
+  }
+
+  bool currentSelected = false;
+  for (int i = 0; i < selCount; ++i) if (meta[i].path == g_logFileName) { currentSelected = true; break; }
+  if (currentSelected && g_logFile) {
+    g_sdBusy = true;
+    sdSpiBegin();
+    g_logFile.flush();
+    sdSpiEnd();
+    g_sdBusy = false;
+  }
+
+  if (selCount == 1) {
+    String name = meta[0].path;
+    g_sdBusy = true;
+    sdSpiBegin();
+    File f = SD.open(name.c_str(), FILE_READ);
+    if (!f) {
+      sdSpiEnd();
+      g_sdBusy = false;
+      sendJsonError(404, "csv_not_found");
+      return;
+    }
+    String downloadName = zipBaseName(name);
+    server.sendHeader("Content-Type", "text/csv");
+    String cd = "attachment; filename=\"" + downloadName + "\"";
+    server.sendHeader("Content-Disposition", cd);
+    server.sendHeader("Cache-Control", "no-store");
+    server.streamFile(f, "text/csv");
+    f.close();
+    sdSpiEnd();
+    g_sdBusy = false;
+    return;
+  }
+
+  uint32_t localRegionSize = 0;
+  uint32_t centralSize = 0;
+  int validCount = 0;
+  static uint8_t ioBuf[1024];
+
+  g_sdBusy = true;
+  sdSpiBegin();
+  for (int i = 0; i < selCount; ++i) {
+    File f = SD.open(meta[i].path.c_str(), FILE_READ);
+    if (!f) continue;
+    uint32_t crc = 0;
+    uint32_t sz = 0;
+    while (f.available()) {
+      size_t n = f.read(ioBuf, sizeof(ioBuf));
+      if (!n) break;
+      crc = crc32Update(crc, ioBuf, n);
+      sz += (uint32_t)n;
+      delay(0);
+    }
+    f.close();
+    meta[i].size = sz;
+    meta[i].crc = crc;
+    meta[i].valid = true;
+    meta[i].offset = localRegionSize;
+    localRegionSize += 30U + (uint32_t)meta[i].name.length() + sz;
+    centralSize += 46U + (uint32_t)meta[i].name.length();
+    ++validCount;
+  }
+  sdSpiEnd();
+  g_sdBusy = false;
+
+  if (validCount <= 0) {
+    sendJsonError(404, "csv_not_found");
+    return;
+  }
+
+  uint32_t totalLen = localRegionSize + centralSize + 22U;
+  server.setContentLength(totalLen);
+  server.sendHeader("Content-Type", "application/zip");
+  server.sendHeader("Content-Disposition", "attachment; filename=\"data.zip\"");
+  server.sendHeader("Cache-Control", "no-store");
+  server.send(200, "application/zip", "");
+
+  WiFiClient client = server.client();
+
+  g_sdBusy = true;
+  sdSpiBegin();
+  for (int i = 0; i < selCount; ++i) {
+    if (!meta[i].valid) continue;
+    File f = SD.open(meta[i].path.c_str(), FILE_READ);
+    if (!f) continue;
+    zipWriteLocalHeader(client, meta[i].name, meta[i].crc, meta[i].size);
+    while (f.available()) {
+      size_t n = f.read(ioBuf, sizeof(ioBuf));
+      if (!n) break;
+      client.write(ioBuf, n);
+      delay(0);
+    }
+    f.close();
+    delay(0);
+  }
+
+  uint32_t centralOffset = localRegionSize;
+  for (int i = 0; i < selCount; ++i) {
+    if (!meta[i].valid) continue;
+    zipWriteCentralHeader(client, meta[i].name, meta[i].crc, meta[i].size, meta[i].offset);
+    delay(0);
+  }
+  zipWriteEndOfCentralDir(client, (uint16_t)validCount, centralSize, centralOffset);
+  sdSpiEnd();
+  g_sdBusy = false;
+}
+
+static void handleApiSdDownload() {
+  if (g_mode != RunMode::CONFIG) {
+    sendJsonError(403, "download_available_in_config_only");
+    return;
+  }
+  if (!cfg.sdLogEnabled) {
+    sendJsonError(409, "sd_logging_disabled");
+    return;
+  }
+  if (!sdMountIfNeeded()) {
+    sendJsonError(503, "sd_not_mounted");
+    return;
+  }
+
+  String name = server.hasArg("name") ? server.arg("name") : g_logFileName;
+  name.trim();
+  if (!isSafeCsvPath(name)) {
+    sendJsonError(400, "invalid_csv_name");
+    return;
+  }
+
+  if (g_logFile && g_logFileName == name) {
+    g_sdBusy = true;
+    sdSpiBegin();
+    g_logFile.flush();
+    sdSpiEnd();
+    g_sdBusy = false;
+  }
+
+  g_sdBusy = true;
+  sdSpiBegin();
+  File f = SD.open(name.c_str(), FILE_READ);
+  if (!f) {
+    sdSpiEnd();
+    g_sdBusy = false;
+    sendJsonError(404, "csv_not_found");
+    return;
+  }
+
+  String downloadName = name;
+  int slash = downloadName.lastIndexOf('/');
+  if (slash >= 0) downloadName = downloadName.substring(slash + 1);
+  server.sendHeader("Content-Type", "text/csv");
+  server.sendHeader("Content-Disposition", String("attachment; filename=\"") + downloadName + "\"");
+  server.sendHeader("Cache-Control", "no-store");
+  server.streamFile(f, "text/csv");
+  f.close();
+  sdSpiEnd();
+  g_sdBusy = false;
+}
+
+static void handleApiSdDelete() {
+  if (g_mode != RunMode::CONFIG) {
+    sendJsonError(403, "delete_available_in_config_only");
+    return;
+  }
+  if (!sdMountIfNeeded()) {
+    sendJsonError(503, "sd_not_mounted");
+    return;
+  }
+  if (!server.hasArg("plain")) {
+    sendJsonError(400, "missing_body");
+    return;
+  }
+
+  DynamicJsonDocument req(3072);
+  DeserializationError err = deserializeJson(req, server.arg("plain"));
+  if (err || !req["names"].is<JsonArray>()) {
+    sendJsonError(400, "invalid_delete_payload");
+    return;
+  }
+
+  JsonArray names = req["names"].as<JsonArray>();
+  DynamicJsonDocument resp(3072);
+  resp["ok"] = true;
+  JsonArray deleted = resp.createNestedArray("deleted");
+  JsonArray skipped = resp.createNestedArray("skipped");
+
+  bool needRefreshCurrent = false;
+  g_sdBusy = true;
+  sdSpiBegin();
+  for (JsonVariant v : names) {
+    String n = v.as<String>();
+    n.trim();
+    if (!isSafeCsvPath(n)) {
+      skipped.add(n);
+      continue;
+    }
+    if (n == g_logFileName) {
+      skipped.add(n);
+      continue;
+    }
+    if (SD.exists(n.c_str()) && SD.remove(n.c_str())) {
+      deleted.add(n);
+      needRefreshCurrent = true;
+    } else {
+      skipped.add(n);
+    }
+    delay(0);
+  }
+  sdSpiEnd();
+  g_sdBusy = false;
+
+  if (needRefreshCurrent) syncSdLogger(false);
+
+  String out;
+  serializeJson(resp, out);
+  server.send(200, "application/json", out);
+}
+
+static void handleApiSdList() {
+  if (g_mode != RunMode::CONFIG) {
+    sendJsonError(403, "list_available_in_config_only");
+    return;
+  }
+  if (!sdMountIfNeeded()) {
+    sendJsonError(503, "sd_not_mounted");
+    return;
+  }
+
+  DynamicJsonDocument doc(4096);
+  doc["ok"] = true;
+  doc["current"] = g_logFileName;
+  JsonArray files = doc.createNestedArray("files");
+
+  g_sdBusy = true;
+  sdSpiBegin();
+  File root = SD.open("/");
+  if (root) {
+    File entry = root.openNextFile();
+    while (entry) {
+      if (!entry.isDirectory()) {
+        String n = entry.name();
+        if (n.endsWith(".csv")) {
+          JsonObject it = files.createNestedObject();
+          if (!n.startsWith("/")) n = "/" + n;
+          it["name"] = n;
+          it["size"] = (uint32_t)entry.size();
+        }
+      }
+      entry.close();
+      entry = root.openNextFile();
+    }
+    root.close();
+  }
+  sdSpiEnd();
+  g_sdBusy = false;
+
+  String out;
+  serializeJson(doc, out);
+  server.send(200, "application/json", out);
+}
+
+static void sendJsonError(int code, const char* error) {
+  String out = String("{\"ok\":false,\"error\":\"") + error + "\"}";
+  server.send(code, "application/json", out);
 }
 
 // ============================================================
@@ -1651,6 +2017,10 @@ static void startApAndWeb() {
   server.on("/api/reset", HTTP_POST, handleApiReset);
   server.on("/api/deveui", HTTP_GET, handleApiDevEuiGet);
   server.on("/api/deveui", HTTP_POST, handleApiDevEuiPost);
+  server.on("/api/sd/list", HTTP_GET, handleApiSdList);
+  server.on("/api/sd/download", HTTP_GET, handleApiSdDownload);
+  server.on("/api/sd/archive", HTTP_GET, handleApiSdArchive);
+  server.on("/api/sd/delete", HTTP_POST, handleApiSdDelete);
   server.begin();
 
   syncSdLogger(true);

@@ -296,6 +296,12 @@ button{cursor:pointer}
           <div class="field"><label for="sdBase" id="lab_sd_base">Base filename</label><input id="sdBase" maxlength="24"></div>
           <div class="field"><label for="sdRotateKB" id="lab_sd_rotate">Rotate at, KB</label><input id="sdRotateKB" type="number" min="64" step="64"></div>
           <div class="note" id="sd_note">A file with suffix _001, _002, ... is created automatically when the size limit is reached.</div>
+          <div class="kv" style="margin-top:8px">
+            <div class="k" id="lab_sd_file">Current CSV</div><div class="v mono" id="sdfile">-</div>
+          </div>
+          <div class="row" style="margin-top:8px">
+            <button id="browseCsvBtn" class="btn" type="button">Browse / download CSV</button>
+          </div>
         </div>
 
         <div class="summary" id="perfBox">Estimated AP speed: -</div>
@@ -305,6 +311,33 @@ button{cursor:pointer}
     </section>
   </div>
 </main>
+
+
+<div id="sdModal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;padding:18px;">
+  <div style="max-width:780px;margin:0 auto;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;max-height:90vh;display:flex;flex-direction:column;gap:10px;">
+    <div class="row" style="justify-content:space-between;align-items:center;">
+      <h3 id="sdModalTitle" style="margin:0">Files on SD</h3>
+      <button id="closeSdModalBtn" class="btn" type="button">Close</button>
+    </div>
+    <div class="row">
+      <button id="refreshCsvListBtn" class="btn" type="button">Refresh list</button>
+      <button id="selectAllCsvBtn" class="btn" type="button">Select all</button>
+      <button id="clearAllCsvBtn" class="btn" type="button">Clear</button>
+      <button id="downloadSelectedCsvBtn" class="btn" type="button">Download selected</button>
+      <button id="deleteSelectedCsvBtn" class="btn" type="button">Delete selected</button>
+    </div>
+    <div class="small" id="sdModalHint">Choose one CSV file to download it directly as .csv. Choose multiple CSV files to download them as one real ZIP file without compression. The active current log file cannot be deleted.</div>
+    <div id="sdListMsg" class="status"></div>
+    <div style="overflow:auto;border:1px solid var(--line);border-radius:12px;">
+      <table style="margin-top:0">
+        <thead>
+          <tr><th style="width:40px"></th><th>Name</th><th>Size</th></tr>
+        </thead>
+        <tbody id="sdListBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
 
 <footer class="footer">
   <a href="https://www.marxkrontal.com/de/" target="_blank" rel="noopener noreferrer">© <span id="yr"></span> MKP GmbH</a>
@@ -439,6 +472,16 @@ function applyLang(){
   setText('lab_sd_base', tr('sd_base','Base filename'));
   setText('lab_sd_rotate', tr('sd_rotate','Rotate at, KB'));
   setText('sd_note', tr('sd_note','A file with suffix _001, _002, ... is created automatically when the size limit is reached.'));
+  setText('lab_sd_file', tr('sd_file','Current CSV'));
+  setText('browseCsvBtn', tr('browse_csv','Browse / download CSV'));
+  setText('deleteSelectedCsvBtn', tr('delete_selected','Delete selected'));
+  setText('sdModalTitle', tr('sd_files','Files on SD'));
+  setText('closeSdModalBtn', tr('close','Close'));
+  setText('refreshCsvListBtn', tr('refresh_list','Refresh list'));
+  setText('selectAllCsvBtn', tr('select_all','Select all'));
+  setText('clearAllCsvBtn', tr('clear','Clear'));
+  setText('downloadSelectedCsvBtn', tr('download_tar','Download selected'));
+  setText('sdModalHint', tr('sd_modal_hint','Choose one CSV file to download it directly as .csv. Choose multiple CSV files to download them as one real ZIP file without compression. The active current log file cannot be deleted.'));
   setText('saveMeasBtn', tr('save_meas','Save measurement settings'));
   setText('footer_by', tr('footer_by','developed by'));
 
@@ -534,6 +577,7 @@ function updateMeta(s){
   setText('flash', intNum(c.flash_mb));
   setText('apssid', c.ap_ssid || '-');
   setText('sdstate', c.sd_status || s.sd_status || '-');
+  setText('sdfile', s.sd_file || '-');
   setText('chipmac', c.chip_mac48 || '-');
   setText('chipeui', c.chip_eui64 || '-');
   updateStatusText(s.mode || 'CONFIG');
@@ -632,6 +676,78 @@ async function loadStateOnce(){
   if (!configLoaded && s.cfg) {
     fillConfig(s.cfg);
     configLoaded = true;
+  }
+}
+
+function fmtBytes(n){
+  n = Number(n || 0);
+  if (n < 1024) return n + ' B';
+  if (n < 1024*1024) return (n/1024).toFixed(1) + ' KB';
+  return (n/1024/1024).toFixed(2) + ' MB';
+}
+
+function openSdModal(){ $('sdModal').classList.remove('hidden'); }
+function closeSdModal(){ $('sdModal').classList.add('hidden'); }
+
+async function refreshSdList(){
+  setMsg('sdListMsg', '');
+  var body = $('sdListBody');
+  body.innerHTML = '<tr><td colspan="3">' + tr('loading','Loading...') + '</td></tr>';
+  try {
+    var r = await api('/api/sd/list');
+    var files = Array.isArray(r.files) ? r.files.slice() : [];
+    files.sort(function(a,b){ return String(a.name||'').localeCompare(String(b.name||'')); });
+    if (!files.length) {
+      body.innerHTML = '<tr><td colspan="3">' + tr('no_csv_files','No CSV files on SD.') + '</td></tr>';
+      return;
+    }
+    body.innerHTML = '';
+    files.forEach(function(f, idx){
+      var trEl = document.createElement('tr');
+      var checked = (r.current && f.name === r.current) ? ' checked' : '';
+      trEl.innerHTML = '<td><input type="checkbox" class="sdFileChk" value="' + String(f.name).replace(/"/g,'&quot;') + '"' + checked + '></td>' +
+                       '<td class="mono">' + (f.name || '-') + (r.current === f.name ? ' <span class="badge">current</span>' : '') + '</td>' +
+                       '<td>' + fmtBytes(f.size) + '</td>';
+      body.appendChild(trEl);
+    });
+  } catch (e) {
+    body.innerHTML = '';
+    setMsg('sdListMsg', tr('load_list_error','Failed to load file list') + ': ' + e.message);
+  }
+}
+
+function selectedCsvNames(){
+  return Array.prototype.slice.call(document.querySelectorAll('.sdFileChk:checked')).map(function(el){ return el.value; });
+}
+
+function triggerArchiveDownload(names){
+  if (!names.length) {
+    setMsg('sdListMsg', tr('no_csv_selected','No CSV selected.'));
+    return;
+  }
+  var q = names.map(function(n){ return 'name=' + encodeURIComponent(n); }).join('&');
+  window.location = '/api/sd/archive?' + q;
+}
+
+async function deleteSelectedCsv(names){
+  if (!names.length) {
+    setMsg('sdListMsg', tr('no_csv_selected','No CSV selected.'));
+    return;
+  }
+  if (!confirm(tr('confirm_delete_csv','Delete selected CSV files from SD?'))) return;
+  try {
+    var r = await api('/api/sd/delete', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ names:names })
+    });
+    var parts = [];
+    if (r.deleted && r.deleted.length) parts.push(tr('deleted_csv','Deleted') + ': ' + r.deleted.length);
+    if (r.skipped && r.skipped.length) parts.push(tr('skipped_csv','Skipped') + ': ' + r.skipped.length);
+    setMsg('sdListMsg', parts.join(' | ') || tr('done','Done'));
+    await refreshSdList();
+  } catch (e) {
+    setMsg('sdListMsg', tr('delete_error','Delete error') + ': ' + e.message);
   }
 }
 
@@ -741,6 +857,27 @@ $('resetBtn').addEventListener('click', async function(){
     setMsg('ctrlMsg', tr('save_error','Save error') + ': ' + e.message);
   }
 });
+
+
+$('browseCsvBtn').addEventListener('click', async function(){
+  openSdModal();
+  await refreshSdList();
+});
+$('closeSdModalBtn').addEventListener('click', closeSdModal);
+$('refreshCsvListBtn').addEventListener('click', refreshSdList);
+$('selectAllCsvBtn').addEventListener('click', function(){
+  Array.prototype.forEach.call(document.querySelectorAll('.sdFileChk'), function(el){ el.checked = true; });
+});
+$('clearAllCsvBtn').addEventListener('click', function(){
+  Array.prototype.forEach.call(document.querySelectorAll('.sdFileChk'), function(el){ el.checked = false; });
+});
+$('downloadSelectedCsvBtn').addEventListener('click', function(){
+  triggerArchiveDownload(selectedCsvNames());
+});
+$('deleteSelectedCsvBtn').addEventListener('click', function(){
+  deleteSelectedCsv(selectedCsvNames());
+});
+$('sdModal').addEventListener('click', function(ev){ if (ev.target === $('sdModal')) closeSdModal(); });
 
 $('potPreset').addEventListener('change', function(){
   if ($('potPreset').value !== 'custom') $('ain2Len').value = Number($('potPreset').value).toFixed(2);
