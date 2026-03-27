@@ -45,10 +45,10 @@ static constexpr uint8_t AIN2_MODE_VOLT = 1;
 
 static constexpr float TEMP_FIXED_HZ = 1.0f;
 static constexpr float DMS_MIN_HZ = 0.1f;
-static constexpr float DMS_MAX_HZ = 200.0f;
-static constexpr float AIN2_MIN_HZ = 0.1f;
-static constexpr float AIN2_MAX_HZ = 100.0f;
-static constexpr float ADS_BUDGET_CONVERSIONS_HZ = 200.0f;
+static constexpr float DMS_MAX_HZ = 500.0f;
+static constexpr float AIN2_MIN_HZ = 1.0f;
+static constexpr float AIN2_MAX_HZ = 500.0f;
+static constexpr float ADS_BUDGET_CONVERSIONS_HZ = 1000.0f;
 
 static constexpr size_t DEV_EUI_HEX_LEN = 16;
 static constexpr size_t APP_EUI_HEX_LEN = 16;
@@ -194,6 +194,36 @@ static volatile bool g_sdBusy = false;
 static uint32_t g_lastLogWriteMs = 0;
 static uint32_t g_logPeriodMs = 1000;   // запис на SD раз на 1 секунду
 static uint32_t g_logFlushPeriodMs = 5000; // flush раз на 5 секунд
+
+struct LogSample {
+  uint32_t t_ms;
+  uint8_t dms_on;
+  uint8_t dms_valid;
+  int32_t dms_raw;
+  float dms_mV;
+  float dms_mV_per_V;
+  uint8_t ain2_on;
+  uint8_t ain2_valid;
+  uint8_t ain2_mode;
+  int32_t ain2_raw;
+  float ain2_mV;
+  float ain2_value;
+  uint8_t temp_on;
+  uint8_t temp_valid;
+  float temp_C;
+  uint8_t selftest_ok;
+};
+
+static constexpr uint16_t LOG_BUF_SIZE = 1024;
+static constexpr uint16_t LOG_BATCH_SIZE = 64;
+static constexpr uint32_t LOG_FORCE_FLUSH_MS = 250;
+static LogSample g_logBuf[LOG_BUF_SIZE];
+static uint16_t g_logBufHead = 0;
+static uint16_t g_logBufTail = 0;
+static uint16_t g_logBufCount = 0;
+static uint16_t g_logBufMax = 0;
+static uint32_t g_logDropped = 0;
+static uint32_t g_logLastDrainMs = 0;
 // ---------------- LoRaWAN globals required by Heltec ----------------
 uint8_t devEui[8]   = { 0 };
 uint8_t appEui[8]   = { 0 };
@@ -300,6 +330,14 @@ static float clampf(float v, float lo, float hi) {
 
 static const char* ain2ModeName() {
   return (cfg.ain2Mode == AIN2_MODE_VOLT) ? "volt" : "pot";
+}
+
+static const char* ain2ModeNameFor(uint8_t mode) {
+  return (mode == AIN2_MODE_VOLT) ? "volt" : "pot";
+}
+
+static const char* ain2DerivedUnitFor(uint8_t mode) {
+  return (mode == AIN2_MODE_VOLT) ? "V" : "mm";
 }
 
 static uint8_t hexNibble(char c) {
@@ -919,6 +957,7 @@ static void sensorLoopAp() {
 
   if (sampleChanged) {
     g_lastSampleSeq++;
+    captureLogSample(now);
   }
 }
 
@@ -964,6 +1003,58 @@ static void captureFieldSnapshot() {
   tempFramesPerSecond = 0;
   totalFramesPerSecond = 0;
   framesPerSecond = 0;
+}
+
+static void resetLogBuffer() {
+  g_logBufHead = 0;
+  g_logBufTail = 0;
+  g_logBufCount = 0;
+  g_logBufMax = 0;
+  g_logDropped = 0;
+}
+
+static bool pushLogSample(const LogSample& s) {
+  if (g_logBufCount >= LOG_BUF_SIZE) {
+    g_logDropped++;
+    return false;
+  }
+  g_logBuf[g_logBufHead] = s;
+  g_logBufHead = (uint16_t)((g_logBufHead + 1U) % LOG_BUF_SIZE);
+  g_logBufCount++;
+  if (g_logBufCount > g_logBufMax) g_logBufMax = g_logBufCount;
+  return true;
+}
+
+static bool popLogSample(LogSample& s) {
+  if (g_logBufCount == 0) return false;
+  s = g_logBuf[g_logBufTail];
+  g_logBufTail = (uint16_t)((g_logBufTail + 1U) % LOG_BUF_SIZE);
+  g_logBufCount--;
+  return true;
+}
+
+static void captureLogSample(uint32_t t_ms) {
+  if (g_mode != RunMode::CONFIG) return;
+  if (!cfg.sdLogEnabled) return;
+
+  LogSample s{};
+  s.t_ms = t_ms;
+  s.dms_on = cfg.dmsEnabled ? 1U : 0U;
+  s.dms_valid = dms_valid ? 1U : 0U;
+  s.dms_raw = lastDmsRaw;
+  s.dms_mV = dms_valid ? dms_mV : NAN;
+  s.dms_mV_per_V = dms_valid ? dms_mV_per_V : NAN;
+  s.ain2_on = cfg.ain2Enabled ? 1U : 0U;
+  s.ain2_valid = ain2_valid ? 1U : 0U;
+  s.ain2_mode = cfg.ain2Mode;
+  s.ain2_raw = lastAin2Raw;
+  s.ain2_mV = ain2_valid ? ain2_mV : NAN;
+  s.ain2_value = ain2_valid ? ain2DerivedValue() : NAN;
+  s.temp_on = cfg.tempEnabled ? 1U : 0U;
+  s.temp_valid = temp_valid ? 1U : 0U;
+  s.temp_C = temp_valid ? ds_temp_c : NAN;
+  s.selftest_ok = selfTestOk ? 1U : 0U;
+  pushLogSample(s);
 }
 
 // ============================================================
@@ -1041,6 +1132,7 @@ static void closeLogFile() {
   g_logFileName = "";
   g_logLineCount = 0;
   g_lastLoggedSampleSeq = 0;
+  resetLogBuffer();
 }
 
 static bool openNextLogFile() {
@@ -1085,9 +1177,10 @@ static bool openNextLogFile() {
       g_logFileName = String(path);
       g_logLineCount = 0;
 
-      g_logFile.println("t_ms,mode,dms_on,dms_raw,dms_mV,dms_mV_per_V,ain2_on,ain2_mode,ain2_raw,ain2_mV,ain2_value,ain2_unit,temp_on,temp_C,selftest_ok");
+      g_logFile.println("t_ms,mode,dms_on,dms_valid,dms_raw,dms_mV,dms_mV_per_V,ain2_on,ain2_valid,ain2_mode,ain2_raw,ain2_mV,ain2_value,ain2_unit,temp_on,temp_valid,temp_C,selftest_ok");
       g_logFile.flush();
       g_logLastFlushMs = millis();
+      g_logLastDrainMs = millis();
 
       sdSpiEnd();
       g_sdBusy = false;
@@ -1129,11 +1222,12 @@ static void syncSdLogger(bool forceReopen) {
 static void loggerLoop() {
   if (g_mode != RunMode::CONFIG) return;
   if (!cfg.sdLogEnabled) return;
+  if (g_logBufCount == 0) return;
 
   const uint32_t now = millis();
-
-  if (g_lastLoggedSampleSeq == g_lastSampleSeq) return;
-  if ((uint32_t)(now - g_lastLogWriteMs) < g_logPeriodMs) return;
+  if (g_logBufCount < LOG_BATCH_SIZE && (uint32_t)(now - g_logLastDrainMs) < LOG_FORCE_FLUSH_MS) {
+    return;
+  }
 
   syncSdLogger(false);
   if (!g_logFile) return;
@@ -1151,36 +1245,63 @@ static void loggerLoop() {
     sdSpiBegin();
   }
 
-  char line[256];
-  snprintf(
-    line, sizeof(line),
-    "%lu,CONFIG,%d,%ld,%.6f,%.6f,%d,%s,%ld,%.6f,%.3f,%s,%d,%.3f,%d",
-    (unsigned long)now,
-    cfg.dmsEnabled ? 1 : 0,
-    (long)lastDmsRaw,
-    dms_valid ? dms_mV : NAN,
-    dms_valid ? dms_mV_per_V : NAN,
-    cfg.ain2Enabled ? 1 : 0,
-    ain2ModeName(),
-    (long)lastAin2Raw,
-    ain2_valid ? ain2_mV : NAN,
-    ain2_valid ? ain2DerivedValue() : NAN,
-    ain2DerivedUnit(),
-    cfg.tempEnabled ? 1 : 0,
-    temp_valid ? ds_temp_c : NAN,
-    selfTestOk ? 1 : 0
-  );
+  char out[4096];
+  size_t pos = 0;
+  uint16_t writtenSamples = 0;
+  LogSample s;
 
-  g_logFile.println(line);
-  g_logLineCount++;
-  g_lastLoggedSampleSeq = g_lastSampleSeq;
-  g_lastLogWriteMs = now;
+  while (writtenSamples < LOG_BATCH_SIZE && g_logBufCount > 0) {
+    if (!popLogSample(s)) break;
+
+    int n = snprintf(
+      out + pos, sizeof(out) - pos,
+      "%lu,CONFIG,%u,%u,%ld,%.6f,%.6f,%u,%u,%s,%ld,%.6f,%.3f,%s,%u,%u,%.3f,%u\n",
+      (unsigned long)s.t_ms,
+      (unsigned)s.dms_on,
+      (unsigned)s.dms_valid,
+      (long)s.dms_raw,
+      s.dms_mV,
+      s.dms_mV_per_V,
+      (unsigned)s.ain2_on,
+      (unsigned)s.ain2_valid,
+      ain2ModeNameFor(s.ain2_mode),
+      (long)s.ain2_raw,
+      s.ain2_mV,
+      s.ain2_value,
+      ain2DerivedUnitFor(s.ain2_mode),
+      (unsigned)s.temp_on,
+      (unsigned)s.temp_valid,
+      s.temp_C,
+      (unsigned)s.selftest_ok
+    );
+
+    if (n <= 0 || (size_t)n >= (sizeof(out) - pos)) {
+      // if buffer is full, put sample back and stop
+      g_logBufTail = (uint16_t)((g_logBufTail + LOG_BUF_SIZE - 1U) % LOG_BUF_SIZE);
+      g_logBuf[g_logBufTail] = s;
+      g_logBufCount++;
+      break;
+    }
+
+    pos += (size_t)n;
+    writtenSamples++;
+  }
+
+  if (pos > 0) {
+    size_t wrote = g_logFile.write((const uint8_t*)out, pos);
+    if (wrote == pos) {
+      g_logLineCount += writtenSamples;
+      g_lastLoggedSampleSeq = g_lastSampleSeq;
+      g_lastLogWriteMs = now;
+    }
+  }
 
   if ((uint32_t)(now - g_logLastFlushMs) >= g_logFlushPeriodMs) {
     g_logFile.flush();
     g_logLastFlushMs = now;
   }
 
+  g_logLastDrainMs = now;
   sdSpiEnd();
   g_sdBusy = false;
 }
@@ -1268,6 +1389,9 @@ static void appendLive(JsonObject obj) {
   obj["sd_status"] = g_sdStatus;
   obj["sd_file"] = g_logFileName;
   obj["sd_lines"] = g_logLineCount;
+  obj["sd_buffered"] = g_logBufCount;
+  obj["sd_buffered_max"] = g_logBufMax;
+  obj["sd_dropped"] = g_logDropped;
 }
 
 static void appendController(JsonObject obj) {
