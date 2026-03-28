@@ -1,9 +1,10 @@
-<!doctype html>
-<html lang="en" data-theme="dark">
+<!DOCTYPE html>
+
+<html data-theme="dark" lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="color-scheme" content="dark light">
+<meta charset="utf-8"/>
+<meta content="width=device-width,initial-scale=1" name="viewport"/>
+<meta content="dark light" name="color-scheme"/>
 <title>MKP LoRaSense Node</title>
 <style>
 :root{
@@ -47,14 +48,14 @@ html[data-theme="light"]{
 }
 *{box-sizing:border-box}
 html,body{margin:0;min-height:100%;font-family:var(--ff);font-size:var(--fs);background:var(--bg);color:var(--fg)}
-body{padding:8px 16px 6px;display:flex;flex-direction:column;overflow-x:hidden}
+body{padding:8px 16px 0;display:flex;flex-direction:column;overflow-x:hidden;min-height:100vh}
 a{color:inherit}
 button,input,select,textarea{font:inherit;color:inherit}
 button,input,select,textarea{border:1px solid var(--line);background:var(--field);border-radius:14px;min-width:0}
 button,input,select,textarea:focus{outline:none;box-shadow:0 0 0 2px rgba(84,184,230,.18)}
 button{cursor:pointer}
-.main{flex:1 1 auto}
-.header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;min-height:var(--header-h)}
+.main{flex:1 1 auto;display:flex;flex-direction:column;width:100%}
+.header{width:min(100%,1160px);display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 auto 10px;min-height:var(--header-h)}
 .brand{display:flex;align-items:center;gap:12px;text-decoration:none;color:inherit;min-width:0}
 .brand img{height:30px;width:auto;display:block}
 .title-wrap{display:flex;flex-direction:column;min-width:0}
@@ -71,7 +72,7 @@ button{cursor:pointer}
 .kv{display:grid;grid-template-columns:minmax(102px,auto) 1fr;gap:4px 10px;align-items:start}
 .kv .k{color:var(--muted)}
 .kv .v{font-weight:600;word-break:break-word}
-.stack{display:flex;flex-direction:column;gap:7px}
+.stack{display:flex;flex-direction:column;gap:12px}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .btn{height:40px;padding:0 14px;background:var(--btn);font-weight:700}
 .btn:hover{background:var(--btn-h)}
@@ -85,11 +86,12 @@ button{cursor:pointer}
 .note{font-size:12px;color:var(--muted);line-height:1.45}
 .status{font-size:12px;color:var(--muted);white-space:pre-line;word-break:break-word;min-height:2.4em}
 .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
-.plot-wrap{margin-top:7px;border:1px solid var(--line);border-radius:14px;background:var(--plot-bg);padding:8px}
-#dmsPlot{display:block;width:100%;height:112px}
-.compact-group{display:grid;gap:8px}
-.sensor-box{border:1px solid var(--line);border-radius:14px;padding:9px;background:rgba(127,127,127,.04)}
-.sensor-head{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:7px}
+.plot-wrap{margin-top:10px;border:1px solid var(--line);border-radius:14px;background:var(--plot-bg);padding:8px}
+.plot-wrap + .plot-wrap{margin-top:10px}
+#dmsPlot,#ain2Plot{display:block;width:100%;height:136px}
+.compact-group{display:grid;gap:12px}
+.sensor-box{display:grid;gap:12px;border:1px solid var(--line);border-radius:14px;padding:12px;background:rgba(127,127,127,.04)}
+.sensor-head{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:0}
 .sensor-title{font-weight:800}
 .sensor-meta{font-size:12px;color:var(--muted)}
 .field{display:grid;grid-template-columns:minmax(112px,auto) 1fr;gap:8px;align-items:center}
@@ -104,249 +106,255 @@ button{cursor:pointer}
 .switch input:checked + .switch-ui:after{left:20px;background:var(--accent)}
 .summary{padding:9px 12px;border:1px dashed var(--line);border-radius:14px;background:rgba(84,184,230,.04);font-size:12px;line-height:1.45}
 .hidden{display:none !important}
-.footer{margin-top:8px;padding-top:8px;border-top:1px solid var(--line);font-size:12px;color:var(--muted);display:flex;justify-content:center;gap:8px;flex-wrap:wrap;align-items:center}
+.footer{width:min(100%,1160px);margin:30px auto 0;padding:18px 0 30px;border-top:1px solid var(--line);font-size:12px;color:var(--muted);display:flex;justify-content:center;gap:8px;flex-wrap:wrap;align-items:center;flex-shrink:0}
 .footer a{text-decoration:none}
 .footer a:hover{text-decoration:underline}
 @media (max-width:1460px){.grid{grid-template-columns:repeat(2,minmax(270px,1fr));}}
 @media (max-width:780px){
-  body{padding:8px 10px 6px}
-  .header{flex-direction:column;align-items:flex-start}
+  body{padding:8px 10px 0}
+  .header{width:100%;flex-direction:column;align-items:flex-start}
   .header-tools{width:100%;justify-content:space-between}
   .grid{grid-template-columns:1fr}
   .btn-pair{grid-template-columns:1fr}
   .field,.kv{grid-template-columns:1fr}
   .title{white-space:normal}
 }
+
+
+.tabs-shell{max-width:1160px;margin:0 auto;display:flex;flex-direction:column;gap:18px;width:100%}
+.tabs-bar{display:grid;grid-template-columns:repeat(2,minmax(280px,320px));gap:14px;justify-content:center;align-content:center;max-width:660px;margin:0 auto}
+.tab-btn{position:relative;display:flex;align-items:center;justify-content:center;height:52px;width:100%;padding:0 22px;border-radius:16px;background:var(--btn);font-weight:800;color:var(--muted);text-align:center;transition:background .2s ease,color .2s ease,transform .2s ease,border-color .2s ease,box-shadow .2s ease}
+.tab-btn:hover{background:var(--btn-h);color:var(--fg);transform:translateY(-1px)}
+.tab-btn.active{background:linear-gradient(180deg,rgba(84,184,230,.22),rgba(84,184,230,.12));border-color:rgba(84,184,230,.45);color:var(--fg);box-shadow:0 8px 22px rgba(84,184,230,.14)}
+.tab-btn.active:after{content:"";position:absolute;left:18px;right:18px;bottom:6px;height:3px;border-radius:999px;background:var(--accent)}
+.tab-panels{position:relative}
+.tab-panel{display:none;opacity:0;transform:translateX(22px)}
+.tab-panel.active{display:block;animation:tabSlideIn .28s ease forwards}
+@keyframes tabSlideIn{from{opacity:0;transform:translateX(22px)}to{opacity:1;transform:translateX(0)}}
+.tabs-inner-grid,.tabs-inner-grid.system-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;align-items:stretch}
+.tabs-stack{display:flex;flex-direction:column;gap:18px;height:100%;min-height:100%}
+.tabs-stack > .card{flex:1 1 auto;display:flex;flex-direction:column}
+.tabs-inner-grid .card,.tabs-inner-grid.system-grid .card{width:100%;height:100%}
+.field{display:grid;grid-template-columns:180px minmax(0,1fr);gap:12px;align-items:center;margin:0}.system-grid .card:last-child .field + .field{margin-top:12px}.system-grid .card:last-child .summary{margin-top:16px !important}.system-grid .card:last-child .status{margin-top:12px !important}.system-grid .card:last-child .btn-pair{margin-bottom:16px}.system-grid .card #resetBtn,.system-grid .card #saveLoRaBtn{margin-top:auto}
+.field input,.field select,.field .fixed{width:100%;min-width:0}
+.btn-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:12px}
+@media (max-width:980px){.tabs-inner-grid,.tabs-inner-grid.system-grid{grid-template-columns:1fr}.tabs-shell{max-width:960px}}
+@media (max-width:780px){.tabs-bar{grid-template-columns:1fr;max-width:100%}.tab-btn{width:100%}.field{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
 <header class="header">
-  <a class="brand" href="https://www.marxkrontal.com/de/" target="_blank" rel="noopener noreferrer">
-    <img src="/logo.svg" alt="MKP">
-    <div class="title-wrap">
-      <div class="title" id="i_title">MKP LoRaSense Node</div>
-      <div class="sub" id="sub_title">AP live measurement / FIELD LoRa snapshot</div>
-    </div>
-  </a>
-  <div class="header-tools">
-    <div class="fw-chip"><span id="lab_fw">Firmware</span>: <b id="fw">-</b></div>
-    <button id="langBtn" class="lang-btn" type="button">DE</button>
-    <button id="themeBtn" class="icon-btn" type="button" aria-label="Theme">☀️</button>
-  </div>
-</header>
-
-<main class="main">
-  <datalist id="hzList">
-    <option value="0.1"><option value="0.2"><option value="0.5"><option value="1"><option value="2"><option value="5"><option value="10"><option value="20"><option value="25"><option value="50"><option value="100"><option value="150"><option value="200">
-  </datalist>
-
-  <div class="grid">
-    <section class="card">
-      <h3 id="h_measurements">Measurements</h3>
-      <div class="kv">
-        <div class="k" id="lab_time">Time</div><div class="v" id="time">--:--:--</div>
-        <div class="k" id="lab_selftest">Self-test</div><div class="v"><span id="selftest" class="badge">-</span></div>
-        <div class="k" id="lab_delta">Delta</div><div class="v"><span id="selftest_delta">-</span> mV</div>
-      </div>
-      <div class="hr"></div>
-      <div class="kv">
-        <div class="k" id="lab_dms_raw">DMS raw</div><div class="v" id="dms_raw">-</div>
-        <div class="k" id="lab_dms_mvv">DMS mV/V</div><div class="v" id="dms_mvv">-</div>
-        <div class="k" id="lab_dms_mv">DMS est. mV</div><div class="v" id="dms_mv">-</div>
-        <div class="k" id="lab_dms_actual">DMS actual</div><div class="v"><span id="dms_actual">-</span> Hz</div>
-      </div>
-      <div class="plot-wrap">
-        <canvas id="dmsPlot" width="640" height="112"></canvas>
-        <div class="small" id="plot_caption">Live trend: DMS mV/V</div>
-      </div>
-      <div class="hr"></div>
-      <div class="kv">
-        <div class="k" id="lab_ain2_raw">AIN2 raw</div><div class="v" id="ain2_raw">-</div>
-        <div class="k" id="lab_ain2_adc">AIN2 ADC</div><div class="v"><span id="ain2_mv">-</span> mV</div>
-        <div class="k" id="lab_ain2_scaled">AIN2 scaled</div><div class="v"><span id="ain2_scaled">-</span> <span id="ain2_unit">-</span></div>
-        <div class="k" id="lab_ain2_actual">AIN2 actual</div><div class="v"><span id="ain2_actual">-</span> Hz</div>
-      </div>
-      <div class="hr"></div>
-      <div class="kv">
-        <div class="k" id="lab_temp">Temperature</div><div class="v"><span id="temp">-</span> °C</div>
-        <div class="k" id="lab_total_actual">Total actual</div><div class="v"><span id="total_actual">-</span> Hz</div>
-      </div>
-    </section>
-
-    <section class="card">
-      <h3 id="h_controller">Controller</h3>
-      <div class="kv">
-        <div class="k" id="lab_mode">Mode</div><div class="v" id="mode">-</div>
-        <div class="k" id="lab_ip">IP</div><div class="v mono" id="ip">-</div>
-        <div class="k" id="lab_uptime">Uptime</div><div class="v"><span id="uptime">-</span> s</div>
-        <div class="k" id="lab_heap">Heap</div><div class="v"><span id="heap">-</span> B</div>
-        <div class="k" id="lab_board">Board</div><div class="v" id="board">-</div>
-        <div class="k" id="lab_chip">Chip</div><div class="v" id="chip">-</div>
-        <div class="k" id="lab_cpu">CPU</div><div class="v"><span id="cpu">-</span> MHz</div>
-        <div class="k" id="lab_flash">Flash</div><div class="v"><span id="flash">-</span> MB</div>
-        <div class="k" id="lab_apssid">AP SSID</div><div class="v mono" id="apssid">-</div>
-        <div class="k" id="lab_sdst">SD</div><div class="v" id="sdstate">-</div>
-        <div class="k" id="lab_chipmac">Chip MAC</div><div class="v mono" id="chipmac">-</div>
-        <div class="k" id="lab_chipeui">Chip DevEUI</div><div class="v mono" id="chipeui">-</div>
-      </div>
-      <div class="hr"></div>
-      <div id="statusMsg" class="status" role="status" aria-live="polite"></div>
-      <div id="ctrlMsg" class="status"></div>
-      <button id="resetBtn" class="btn btn-block" type="button">Reboot</button>
-    </section>
-
-    <section class="card">
-      <h3 id="h_lora">LoRa</h3>
-      <div class="btn-pair">
-        <button id="readChipBtn" class="btn" type="button">Read chip DevEUI</button>
-        <button id="useChipBtn" class="btn" type="button">Use chip DevEUI</button>
-      </div>
-      <div class="field"><label for="devEui" id="lab_deveui">DevEUI</label><input id="devEui" class="mono" inputmode="latin" autocomplete="off"></div>
-      <div class="field"><label for="appEui" id="lab_appeui">AppEUI</label><input id="appEui" class="mono" inputmode="latin" autocomplete="off"></div>
-      <div class="field"><label for="appKey" id="lab_appkey">AppKey</label><input id="appKey" class="mono" inputmode="latin" autocomplete="off"></div>
-      <div class="field"><label for="minutes" id="lab_interval">Send interval, min</label><input id="minutes" type="number" min="1" max="1440" step="1"></div>
-      <div class="field"><label for="drMode" id="lab_drate">Data rate</label>
-        <select id="drMode">
-          <option value="auto">ADR / Auto</option>
-          <option value="0">DR0 (SF12)</option>
-          <option value="1">DR1 (SF11)</option>
-          <option value="2">DR2 (SF10)</option>
-          <option value="3">DR3 (SF9)</option>
-          <option value="4">DR4 (SF8)</option>
-          <option value="5">DR5 (SF7)</option>
-        </select>
-      </div>
-      <div class="summary" id="lora_note">Saved in AP mode. FIELD mode takes one fresh sensor snapshot immediately before each LoRa send and then returns to LoRaWAN sleep.</div>
-      <div id="chipInfo" class="status mono"></div>
-      <div id="loraMsg" class="status"></div>
-      <button id="saveLoRaBtn" class="btn btn-block" type="button">Save LoRa settings</button>
-    </section>
-
-    <section class="card">
-      <h3 id="h_measure_cfg">Measurement settings</h3>
-      <div class="compact-group">
-        <div class="sensor-box">
-          <div class="sensor-head">
-            <div>
-              <div class="sensor-title" id="tit_dms">DMS / AIN0-AIN1</div>
-              <div class="sensor-meta" id="dms_hint">Fast differential channel</div>
-            </div>
-            <label class="switch"><input id="dmsOn" type="checkbox"><span class="switch-ui"></span><span id="sw_on_off_dms">On</span></label>
-          </div>
-          <div class="field"><label for="dmsHz" id="lab_dms_hz">Frequency, Hz</label><input id="dmsHz" type="number" min="0.1" max="200" step="0.1" list="hzList"></div>
-        </div>
-
-        <div class="sensor-box">
-          <div class="sensor-head">
-            <div>
-              <div class="sensor-title" id="tit_ain2">AIN2</div>
-              <div class="sensor-meta" id="ain2_hint">Potentiometer or 0-10 V input</div>
-            </div>
-            <label class="switch"><input id="ain2On" type="checkbox"><span class="switch-ui"></span><span id="sw_on_off_ain2">On</span></label>
-          </div>
-          <div class="field"><label for="ain2Hz" id="lab_ain2_hz">Frequency, Hz</label><input id="ain2Hz" type="number" min="0.1" max="100" step="0.1" list="hzList"></div>
-          <div class="field"><label for="ain2Mode" id="lab_ain2_type">AIN2 type</label>
-            <select id="ain2Mode">
-              <option value="pot" id="opt_ain2_pot">Potentiometer / Wegsensor</option>
-              <option value="volt" id="opt_ain2_volt">0-10 V input</option>
-            </select>
-          </div>
-          <div id="potBlock" class="stack">
-            <div class="field"><label for="potPreset" id="lab_preset">Sensor length preset</label>
-              <select id="potPreset">
-                <option value="5">5 mm</option>
-                <option value="10">10 mm</option>
-                <option value="25">25 mm</option>
-                <option value="50">50 mm</option>
-                <option value="75">75 mm</option>
-                <option value="100">100 mm</option>
-                <option value="150">150 mm</option>
-                <option value="200">200 mm</option>
-                <option value="custom" id="opt_custom">Custom</option>
-              </select>
-            </div>
-            <div class="field"><label for="ain2Len" id="lab_length">Length, mm</label><input id="ain2Len" type="number" min="0.01" step="0.01"></div>
-          </div>
-          <div id="voltBlock" class="stack hidden">
-            <div class="field"><label for="adcFs" id="lab_adc_fs">ADC full-scale, V</label><input id="adcFs" type="number" min="0.1" step="0.001"></div>
-            <div class="field"><label for="inputFs" id="lab_input_fs">Input full-scale, V</label><input id="inputFs" type="number" min="0.1" step="0.1"></div>
-            <div class="note" id="volt_note">Example: if the adapter maps 0-10 V to 0-3.123 V, keep 3.123 and 10.0.</div>
-          </div>
-        </div>
-
-        <div class="sensor-box">
-          <div class="sensor-head">
-            <div>
-              <div class="sensor-title" id="tit_temp">Temperature</div>
-              <div class="sensor-meta" id="temp_hint">DS18B20 fixed rate</div>
-            </div>
-            <label class="switch"><input id="tempOn" type="checkbox"><span class="switch-ui"></span><span id="sw_on_off_temp">On</span></label>
-          </div>
-          <div class="field"><label id="lab_temp_fixed">Frequency, Hz</label><div class="fixed" id="tempFixed">1.0 Hz (fixed)</div></div>
-        </div>
-
-        <div class="sensor-box">
-          <div class="sensor-head">
-            <div>
-              <div class="sensor-title" id="tit_sd">SD logging</div>
-              <div class="sensor-meta" id="sd_hint">AP mode only, CSV rotation</div>
-            </div>
-            <label class="switch"><input id="sdOn" type="checkbox"><span class="switch-ui"></span><span id="sw_on_off_sd">On</span></label>
-          </div>
-          <div class="field"><label for="sdBase" id="lab_sd_base">Base filename</label><input id="sdBase" maxlength="24"></div>
-          <div class="field"><label for="sdRotateKB" id="lab_sd_rotate">Rotate at, KB</label><input id="sdRotateKB" type="number" min="64" step="64"></div>
-          <div class="note" id="sd_note">A file with suffix _001, _002, ... is created automatically when the size limit is reached.</div>
-          <div class="kv" style="margin-top:8px">
-            <div class="k" id="lab_sd_file">Current CSV</div><div class="v mono" id="sdfile">-</div>
-          </div>
-          <div class="row" style="margin-top:8px">
-            <button id="browseCsvBtn" class="btn" type="button">Browse / download CSV</button>
-          </div>
-        </div>
-
-        <div class="summary" id="perfBox">Estimated AP speed: -</div>
-        <div id="measMsg" class="status"></div>
-        <button id="saveMeasBtn" class="btn btn-block" type="button">Save measurement settings</button>
-      </div>
-    </section>
-  </div>
-</main>
-
-
-<div id="sdModal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;padding:18px;">
-  <div style="max-width:780px;margin:0 auto;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;max-height:90vh;display:flex;flex-direction:column;gap:10px;">
-    <div class="row" style="justify-content:space-between;align-items:center;">
-      <h3 id="sdModalTitle" style="margin:0">Files on SD</h3>
-      <button id="closeSdModalBtn" class="btn" type="button">Close</button>
-    </div>
-    <div class="row">
-      <button id="refreshCsvListBtn" class="btn" type="button">Refresh list</button>
-      <button id="selectAllCsvBtn" class="btn" type="button">Select all</button>
-      <button id="clearAllCsvBtn" class="btn" type="button">Clear</button>
-      <button id="downloadSelectedCsvBtn" class="btn" type="button">Download selected</button>
-      <button id="deleteSelectedCsvBtn" class="btn" type="button">Delete selected</button>
-    </div>
-    <div class="small" id="sdModalHint">Choose one CSV file to download it directly as .csv. Choose multiple CSV files to download them as one real ZIP file without compression. The active current log file cannot be deleted.</div>
-    <div id="sdListMsg" class="status"></div>
-    <div style="overflow:auto;border:1px solid var(--line);border-radius:12px;">
-      <table style="margin-top:0">
-        <thead>
-          <tr><th style="width:40px"></th><th>Name</th><th>Size</th></tr>
-        </thead>
-        <tbody id="sdListBody"></tbody>
-      </table>
-    </div>
-  </div>
+<a class="brand" href="https://www.marxkrontal.com/de/" rel="noopener noreferrer" target="_blank">
+<img alt="MKP" src="/logo.svg"/>
+<div class="title-wrap">
+<div class="title" id="i_title">MKP LoRaSense Node</div>
+<div class="sub" id="sub_title">AP live measurement / FIELD LoRa snapshot</div>
 </div>
-
+</a>
+<div class="header-tools">
+<div class="fw-chip"><span id="lab_fw">Firmware</span>: <b id="fw">-</b></div>
+<button class="lang-btn" id="langBtn" type="button">DE</button>
+<button aria-label="Theme" class="icon-btn" id="themeBtn" type="button">☀️</button>
+</div>
+</header>
+<main class="main">
+<datalist id="hzList">
+<option value="0.1"><option value="0.2"><option value="0.5"><option value="1"><option value="2"><option value="5"><option value="10"><option value="20"><option value="25"><option value="50"><option value="100"><option value="150"><option value="200">
+</option></option></option></option></option></option></option></option></option></option></option></option></option></datalist>
+<div class="tabs-shell"><div aria-label="Main sections" class="tabs-bar" role="tablist"><button aria-controls="tabPanel-measure" aria-selected="true" class="tab-btn active" data-tab="measure" id="tabBtn-measure" role="tab" type="button">Measurements &amp; settings</button><button aria-controls="tabPanel-system" aria-selected="false" class="tab-btn" data-tab="system" id="tabBtn-system" role="tab" type="button">LoRa &amp; controller</button></div><div class="tab-panels"><section aria-labelledby="tabBtn-measure" class="tab-panel active" data-tab="measure" id="tabPanel-measure" role="tabpanel"><div class="tabs-inner-grid"><div class="tabs-stack"><section class="card">
+<h3 id="h_measurements">Measurements</h3>
+<div class="kv">
+<div class="k" id="lab_time">Time</div><div class="v" id="time">--:--:--</div>
+<div class="k" id="lab_selftest">Self-test</div><div class="v"><span class="badge" id="selftest">-</span></div>
+<div class="k" id="lab_delta">Delta</div><div class="v"><span id="selftest_delta">-</span> mV</div>
+</div>
+<div class="hr"></div>
+<div class="kv">
+<div class="k" id="lab_dms_raw">DMS raw</div><div class="v" id="dms_raw">-</div>
+<div class="k" id="lab_dms_mvv">DMS mV/V</div><div class="v" id="dms_mvv">-</div>
+<div class="k" id="lab_dms_mv">DMS est. mV</div><div class="v" id="dms_mv">-</div>
+<div class="k" id="lab_dms_actual">DMS actual</div><div class="v"><span id="dms_actual">-</span> Hz</div>
+</div>
+<div class="plot-wrap">
+<canvas height="136" id="dmsPlot" width="640"></canvas>
+<div class="small" id="plot_caption">Live trend: DMS mV/V</div>
+</div>
+<div class="hr"></div>
+<div class="kv">
+<div class="k" id="lab_ain2_raw">AIN2 raw</div><div class="v" id="ain2_raw">-</div>
+<div class="k" id="lab_ain2_adc">AIN2 ADC</div><div class="v"><span id="ain2_mv">-</span> mV</div>
+<div class="k" id="lab_ain2_scaled">AIN2 scaled</div><div class="v"><span id="ain2_scaled">-</span> <span id="ain2_unit">-</span></div>
+<div class="k" id="lab_ain2_actual">AIN2 actual</div><div class="v"><span id="ain2_actual">-</span> Hz</div>
+</div>
+<div class="plot-wrap">
+<canvas height="136" id="ain2Plot" width="640"></canvas>
+<div class="small" id="plot_caption_ain2">Live trend: AIN2 scaled</div>
+</div>
+<div class="hr"></div>
+<div class="kv">
+<div class="k" id="lab_temp">Temperature</div><div class="v"><span id="temp">-</span> °C</div>
+<div class="k" id="lab_total_actual">Total actual</div><div class="v"><span id="total_actual">-</span> Hz</div>
+</div>
+</section></div><div class="tabs-stack"><section class="card">
+<h3 id="h_measure_cfg">Measurement settings</h3>
+<div class="compact-group">
+<div class="sensor-box">
+<div class="sensor-head">
+<div>
+<div class="sensor-title" id="tit_dms">DMS / AIN0-AIN1</div>
+<div class="sensor-meta" id="dms_hint">Fast differential channel</div>
+</div>
+<label class="switch"><input id="dmsOn" type="checkbox"/><span class="switch-ui"></span><span id="sw_on_off_dms">On</span></label>
+</div>
+<div class="field"><label for="dmsHz" id="lab_dms_hz">Frequency, Hz</label><input id="dmsHz" list="hzList" max="200" min="0.1" step="0.1" type="number"/></div>
+</div>
+<div class="sensor-box">
+<div class="sensor-head">
+<div>
+<div class="sensor-title" id="tit_ain2">AIN2</div>
+<div class="sensor-meta" id="ain2_hint">Potentiometer or 0-10 V input</div>
+</div>
+<label class="switch"><input id="ain2On" type="checkbox"/><span class="switch-ui"></span><span id="sw_on_off_ain2">On</span></label>
+</div>
+<div class="field"><label for="ain2Hz" id="lab_ain2_hz">Frequency, Hz</label><input id="ain2Hz" list="hzList" max="100" min="0.1" step="0.1" type="number"/></div>
+<div class="field"><label for="ain2Mode" id="lab_ain2_type">AIN2 type</label>
+<select id="ain2Mode">
+<option id="opt_ain2_pot" value="pot">Potentiometer / Wegsensor</option>
+<option id="opt_ain2_volt" value="volt">0-10 V input</option>
+</select>
+</div>
+<div class="stack" id="potBlock">
+<div class="field"><label for="potPreset" id="lab_preset">Sensor length preset</label>
+<select id="potPreset">
+<option value="5">5 mm</option>
+<option value="10">10 mm</option>
+<option value="25">25 mm</option>
+<option value="50">50 mm</option>
+<option value="75">75 mm</option>
+<option value="100">100 mm</option>
+<option value="150">150 mm</option>
+<option value="200">200 mm</option>
+<option id="opt_custom" value="custom">Custom</option>
+</select>
+</div>
+<div class="field"><label for="ain2Len" id="lab_length">Length, mm</label><input id="ain2Len" min="0.01" step="0.01" type="number"/></div>
+</div>
+<div class="stack hidden" id="voltBlock">
+<div class="field"><label for="adcFs" id="lab_adc_fs">ADC full-scale, V</label><input id="adcFs" min="0.1" step="0.001" type="number"/></div>
+<div class="field"><label for="inputFs" id="lab_input_fs">Input full-scale, V</label><input id="inputFs" min="0.1" step="0.1" type="number"/></div>
+<div class="note" id="volt_note">Example: if the adapter maps 0-10 V to 0-3.123 V, keep 3.123 and 10.0.</div>
+</div>
+</div>
+<div class="sensor-box">
+<div class="sensor-head">
+<div>
+<div class="sensor-title" id="tit_temp">Temperature</div>
+<div class="sensor-meta" id="temp_hint">DS18B20 fixed rate</div>
+</div>
+<label class="switch"><input id="tempOn" type="checkbox"/><span class="switch-ui"></span><span id="sw_on_off_temp">On</span></label>
+</div>
+</div>
+<div class="sensor-box">
+<div class="sensor-head">
+<div>
+<div class="sensor-title" id="tit_sd">SD logging</div>
+<div class="sensor-meta" id="sd_hint">AP mode only, CSV rotation</div>
+</div>
+<label class="switch"><input id="sdOn" type="checkbox"/><span class="switch-ui"></span><span id="sw_on_off_sd">On</span></label>
+</div>
+<div class="field"><label for="sdBase" id="lab_sd_base">Base filename</label><input id="sdBase" maxlength="24"/></div>
+<div class="field"><label for="sdRotateKB" id="lab_sd_rotate">Rotate at, KB</label><input id="sdRotateKB" min="64" step="64" type="number"/></div>
+<div class="note" id="sd_note">A file with suffix _001, _002, ... is created automatically when the size limit is reached.</div>
+<div class="kv" style="margin-top:8px">
+<div class="k" id="lab_sd_file">Current CSV</div><div class="v mono" id="sdfile">-</div>
+</div>
+<div class="row" style="margin-top:8px">
+<button class="btn" id="browseCsvBtn" type="button">Browse / download CSV</button>
+</div>
+</div>
+<div class="summary" id="perfBox">Estimated AP speed: -</div>
+<div class="status" id="measMsg"></div>
+<button class="btn btn-block" id="saveMeasBtn" type="button">Save measurement settings</button>
+</div>
+</section></div></div></section><section aria-labelledby="tabBtn-system" class="tab-panel" data-tab="system" id="tabPanel-system" role="tabpanel"><div class="tabs-inner-grid system-grid"><div class="tabs-stack"><section class="card">
+<h3 id="h_controller">Controller</h3>
+<div class="kv">
+<div class="k" id="lab_mode">Mode</div><div class="v" id="mode">-</div>
+<div class="k" id="lab_ip">IP</div><div class="v mono" id="ip">-</div>
+<div class="k" id="lab_uptime">Uptime</div><div class="v"><span id="uptime">-</span> s</div>
+<div class="k" id="lab_heap">Heap</div><div class="v"><span id="heap">-</span> B</div>
+<div class="k" id="lab_board">Board</div><div class="v" id="board">-</div>
+<div class="k" id="lab_chip">Chip</div><div class="v" id="chip">-</div>
+<div class="k" id="lab_cpu">CPU</div><div class="v"><span id="cpu">-</span> MHz</div>
+<div class="k" id="lab_flash">Flash</div><div class="v"><span id="flash">-</span> MB</div>
+<div class="k" id="lab_apssid">AP SSID</div><div class="v mono" id="apssid">-</div>
+<div class="k" id="lab_sdst">SD</div><div class="v" id="sdstate">-</div>
+<div class="k" id="lab_chipmac">Chip MAC</div><div class="v mono" id="chipmac">-</div>
+<div class="k" id="lab_chipeui">Chip DevEUI</div><div class="v mono" id="chipeui">-</div>
+</div>
+<div class="hr"></div>
+<div aria-live="polite" class="status" id="statusMsg" role="status"></div>
+<div class="status" id="ctrlMsg"></div>
+<button class="btn btn-block" id="resetBtn" type="button">Reboot</button>
+</section></div><div class="tabs-stack"><section class="card">
+<h3 id="h_lora">LoRa</h3>
+<div class="btn-pair">
+<button class="btn" id="readChipBtn" type="button">Read chip DevEUI</button>
+<button class="btn" id="useChipBtn" type="button">Use chip DevEUI</button>
+</div>
+<div class="field"><label for="devEui" id="lab_deveui">DevEUI</label><input autocomplete="off" class="mono" id="devEui" inputmode="latin"/></div>
+<div class="field"><label for="appEui" id="lab_appeui">AppEUI</label><input autocomplete="off" class="mono" id="appEui" inputmode="latin"/></div>
+<div class="field"><label for="appKey" id="lab_appkey">AppKey</label><input autocomplete="off" class="mono" id="appKey" inputmode="latin"/></div>
+<div class="field"><label for="minutes" id="lab_interval">Send interval, min</label><input id="minutes" max="1440" min="1" step="1" type="number"/></div>
+<div class="field"><label for="drMode" id="lab_drate">Data rate</label>
+<select id="drMode">
+<option value="auto">ADR / Auto</option>
+<option value="0">DR0 (SF12)</option>
+<option value="1">DR1 (SF11)</option>
+<option value="2">DR2 (SF10)</option>
+<option value="3">DR3 (SF9)</option>
+<option value="4">DR4 (SF8)</option>
+<option value="5">DR5 (SF7)</option>
+</select>
+</div>
+<div class="summary" id="lora_note" style="margin-top:12px">Saved in AP mode. FIELD mode takes one fresh sensor snapshot immediately before each LoRa send and then returns to LoRaWAN sleep.</div>
+<div class="status mono" id="chipInfo" style="margin-top:12px"></div>
+<div class="status" id="loraMsg" style="margin-top:8px"></div>
+<button class="btn btn-block" id="saveLoRaBtn" type="button">Save LoRa settings</button>
+</section></div></div></section></div></div>
+</main>
+<div class="hidden" id="sdModal" style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;padding:18px;">
+<div style="max-width:780px;margin:0 auto;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;max-height:90vh;display:flex;flex-direction:column;gap:10px;">
+<div class="row" style="justify-content:space-between;align-items:center;">
+<h3 id="sdModalTitle" style="margin:0">Files on SD</h3>
+<button class="btn" id="closeSdModalBtn" type="button">Close</button>
+</div>
+<div class="row">
+<button class="btn" id="refreshCsvListBtn" type="button">Refresh list</button>
+<button class="btn" id="selectAllCsvBtn" type="button">Select all</button>
+<button class="btn" id="clearAllCsvBtn" type="button">Clear</button>
+<button class="btn" id="downloadSelectedCsvBtn" type="button">Download selected</button>
+<button class="btn" id="deleteSelectedCsvBtn" type="button">Delete selected</button>
+</div>
+<div class="small" id="sdModalHint">Choose one CSV file to download it directly as .csv. Choose multiple CSV files to download them as one real ZIP file without compression. The active current log file cannot be deleted.</div>
+<div class="status" id="sdListMsg"></div>
+<div style="overflow:auto;border:1px solid var(--line);border-radius:12px;">
+<table style="margin-top:0">
+<thead>
+<tr><th style="width:40px"></th><th>Name</th><th>Size</th></tr>
+</thead>
+<tbody id="sdListBody"></tbody>
+</table>
+</div>
+</div>
+</div>
 <footer class="footer">
-  <a href="https://www.marxkrontal.com/de/" target="_blank" rel="noopener noreferrer">© <span id="yr"></span> MKP GmbH</a>
-  <span id="i_footer_by">developed by</span>
-  <a href="mailto:roman.sliusar@marxkrontal.com">SLR</a>
-  <a href="mailto:evgenij.koloda@marxkrontal.com">KOE</a>
-  <a href="mailto:Bernd.Schinkoethe@marxkrontal.com">SCE</a>
+<a href="https://www.marxkrontal.com/de/" rel="noopener noreferrer" target="_blank">© <span id="yr"></span> MKP GmbH</a>
+<span id="i_footer_by">developed by</span>
+<a href="mailto:roman.sliusar@marxkrontal.com">SLR</a>
+<a href="mailto:evgenij.koloda@marxkrontal.com">KOE</a>
+<a href="mailto:Bernd.Schinkoethe@marxkrontal.com">SCE</a>
 </footer>
-
 <script>
 var THEME_KEY = 'lora_theme';
 var LANG_KEY = 'lora_lang';
@@ -357,6 +365,7 @@ var liveBusy = false;
 var metaBusy = false;
 var configLoaded = false;
 var plotValues = [];
+var ain2PlotValues = [];
 var PLOT_MAX = 160;
 window.__lastCfg = null;
 
@@ -385,7 +394,7 @@ function setTheme(t){
   document.documentElement.dataset.theme = t;
   $('themeBtn').textContent = t === 'dark' ? '☀️' : '🌙';
   localStorage.setItem(THEME_KEY, t);
-  drawPlot();
+  drawPlots();
 }
 
 async function loadI18n(){
@@ -410,6 +419,7 @@ function applyLang(){
   setText('lab_dms_mv', tr('dms_mv','DMS est. mV'));
   setText('lab_dms_actual', tr('dms_actual','DMS actual'));
   setText('plot_caption', tr('plot_caption','Live trend: DMS mV/V'));
+  setText('plot_caption_ain2', tr('plot_caption_ain2','Live trend: AIN2 scaled'));
   setText('lab_ain2_raw', tr('ain2_raw','AIN2 raw'));
   setText('lab_ain2_adc', tr('ain2_adc','AIN2 ADC'));
   setText('lab_ain2_scaled', tr('ain2_scaled','AIN2 scaled'));
@@ -464,8 +474,6 @@ function applyLang(){
   setText('tit_temp', tr('tit_temp','Temperature'));
   setText('temp_hint', tr('temp_hint','DS18B20 fixed rate'));
   setText('sw_on_off_temp', tr('on','On'));
-  setText('lab_temp_fixed', tr('dms_hz','Frequency, Hz'));
-  setText('tempFixed', tr('temp_fixed','1.0 Hz (fixed)'));
   setText('tit_sd', tr('tit_sd','SD logging'));
   setText('sd_hint', tr('sd_hint','AP mode only, CSV rotation'));
   setText('sw_on_off_sd', tr('on','On'));
@@ -493,7 +501,7 @@ function applyLang(){
 
   updateStatusText($('mode').textContent || 'CONFIG');
   updatePerfBox(window.__lastLive || null, window.__lastCfg || null);
-  drawPlot();
+  drawPlots();
 }
 
 function syncPreset(){
@@ -525,7 +533,6 @@ function fillConfig(cfg){
   $('adcFs').value = Number(cfg.ain2_adc_fullscale_v != null ? cfg.ain2_adc_fullscale_v : 3.123).toFixed(3);
   $('inputFs').value = Number(cfg.ain2_input_fullscale_v != null ? cfg.ain2_input_fullscale_v : 10).toFixed(1);
   $('tempOn').checked = boolNum(cfg.temp_enabled);
-  $('tempFixed').textContent = tr('temp_fixed','1.0 Hz (fixed)');
   $('sdOn').checked = boolNum(cfg.sd_log_enabled);
   $('sdBase').value = cfg.sd_base || 'lorasense';
   $('sdRotateKB').value = cfg.sd_rotate_kb != null ? cfg.sd_rotate_kb : 1024;
@@ -558,6 +565,7 @@ function updateLive(s){
   setText('sdstate', s.sd_status || '-');
 
   pushPlot(boolNum(s.dms_enabled) && boolNum(s.dms_valid) ? Number(s.dms_mV_per_V) : null);
+  pushAin2Plot(boolNum(s.ain2_enabled) && boolNum(s.ain2_valid) ? Number(s.ain2_value) : null);
   updatePerfBox(s, window.__lastCfg || null);
 }
 
@@ -605,11 +613,17 @@ function updateStatusText(mode){
 function pushPlot(value){
   plotValues.push({ t: Date.now(), v: value });
   while (plotValues.length > PLOT_MAX) plotValues.shift();
-  drawPlot();
+  drawPlots();
 }
 
-function drawPlot(){
-  var c = $('dmsPlot');
+function pushAin2Plot(value){
+  ain2PlotValues.push({ t: Date.now(), v: value });
+  while (ain2PlotValues.length > PLOT_MAX) ain2PlotValues.shift();
+  drawPlots();
+}
+
+function drawSinglePlot(canvasId, series, emptyText){
+  var c = $(canvasId);
   if (!c) return;
   var ctx = c.getContext('2d');
   var w = c.width, h = c.height;
@@ -629,11 +643,11 @@ function drawPlot(){
     ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke();
   }
 
-  var vals = plotValues.map(function(p){ return p.v; }).filter(function(v){ return typeof v === 'number' && isFinite(v); });
+  var vals = series.map(function(p){ return p.v; }).filter(function(v){ return typeof v === 'number' && isFinite(v); });
   if (!vals.length) {
     ctx.fillStyle = fg;
     ctx.font = '12px system-ui';
-    ctx.fillText(tr('plot_wait','Waiting for DMS data...'), 10, 20);
+    ctx.fillText(emptyText, 10, 20);
     return;
   }
 
@@ -647,10 +661,10 @@ function drawPlot(){
   ctx.lineWidth = 2;
   ctx.beginPath();
   var started = false;
-  for (var j=0;j<plotValues.length;j++){
-    var p = plotValues[j];
+  for (var j=0;j<series.length;j++){
+    var p = series[j];
     if (!(typeof p.v === 'number' && isFinite(p.v))) { started = false; continue; }
-    var x = plotValues.length <= 1 ? 0 : (j / (plotValues.length - 1)) * (w - 1);
+    var x = series.length <= 1 ? 0 : (j / (series.length - 1)) * (w - 1);
     var yv = h - ((p.v - min) / (max - min)) * (h - 1);
     if (!started) { ctx.moveTo(x, yv); started = true; }
     else ctx.lineTo(x, yv);
@@ -661,6 +675,11 @@ function drawPlot(){
   ctx.font = '12px system-ui';
   ctx.fillText(max.toFixed(4), 8, 14);
   ctx.fillText(min.toFixed(4), 8, h - 6);
+}
+
+function drawPlots(){
+  drawSinglePlot('dmsPlot', plotValues, tr('plot_wait','Waiting for DMS data...'));
+  drawSinglePlot('ain2Plot', ain2PlotValues, tr('plot_wait_ain2','Waiting for AIN2 data...'));
 }
 
 async function loadConfig(){
@@ -893,7 +912,28 @@ $('langBtn').addEventListener('click', function(){
   localStorage.setItem(LANG_KEY, currentLang);
   applyLang();
 });
-window.addEventListener('resize', drawPlot);
+window.addEventListener('resize', drawPlots);
+
+
+function initTabs(){
+  var btns = Array.prototype.slice.call(document.querySelectorAll('.tab-btn'));
+  var panels = Array.prototype.slice.call(document.querySelectorAll('.tab-panel'));
+  if (!btns.length || !panels.length) return;
+  function activate(name){
+    btns.forEach(function(btn){
+      var active = btn.dataset.tab === name;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+    panels.forEach(function(panel){
+      panel.classList.toggle('active', panel.dataset.tab === name);
+    });
+  }
+  btns.forEach(function(btn){
+    btn.addEventListener('click', function(){ activate(btn.dataset.tab); });
+  });
+  activate('measure');
+}
 
 async function boot(){
   setText('yr', new Date().getFullYear());
@@ -902,6 +942,7 @@ async function boot(){
   currentLang = localStorage.getItem(LANG_KEY) || 'de';
   await loadI18n();
   applyLang();
+  initTabs();
   updateAin2Mode();
   try { await loadConfig(); } catch (e) { setMsg('loraMsg', tr('save_error','Save error') + ': ' + e.message); }
   try { await loadStateOnce(); } catch (e) { setMsg('ctrlMsg', tr('save_error','Save error') + ': ' + e.message); }
