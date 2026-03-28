@@ -158,9 +158,6 @@ button{cursor:pointer}
 </div>
 </header>
 <main class="main">
-<datalist id="hzList">
-<option value="0.1"><option value="0.2"><option value="0.5"><option value="1"><option value="2"><option value="5"><option value="10"><option value="20"><option value="25"><option value="50"><option value="100"><option value="150"><option value="200">
-</option></option></option></option></option></option></option></option></option></option></option></option></option></datalist>
 <div class="tabs-shell"><div aria-label="Main sections" class="tabs-bar" role="tablist"><button aria-controls="tabPanel-measure" aria-selected="true" class="tab-btn active" data-tab="measure" id="tabBtn-measure" role="tab" type="button">Measurements &amp; settings</button><button aria-controls="tabPanel-system" aria-selected="false" class="tab-btn" data-tab="system" id="tabBtn-system" role="tab" type="button">LoRa &amp; controller</button></div><div class="tab-panels"><section aria-labelledby="tabBtn-measure" class="tab-panel active" data-tab="measure" id="tabPanel-measure" role="tabpanel"><div class="tabs-inner-grid"><div class="tabs-stack"><section class="card">
 <h3 id="h_measurements">Measurements</h3>
 <div class="kv">
@@ -206,7 +203,7 @@ button{cursor:pointer}
 </div>
 <label class="switch"><input id="dmsOn" type="checkbox"/><span class="switch-ui"></span><span id="sw_on_off_dms">On</span></label>
 </div>
-<div class="field"><label for="dmsHz" id="lab_dms_hz">Frequency, Hz</label><input id="dmsHz" list="hzList" max="200" min="0.1" step="0.1" type="number"/></div>
+<div class="field"><label for="dmsHz" id="lab_dms_hz">Frequency, Hz</label><select id="dmsHz"><option value="5">5</option><option value="11.25">11.25</option><option value="20">20</option><option value="22.5">22.5</option><option value="40">40</option><option value="44">44</option><option value="45">45</option><option value="82.5">82.5</option><option value="90">90</option><option value="150">150</option><option value="175">175</option><option value="180">180</option><option value="250">250</option><option value="330">330</option><option value="350">350</option><option value="600">600</option><option value="660">660</option><option value="1000">1000</option><option value="1200">1200</option><option value="2000">2000</option></select></div>
 </div>
 <div class="sensor-box">
 <div class="sensor-head">
@@ -216,7 +213,7 @@ button{cursor:pointer}
 </div>
 <label class="switch"><input id="ain2On" type="checkbox"/><span class="switch-ui"></span><span id="sw_on_off_ain2">On</span></label>
 </div>
-<div class="field"><label for="ain2Hz" id="lab_ain2_hz">Frequency, Hz</label><input id="ain2Hz" list="hzList" max="100" min="0.1" step="0.1" type="number"/></div>
+<div class="field"><label for="ain2Hz" id="lab_ain2_hz">Frequency, Hz</label><select id="ain2Hz"><option value="5">5</option><option value="11.25">11.25</option><option value="20">20</option><option value="22.5">22.5</option><option value="40">40</option><option value="44">44</option><option value="45">45</option><option value="82.5">82.5</option><option value="90">90</option><option value="150">150</option><option value="175">175</option><option value="180">180</option><option value="250">250</option><option value="330">330</option><option value="350">350</option><option value="600">600</option><option value="660">660</option><option value="1000">1000</option><option value="1200">1200</option><option value="2000">2000</option></select></div>
 <div class="field"><label for="ain2Mode" id="lab_ain2_type">AIN2 type</label>
 <select id="ain2Mode">
 <option id="opt_ain2_pot" value="pot">Potentiometer / Wegsensor</option>
@@ -378,6 +375,13 @@ function fmtTime(){ var d = new Date(); var p = function(n){ return String(n).pa
 function normalizeHex(s){ return (s || '').replace(/\s+/g, '').toUpperCase(); }
 function exactHex(s, len){ return new RegExp('^[0-9A-F]{' + len + '}$').test(normalizeHex(s)); }
 function boolNum(v){ return v === true || v === 1 || v === '1'; }
+function setSelectValue(id, value, fallback){
+  var el = $(id);
+  if (!el) return;
+  var val = String(value);
+  var has = Array.prototype.some.call(el.options || [], function(opt){ return opt.value === val; });
+  el.value = has ? val : String(fallback);
+}
 function tr(key, fallback){ var pack = I18N && I18N[currentLang]; return (pack && pack[key]) || fallback || key; }
 
 async function api(url, opt){
@@ -525,9 +529,9 @@ function fillConfig(cfg){
   $('appKey').value = cfg.appKey || '';
   $('minutes').value = cfg.minutes != null ? cfg.minutes : 15;
   $('dmsOn').checked = boolNum(cfg.dms_enabled);
-  $('dmsHz').value = Number(cfg.dms_hz != null ? cfg.dms_hz : 200).toFixed(1);
+  setSelectValue('dmsHz', cfg.dms_hz != null ? cfg.dms_hz : 2000, 2000);
   $('ain2On').checked = boolNum(cfg.ain2_enabled);
-  $('ain2Hz').value = Number(cfg.ain2_hz != null ? cfg.ain2_hz : 1).toFixed(1);
+  setSelectValue('ain2Hz', cfg.ain2_hz != null ? cfg.ain2_hz : 20, 20);
   $('ain2Mode').value = cfg.ain2_mode || 'pot';
   $('ain2Len').value = Number(cfg.ain2_length_mm != null ? cfg.ain2_length_mm : 10).toFixed(2);
   $('adcFs').value = Number(cfg.ain2_adc_fullscale_v != null ? cfg.ain2_adc_fullscale_v : 3.123).toFixed(3);
@@ -570,25 +574,48 @@ function updateLive(s){
 }
 
 function updateMeta(s){
-  setText('fw', s.fw || '-');
-  setText('mode', s.mode || '-');
-  setText('ip', s.ip || '-');
-  setText('uptime', intNum(s.uptime_s));
-  setText('heap', intNum(s.heap_free));
-
   var c = s.controller || {};
-  setText('board', c.board || '-');
-  var chipTxt = c.chip_model || '-';
-  if (c.chip_rev != null) chipTxt += ' rev ' + c.chip_rev;
+  var sys = s.system || {};
+
+  var modeVal = (s.mode != null ? s.mode : (c.mode != null ? c.mode : (sys.mode != null ? sys.mode : '-')));
+  var ipVal = (s.ip != null ? s.ip : (c.ip != null ? c.ip : (c.ap_ip != null ? c.ap_ip : (sys.ip != null ? sys.ip : '-'))));
+
+  var uptimeVal =
+    s.uptime_s != null ? s.uptime_s :
+    c.uptime_s != null ? c.uptime_s :
+    sys.uptime_s != null ? sys.uptime_s :
+    s.uptime != null ? s.uptime :
+    c.uptime != null ? c.uptime :
+    sys.uptime != null ? sys.uptime : null;
+
+  var heapVal =
+    s.heap_free != null ? s.heap_free :
+    c.heap_free != null ? c.heap_free :
+    sys.heap_free != null ? sys.heap_free :
+    s.heap != null ? s.heap :
+    c.heap != null ? c.heap :
+    sys.heap != null ? sys.heap : null;
+
+  setText('fw', s.fw || c.fw || sys.fw || '-');
+  setText('mode', modeVal);
+  setText('ip', ipVal);
+  setText('uptime', uptimeVal != null ? String(Math.round(Number(uptimeVal))) : '-');
+  setText('heap', heapVal != null ? String(Math.round(Number(heapVal))) : '-');
+
+  setText('board', c.board || s.board || '-');
+  var chipTxt = c.chip_model || s.chip_model || '-';
+  var chipRev = c.chip_rev != null ? c.chip_rev : s.chip_rev;
+  if (chipRev != null) chipTxt += ' rev ' + chipRev;
   setText('chip', chipTxt);
-  setText('cpu', intNum(c.cpu_mhz));
-  setText('flash', intNum(c.flash_mb));
-  setText('apssid', c.ap_ssid || '-');
+  setText('cpu', c.cpu_mhz != null ? String(Math.round(Number(c.cpu_mhz))) : '-');
+  setText('flash', c.flash_mb != null ? String(Math.round(Number(c.flash_mb))) : '-');
+  setText('apssid', c.ap_ssid || s.ap_ssid || '-');
   setText('sdstate', c.sd_status || s.sd_status || '-');
-  setText('sdfile', s.sd_file || '-');
-  setText('chipmac', c.chip_mac48 || '-');
-  setText('chipeui', c.chip_eui64 || '-');
-  updateStatusText(s.mode || 'CONFIG');
+  setText('sdfile', s.sd_file || c.sd_file || '-');
+  setText('chipmac', c.chip_mac48 || s.chip_mac48 || '-');
+  setText('chipeui', c.chip_eui64 || s.chip_eui64 || '-');
+
+  updateStatusText(modeVal || 'CONFIG');
 }
 
 function updatePerfBox(live, cfg){
