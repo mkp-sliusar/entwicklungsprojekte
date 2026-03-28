@@ -1,599 +1,956 @@
-<!doctype html>
-<html lang="en" data-theme="dark">
+<!DOCTYPE html>
+
+<html data-theme="dark" lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="color-scheme" content="dark light">
-<title id="t_title">LoRa Riss-Monitoring</title>
+<meta charset="utf-8"/>
+<meta content="width=device-width,initial-scale=1" name="viewport"/>
+<meta content="dark light" name="color-scheme"/>
+<title>MKP LoRaSense Node</title>
 <style>
 :root{
-  --ff:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+  --ff:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
   --fs:14px;
-  --lh:1.45;
-  --radius:20px;
-  --radius-sm:14px;
-  --shadow:0 18px 48px rgba(0,0,0,.18);
-  --bg:#0b1118;
-  --bg-soft:#101925;
-  --fg:#edf3fa;
-  --muted:#98a9bc;
-  --line:#243142;
-  --line-strong:#34465d;
-  --field:#0f1722;
-  --field-2:#121d2a;
-  --card:#121b27;
-  --card-2:#162232;
-  --tab:#162232;
-  --tab-active:#1d2d41;
-  --btn:#182534;
-  --btn-h:#223449;
-  --accent:#67b7ff;
-  --accent-soft:rgba(103,183,255,.14);
+  --radius:16px;
+  --shadow:0 10px 24px rgba(0,0,0,.14);
+  --header-h:50px;
+  --accent:#54b8e6;
+  --accent-2:#1a8fc7;
+  --ok:#1bb15f;
+  --bad:#e05b5b;
+}
+html[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#090c10;
+  --fg:#edf2f8;
+  --muted:#9eb0c2;
+  --line:#24303d;
+  --card:#111821;
+  --card-2:#131d28;
+  --field:#0d141d;
+  --btn:#192330;
+  --btn-h:#213142;
+  --chip:#0f1620;
+  --plot-bg:#0c131c;
 }
 html[data-theme="light"]{
-  --bg:#eef4f9;
-  --bg-soft:#f5f8fb;
-  --fg:#172433;
-  --muted:#647588;
-  --line:#cfd8e3;
-  --line-strong:#b8c6d4;
-  --field:#ffffff;
-  --field-2:#f7fafc;
+  color-scheme:light;
+  --bg:#eef4f8;
+  --fg:#172331;
+  --muted:#607384;
+  --line:#c8d5df;
   --card:#ffffff;
-  --card-2:#f7fbff;
-  --tab:#edf3f8;
-  --tab-active:#ffffff;
-  --btn:#eef4f9;
-  --btn-h:#e4edf5;
-  --accent:#1f86d9;
-  --accent-soft:rgba(31,134,217,.10);
+  --card-2:#f7fbfd;
+  --field:#ffffff;
+  --btn:#eef5fa;
+  --btn-h:#e4edf4;
+  --chip:#ffffff;
+  --plot-bg:#f4f9fc;
 }
 *{box-sizing:border-box}
-html,body{margin:0;min-height:100%;font-family:var(--ff);font-size:var(--fs);line-height:var(--lh);background:linear-gradient(180deg,var(--bg),var(--bg-soft));color:var(--fg)}
-body{padding:18px;display:flex;flex-direction:column;gap:16px;overflow-x:hidden}
+html,body{margin:0;min-height:100%;font-family:var(--ff);font-size:var(--fs);background:var(--bg);color:var(--fg)}
+body{padding:8px 16px 0;display:flex;flex-direction:column;overflow-x:hidden;min-height:100vh}
 a{color:inherit}
 button,input,select,textarea{font:inherit;color:inherit}
 button,input,select,textarea{border:1px solid var(--line);background:var(--field);border-radius:14px;min-width:0}
-button,input,select,textarea:focus{outline:none;box-shadow:0 0 0 3px var(--accent-soft);border-color:var(--accent)}
+button,input,select,textarea:focus{outline:none;box-shadow:0 0 0 2px rgba(84,184,230,.18)}
 button{cursor:pointer}
-.main{flex:1 1 auto}
-.header-shell{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 16px;border:1px solid var(--line);border-radius:24px;background:linear-gradient(180deg,var(--card),var(--card-2));box-shadow:var(--shadow)}
+.main{flex:1 1 auto;display:flex;flex-direction:column;width:100%}
+.header{width:min(100%,1160px);display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 auto 10px;min-height:var(--header-h)}
 .brand{display:flex;align-items:center;gap:12px;text-decoration:none;color:inherit;min-width:0}
-.brand img{height:32px;width:auto;display:block}
-.title-wrap{display:flex;flex-direction:column;gap:3px;min-width:0}
-.page-title{font-size:20px;font-weight:800;line-height:1.15;letter-spacing:.01em}
-.page-subtitle{font-size:12px;color:var(--muted)}
-.header-tools{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
-.fw-chip,.header-pill{display:inline-flex;align-items:center;gap:7px;padding:8px 12px;border-radius:999px;border:1px solid var(--line);background:var(--field-2);white-space:nowrap}
-.header-pill{font-weight:700}
-#themeBtn{min-width:44px;height:40px;padding:0 12px;background:var(--btn);font-weight:800}
-#themeBtn:hover{background:var(--btn-h)}
-.panel-stack{display:flex;flex-direction:column;gap:12px}
-.panel{border:1px solid var(--line);border-radius:24px;background:linear-gradient(180deg,var(--card),var(--card-2));box-shadow:var(--shadow);overflow:hidden}
-.panel-tab{width:100%;display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 16px;border:none;border-bottom:1px solid transparent;border-radius:0;background:linear-gradient(180deg,var(--tab),transparent);text-align:left}
-.panel-tab:hover{background:linear-gradient(180deg,var(--tab-active),transparent)}
-.panel-tab-left{display:flex;align-items:center;gap:12px;min-width:0}
-.panel-index{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;font-weight:800;background:var(--accent-soft);color:var(--accent);flex:0 0 auto}
-.panel-title-wrap{display:flex;flex-direction:column;gap:2px;min-width:0}
-.panel-title{font-size:16px;font-weight:800;line-height:1.2}
-.panel-subtitle{font-size:12px;color:var(--muted);line-height:1.25}
-.panel-arrow{font-size:18px;color:var(--muted);transition:transform .2s ease,color .2s ease;flex:0 0 auto}
-.panel.is-open .panel-tab{border-bottom-color:var(--line)}
-.panel.is-open .panel-arrow{transform:rotate(180deg);color:var(--fg)}
-.panel-body{display:none;padding:16px}
-.panel.is-open .panel-body{display:block}
-.content-grid{display:grid;grid-template-columns:repeat(2,minmax(280px,1fr));gap:16px;align-items:start}
-.card{background:linear-gradient(180deg,rgba(255,255,255,.015),rgba(255,255,255,0));border:1px solid var(--line);border-radius:18px;padding:16px;min-height:0}
-.card h3{margin:0 0 10px;font-size:16px;line-height:1.2;font-weight:800}
-.hr{height:1px;background:var(--line);margin:12px 0}
-.kv{display:grid;grid-template-columns:170px minmax(0,1fr);gap:10px 14px;align-items:center}
-.k{color:var(--muted);font-weight:600}
-.v{font-weight:700;word-break:break-word}
-.metric-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:8px}
-.metric{padding:12px;border:1px solid var(--line);border-radius:16px;background:var(--field-2)}
-.metric .label{display:block;color:var(--muted);font-size:12px;margin-bottom:3px}
-.metric .value{font-size:18px;font-weight:800;line-height:1.15}
-.field-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 16px;align-items:start}
-.field{display:grid;grid-template-columns:148px minmax(0,1fr);gap:10px;align-items:center}
-.field label{color:var(--muted);font-weight:600}
-.field input,.field select,.field textarea{width:100%;min-height:44px;padding:0 14px;background:var(--field)}
-.input-group{display:flex;align-items:center;gap:10px}
-.input-group > *{flex:1 1 auto}
-.input-suffix{flex:0 0 auto;color:var(--muted);font-weight:700}
-.section-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
-.section-head h3{margin:0}
-.section-note,.note,.small{font-size:12px;color:var(--muted);line-height:1.5}
-.status{display:block;color:var(--muted);white-space:pre-line;word-break:break-word;min-height:2.6em}
-.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-.btn{height:44px;padding:0 16px;background:var(--btn);font-weight:800}
+.brand img{height:30px;width:auto;display:block}
+.title-wrap{display:flex;flex-direction:column;min-width:0}
+.title{font-size:18px;font-weight:800;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sub{font-size:12px;color:var(--muted)}
+.header-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.fw-chip{display:flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:var(--chip);white-space:nowrap}
+.icon-btn,.lang-btn{height:34px;min-width:46px;padding:0 12px;border-radius:999px;background:var(--btn);font-weight:700}
+.icon-btn:hover,.lang-btn:hover{background:var(--btn-h)}
+.grid{display:grid;grid-template-columns:repeat(4,minmax(270px,1fr));gap:12px;align-items:start}
+.card{background:linear-gradient(180deg,var(--card),var(--card-2));border:1px solid var(--line);border-radius:var(--radius);padding:12px;box-shadow:var(--shadow);min-height:0}
+.card h3{margin:0 0 8px;font-size:17px;line-height:1.2;font-weight:800}
+.hr{height:1px;background:var(--line);margin:9px 0}
+.kv{display:grid;grid-template-columns:minmax(102px,auto) 1fr;gap:4px 10px;align-items:start}
+.kv .k{color:var(--muted)}
+.kv .v{font-weight:600;word-break:break-word}
+.stack{display:flex;flex-direction:column;gap:12px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.btn{height:40px;padding:0 14px;background:var(--btn);font-weight:700}
 .btn:hover{background:var(--btn-h)}
 .btn-block{display:block;width:100%}
-.actions{display:flex;flex-direction:column;gap:10px;margin-top:14px}
-.footer{padding:14px 16px;border:1px solid var(--line);border-radius:20px;background:linear-gradient(180deg,var(--card),var(--card-2));font-size:12px;color:var(--muted);display:flex;justify-content:center;gap:8px;flex-wrap:wrap;align-items:center}
+.btn-pair{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.badge{display:inline-flex;align-items:center;justify-content:center;min-height:28px;padding:0 10px;border:1px solid var(--line);border-radius:999px;background:var(--btn);font-size:12px;font-weight:800}
+.badge.ok{color:var(--ok)}
+.badge.bad{color:var(--bad)}
+.badge.off{color:var(--muted)}
+.small{font-size:12px;color:var(--muted)}
+.note{font-size:12px;color:var(--muted);line-height:1.45}
+.status{font-size:12px;color:var(--muted);white-space:pre-line;word-break:break-word;min-height:2.4em}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.plot-wrap{margin-top:10px;border:1px solid var(--line);border-radius:14px;background:var(--plot-bg);padding:8px}
+.plot-wrap + .plot-wrap{margin-top:10px}
+#dmsPlot,#ain2Plot{display:block;width:100%;height:136px}
+.compact-group{display:grid;gap:12px}
+.sensor-box{display:grid;gap:12px;border:1px solid var(--line);border-radius:14px;padding:12px;background:rgba(127,127,127,.04)}
+.sensor-head{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:0}
+.sensor-title{font-weight:800}
+.sensor-meta{font-size:12px;color:var(--muted)}
+.field{display:grid;grid-template-columns:minmax(112px,auto) 1fr;gap:8px;align-items:center}
+.field label{color:var(--muted)}
+.field input,.field select{height:38px;padding:0 12px;width:100%}
+.field .fixed{height:38px;display:flex;align-items:center;padding:0 12px;border:1px solid var(--line);background:var(--field);border-radius:14px}
+.switch{position:relative;display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-weight:700}
+.switch input{position:absolute;opacity:0;pointer-events:none}
+.switch-ui{position:relative;width:42px;height:24px;border-radius:999px;background:var(--btn);border:1px solid var(--line);transition:.18s}
+.switch-ui:after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:var(--muted);transition:.18s}
+.switch input:checked + .switch-ui{background:rgba(84,184,230,.2);border-color:rgba(84,184,230,.5)}
+.switch input:checked + .switch-ui:after{left:20px;background:var(--accent)}
+.summary{padding:9px 12px;border:1px dashed var(--line);border-radius:14px;background:rgba(84,184,230,.04);font-size:12px;line-height:1.45}
+.hidden{display:none !important}
+.footer{width:min(100%,1160px);margin:30px auto 0;padding:18px 0 30px;border-top:1px solid var(--line);font-size:12px;color:var(--muted);display:flex;justify-content:center;gap:8px;flex-wrap:wrap;align-items:center;flex-shrink:0}
 .footer a{text-decoration:none}
 .footer a:hover{text-decoration:underline}
-.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
-.badge{display:inline-flex;align-items:center;justify-content:center;min-height:28px;padding:0 10px;border:1px solid var(--line);border-radius:999px;background:var(--btn);font-size:12px;font-weight:800}
-.hidden{display:none!important}
-table{width:100%;border-collapse:collapse;margin-top:8px}
-th,td{border-bottom:1px solid var(--line);text-align:left;padding:9px 8px;font-size:13px}
-th{color:var(--muted);font-weight:700}
-.logWrap{overflow:auto;max-height:52vh;border:1px solid var(--line);border-radius:16px;background:var(--field-2);padding:2px 10px 10px}
-@media (max-width:1100px){
-  .content-grid,.field-grid{grid-template-columns:1fr}
-}
-@media (max-width:760px){
-  body{padding:10px}
-  .header-shell{flex-direction:column;align-items:flex-start}
+@media (max-width:1460px){.grid{grid-template-columns:repeat(2,minmax(270px,1fr));}}
+@media (max-width:780px){
+  body{padding:8px 10px 0}
+  .header{width:100%;flex-direction:column;align-items:flex-start}
   .header-tools{width:100%;justify-content:space-between}
-  .page-title{font-size:18px}
-  .kv,.field{grid-template-columns:1fr}
-  .metric-grid{grid-template-columns:1fr}
-  .row .btn{width:100%}
-  .panel-tab{padding:13px 14px}
-  .panel-body,.card{padding:14px}
+  .grid{grid-template-columns:1fr}
+  .btn-pair{grid-template-columns:1fr}
+  .field,.kv{grid-template-columns:1fr}
+  .title{white-space:normal}
 }
+
+
+.tabs-shell{max-width:1160px;margin:0 auto;display:flex;flex-direction:column;gap:18px;width:100%}
+.tabs-bar{display:grid;grid-template-columns:repeat(2,minmax(280px,320px));gap:14px;justify-content:center;align-content:center;max-width:660px;margin:0 auto}
+.tab-btn{position:relative;display:flex;align-items:center;justify-content:center;height:52px;width:100%;padding:0 22px;border-radius:16px;background:var(--btn);font-weight:800;color:var(--muted);text-align:center;transition:background .2s ease,color .2s ease,transform .2s ease,border-color .2s ease,box-shadow .2s ease}
+.tab-btn:hover{background:var(--btn-h);color:var(--fg);transform:translateY(-1px)}
+.tab-btn.active{background:linear-gradient(180deg,rgba(84,184,230,.22),rgba(84,184,230,.12));border-color:rgba(84,184,230,.45);color:var(--fg);box-shadow:0 8px 22px rgba(84,184,230,.14)}
+.tab-btn.active:after{content:"";position:absolute;left:18px;right:18px;bottom:6px;height:3px;border-radius:999px;background:var(--accent)}
+.tab-panels{position:relative}
+.tab-panel{display:none;opacity:0;transform:translateX(22px)}
+.tab-panel.active{display:block;animation:tabSlideIn .28s ease forwards}
+@keyframes tabSlideIn{from{opacity:0;transform:translateX(22px)}to{opacity:1;transform:translateX(0)}}
+.tabs-inner-grid,.tabs-inner-grid.system-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;align-items:stretch}
+.tabs-stack{display:flex;flex-direction:column;gap:18px;height:100%;min-height:100%}
+.tabs-stack > .card{flex:1 1 auto;display:flex;flex-direction:column}
+.tabs-inner-grid .card,.tabs-inner-grid.system-grid .card{width:100%;height:100%}
+.field{display:grid;grid-template-columns:180px minmax(0,1fr);gap:12px;align-items:center;margin:0}.system-grid .card:last-child .field + .field{margin-top:12px}.system-grid .card:last-child .summary{margin-top:16px !important}.system-grid .card:last-child .status{margin-top:12px !important}.system-grid .card:last-child .btn-pair{margin-bottom:16px}.system-grid .card #resetBtn,.system-grid .card #saveLoRaBtn{margin-top:auto}
+.field input,.field select,.field .fixed{width:100%;min-width:0}
+.btn-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:12px}
+@media (max-width:980px){.tabs-inner-grid,.tabs-inner-grid.system-grid{grid-template-columns:1fr}.tabs-shell{max-width:960px}}
+@media (max-width:780px){.tabs-bar{grid-template-columns:1fr;max-width:100%}.tab-btn{width:100%}.field{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
-<header class="header-shell">
-  <a class="brand" href="https://www.marxkrontal.com/de/" target="_blank" rel="noopener noreferrer">
-    <img src="/logo.svg" alt="MKP">
-    <div class="title-wrap">
-      <div class="page-title" id="i_title">LoRa Riss-Monitoring</div>
-      <div class="page-subtitle">Structured dashboard with collapsible workspace panels</div>
-    </div>
-  </a>
-  <div class="header-tools">
-    <div class="fw-chip"><span>Firmware</span>: <b id="fw">-</b></div>
-    <button id="themeBtn" class="btn" title="Theme" type="button">🌙</button>
-  </div>
+<header class="header">
+<a class="brand" href="https://www.marxkrontal.com/de/" rel="noopener noreferrer" target="_blank">
+<img alt="MKP" src="/logo.svg"/>
+<div class="title-wrap">
+<div class="title" id="i_title">MKP LoRaSense Node</div>
+<div class="sub" id="sub_title">AP live measurement / FIELD LoRa snapshot</div>
+</div>
+</a>
+<div class="header-tools">
+<div class="fw-chip"><span id="lab_fw">Firmware</span>: <b id="fw">-</b></div>
+<button class="lang-btn" id="langBtn" type="button">DE</button>
+<button aria-label="Theme" class="icon-btn" id="themeBtn" type="button">☀️</button>
+</div>
 </header>
-
 <main class="main">
-  <div class="panel-stack">
-
-    <section class="panel is-open" data-panel>
-      <button class="panel-tab" type="button" data-panel-toggle aria-expanded="true">
-        <span class="panel-tab-left">
-          <span class="panel-index">01</span>
-          <span class="panel-title-wrap">
-            <span class="panel-title">Messwerte</span>
-            <span class="panel-subtitle">Live values, temperature window and crack window</span>
-          </span>
-        </span>
-        <span class="panel-arrow">⌄</span>
-      </button>
-      <div class="panel-body">
-        <div class="content-grid">
-          <div class="card">
-            <div class="section-head"><h3>Sensors</h3><span class="badge" id="t" aria-live="polite">--:--:--</span></div>
-            <div class="kv">
-              <div class="k">DS18B20</div><div class="v"><span id="ds">-</span><span id="ds_unit"> °C</span></div>
-              <div class="k">Battery</div><div class="v"><b id="bat">-</b> mV</div>
-            </div>
-            <div class="hr"></div>
-            <h3>Temperature window</h3>
-            <div class="metric-grid">
-              <div class="metric"><span class="label">Current</span><div class="value"><b id="tcur">-</b> °C</div></div>
-              <div class="metric"><span class="label">Average</span><div class="value"><b id="tavg">-</b> °C</div></div>
-              <div class="metric"><span class="label">Minimum</span><div class="value"><b id="tmin">-</b> °C</div></div>
-              <div class="metric"><span class="label">Maximum</span><div class="value"><b id="tmax">-</b> °C</div></div>
-            </div>
-          </div>
-
-          <div class="card">
-            <div class="section-head"><h3>Crack (ADS1115)</h3><span class="badge">Window: <span id="win">-</span></span></div>
-            <div class="metric-grid">
-              <div class="metric"><span class="label">Current</span><div class="value"><b id="ccur">-</b> mm <small id="ccur_x"></small></div></div>
-              <div class="metric"><span class="label">Average</span><div class="value"><b id="cavg">-</b> mm <small id="cavg_x"></small></div></div>
-              <div class="metric"><span class="label">Minimum</span><div class="value"><b id="cmin">-</b> mm <small id="cmin_x"></small></div></div>
-              <div class="metric"><span class="label">Maximum</span><div class="value"><b id="cmax">-</b> mm <small id="cmax_x"></small></div></div>
-            </div>
-            <div class="note" id="crkNote">Auto mode: uses ADS1115 CH1 as reference (ratio CH0/CH1), clamped by RAW_MIN_STABLE.
-Manual mode: uses calibration mapping (r0/r1 ↔ mm0/mm1) and length limit.</div>
-            <div class="note hidden" id="crkRaw"></div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="panel" data-panel>
-      <button class="panel-tab" type="button" data-panel-toggle aria-expanded="false">
-        <span class="panel-tab-left">
-          <span class="panel-index">02</span>
-          <span class="panel-title-wrap">
-            <span class="panel-title">Controller</span>
-            <span class="panel-subtitle">Device status, LoRa state and manual actions</span>
-          </span>
-        </span>
-        <span class="panel-arrow">⌄</span>
-      </button>
-      <div class="panel-body">
-        <div class="content-grid">
-          <div class="card">
-            <h3>System status</h3>
-            <div class="kv">
-              <div class="k">Mode</div><div class="v"><b id="mode">-</b></div>
-              <div class="k">IP</div><div class="v mono"><b id="ip">-</b></div>
-              <div class="k">Uptime</div><div class="v"><b id="up">-</b> s</div>
-              <div class="k">Heap</div><div class="v"><b id="heap">-</b> B</div>
-              <div class="k">LoRa joined</div><div class="v"><b id="joined">-</b></div>
-              <div class="k">Next TX</div><div class="v"><b id="nexttx">-</b> s</div>
-            </div>
-          </div>
-          <div class="card">
-            <h3>Actions</h3>
-            <small id="msg" class="status" aria-live="polite" role="status"></small>
-            <div class="actions">
-              <button id="btnSend" class="btn btn-block" type="button">Manual LoRa send</button>
-              <button id="btnReset" class="btn btn-block" type="button">Reboot</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="panel" data-panel>
-      <button class="panel-tab" type="button" data-panel-toggle aria-expanded="false">
-        <span class="panel-tab-left">
-          <span class="panel-index">03</span>
-          <span class="panel-title-wrap">
-            <span class="panel-title">LoRa & Calibration</span>
-            <span class="panel-subtitle">Uniform input fields for keys, TX period and crack calibration</span>
-          </span>
-        </span>
-        <span class="panel-arrow">⌄</span>
-      </button>
-      <div class="panel-body">
-        <div class="content-grid">
-          <div class="card">
-            <h3 id="i_lora">LoRa / Sampling</h3>
-            <div class="field-grid">
-              <div class="field"><label for="devEuiField">DevEUI</label><input id="devEuiField" inputmode="latin" autocomplete="off" placeholder="DevEUI LSB e.g. 7766554433221100"></div>
-              <div class="field"><label for="appEuiField">AppEUI</label><input id="appEuiField" inputmode="latin" autocomplete="off" placeholder="AppEUI LSB"></div>
-              <div class="field"><label for="appKeyField">AppKey</label><input id="appKeyField" inputmode="latin" autocomplete="off" placeholder="AppKey MSB"></div>
-              <div class="field"><label for="minutesField">TX period</label><div class="input-group"><input id="minutesField" type="number" min="1" max="100" step="1" placeholder="10"><span class="input-suffix">min</span></div></div>
-              <div class="field"><label for="measField">Meas period</label><div class="input-group"><input id="measField" type="number" min="10" max="10" step="1" placeholder="10" disabled><span class="input-suffix">s</span></div></div>
-              <div class="field"><label for="drField">DataRate (EU868)</label>
-                <select id="drField">
-                  <option value="auto">Auto (ADR UI)</option>
-                  <option value="0">DR0 (SF12 / 125kHz)</option>
-                  <option value="1">DR1 (SF11 / 125kHz)</option>
-                  <option value="2">DR2 (SF10 / 125kHz)</option>
-                  <option value="3">DR3 (SF9 / 125kHz)</option>
-                  <option value="4">DR4 (SF8 / 125kHz)</option>
-                  <option value="5">DR5 (SF7 / 125kHz)</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
-          <div class="card">
-            <h3>Crack calibration</h3>
-            <div class="field-grid">
-              <div class="field"><label for="crRefMode">Ref mode</label>
-                <select id="crRefMode">
-                  <option value="auto">Auto (CH0/CH1)</option>
-                  <option value="manual">Manual (r0/r1 ↔ mm0/mm1)</option>
-                </select>
-              </div>
-              <div class="field"><label for="crLen">Length</label><div class="input-group"><input id="crLen" type="number" min="0.01" max="1000" step="0.01" placeholder="10.00"><span class="input-suffix">mm</span></div></div>
-              <div class="field"><label for="crR0">r0 (raw)</label><input id="crR0" type="number" min="-32768" max="32767" step="1" placeholder="5"></div>
-              <div class="field"><label for="crR1">r1 (raw)</label><input id="crR1" type="number" min="-32768" max="32767" step="1" placeholder="25480"></div>
-              <div class="field"><label for="crMm0">mm0</label><div class="input-group"><input id="crMm0" type="number" min="0" max="1000" step="0.01" placeholder="0.00"><span class="input-suffix">mm</span></div></div>
-              <div class="field"><label for="crMm1">mm1</label><div class="input-group"><input id="crMm1" type="number" min="0" max="1000" step="0.01" placeholder="10.00"><span class="input-suffix">mm</span></div></div>
-            </div>
-            <div class="actions"><button id="btnSaveAll" class="btn btn-block" type="button">Save settings</button></div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="panel" data-panel>
-      <button class="panel-tab" type="button" data-panel-toggle aria-expanded="false">
-        <span class="panel-tab-left">
-          <span class="panel-index">04</span>
-          <span class="panel-title-wrap">
-            <span class="panel-title">History</span>
-            <span class="panel-subtitle">Latest local measurements in a dedicated expandable panel</span>
-          </span>
-        </span>
-        <span class="panel-arrow">⌄</span>
-      </button>
-      <div class="panel-body">
-        <div class="card">
-          <div class="section-head">
-            <h3>Last measurements</h3>
-            <span class="header-pill">Newest first</span>
-          </div>
-          <div class="small">Controller local log</div>
-          <div class="logWrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Age, s</th>
-                  <th>Temp, °C</th>
-                  <th>Crack, mm</th>
-                </tr>
-              </thead>
-              <tbody id="logBody"></tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </section>
-
-  </div>
+<datalist id="hzList">
+<option value="0.1"><option value="0.2"><option value="0.5"><option value="1"><option value="2"><option value="5"><option value="10"><option value="20"><option value="25"><option value="50"><option value="100"><option value="150"><option value="200">
+</option></option></option></option></option></option></option></option></option></option></option></option></option></datalist>
+<div class="tabs-shell"><div aria-label="Main sections" class="tabs-bar" role="tablist"><button aria-controls="tabPanel-measure" aria-selected="true" class="tab-btn active" data-tab="measure" id="tabBtn-measure" role="tab" type="button">Measurements &amp; settings</button><button aria-controls="tabPanel-system" aria-selected="false" class="tab-btn" data-tab="system" id="tabBtn-system" role="tab" type="button">LoRa &amp; controller</button></div><div class="tab-panels"><section aria-labelledby="tabBtn-measure" class="tab-panel active" data-tab="measure" id="tabPanel-measure" role="tabpanel"><div class="tabs-inner-grid"><div class="tabs-stack"><section class="card">
+<h3 id="h_measurements">Measurements</h3>
+<div class="kv">
+<div class="k" id="lab_time">Time</div><div class="v" id="time">--:--:--</div>
+<div class="k" id="lab_selftest">Self-test</div><div class="v"><span class="badge" id="selftest">-</span></div>
+<div class="k" id="lab_delta">Delta</div><div class="v"><span id="selftest_delta">-</span> mV</div>
+</div>
+<div class="hr"></div>
+<div class="kv">
+<div class="k" id="lab_dms_raw">DMS raw</div><div class="v" id="dms_raw">-</div>
+<div class="k" id="lab_dms_mvv">DMS mV/V</div><div class="v" id="dms_mvv">-</div>
+<div class="k" id="lab_dms_mv">DMS est. mV</div><div class="v" id="dms_mv">-</div>
+<div class="k" id="lab_dms_actual">DMS actual</div><div class="v"><span id="dms_actual">-</span> Hz</div>
+</div>
+<div class="plot-wrap">
+<canvas height="136" id="dmsPlot" width="640"></canvas>
+<div class="small" id="plot_caption">Live trend: DMS mV/V</div>
+</div>
+<div class="hr"></div>
+<div class="kv">
+<div class="k" id="lab_ain2_raw">AIN2 raw</div><div class="v" id="ain2_raw">-</div>
+<div class="k" id="lab_ain2_adc">AIN2 ADC</div><div class="v"><span id="ain2_mv">-</span> mV</div>
+<div class="k" id="lab_ain2_scaled">AIN2 scaled</div><div class="v"><span id="ain2_scaled">-</span> <span id="ain2_unit">-</span></div>
+<div class="k" id="lab_ain2_actual">AIN2 actual</div><div class="v"><span id="ain2_actual">-</span> Hz</div>
+</div>
+<div class="plot-wrap">
+<canvas height="136" id="ain2Plot" width="640"></canvas>
+<div class="small" id="plot_caption_ain2">Live trend: AIN2 scaled</div>
+</div>
+<div class="hr"></div>
+<div class="kv">
+<div class="k" id="lab_temp">Temperature</div><div class="v"><span id="temp">-</span> °C</div>
+<div class="k" id="lab_total_actual">Total actual</div><div class="v"><span id="total_actual">-</span> Hz</div>
+</div>
+</section></div><div class="tabs-stack"><section class="card">
+<h3 id="h_measure_cfg">Measurement settings</h3>
+<div class="compact-group">
+<div class="sensor-box">
+<div class="sensor-head">
+<div>
+<div class="sensor-title" id="tit_dms">DMS / AIN0-AIN1</div>
+<div class="sensor-meta" id="dms_hint">Fast differential channel</div>
+</div>
+<label class="switch"><input id="dmsOn" type="checkbox"/><span class="switch-ui"></span><span id="sw_on_off_dms">On</span></label>
+</div>
+<div class="field"><label for="dmsHz" id="lab_dms_hz">Frequency, Hz</label><input id="dmsHz" list="hzList" max="200" min="0.1" step="0.1" type="number"/></div>
+</div>
+<div class="sensor-box">
+<div class="sensor-head">
+<div>
+<div class="sensor-title" id="tit_ain2">AIN2</div>
+<div class="sensor-meta" id="ain2_hint">Potentiometer or 0-10 V input</div>
+</div>
+<label class="switch"><input id="ain2On" type="checkbox"/><span class="switch-ui"></span><span id="sw_on_off_ain2">On</span></label>
+</div>
+<div class="field"><label for="ain2Hz" id="lab_ain2_hz">Frequency, Hz</label><input id="ain2Hz" list="hzList" max="100" min="0.1" step="0.1" type="number"/></div>
+<div class="field"><label for="ain2Mode" id="lab_ain2_type">AIN2 type</label>
+<select id="ain2Mode">
+<option id="opt_ain2_pot" value="pot">Potentiometer / Wegsensor</option>
+<option id="opt_ain2_volt" value="volt">0-10 V input</option>
+</select>
+</div>
+<div class="stack" id="potBlock">
+<div class="field"><label for="potPreset" id="lab_preset">Sensor length preset</label>
+<select id="potPreset">
+<option value="5">5 mm</option>
+<option value="10">10 mm</option>
+<option value="25">25 mm</option>
+<option value="50">50 mm</option>
+<option value="75">75 mm</option>
+<option value="100">100 mm</option>
+<option value="150">150 mm</option>
+<option value="200">200 mm</option>
+<option id="opt_custom" value="custom">Custom</option>
+</select>
+</div>
+<div class="field"><label for="ain2Len" id="lab_length">Length, mm</label><input id="ain2Len" min="0.01" step="0.01" type="number"/></div>
+</div>
+<div class="stack hidden" id="voltBlock">
+<div class="field"><label for="adcFs" id="lab_adc_fs">ADC full-scale, V</label><input id="adcFs" min="0.1" step="0.001" type="number"/></div>
+<div class="field"><label for="inputFs" id="lab_input_fs">Input full-scale, V</label><input id="inputFs" min="0.1" step="0.1" type="number"/></div>
+<div class="note" id="volt_note">Example: if the adapter maps 0-10 V to 0-3.123 V, keep 3.123 and 10.0.</div>
+</div>
+</div>
+<div class="sensor-box">
+<div class="sensor-head">
+<div>
+<div class="sensor-title" id="tit_temp">Temperature</div>
+<div class="sensor-meta" id="temp_hint">DS18B20 fixed rate</div>
+</div>
+<label class="switch"><input id="tempOn" type="checkbox"/><span class="switch-ui"></span><span id="sw_on_off_temp">On</span></label>
+</div>
+</div>
+<div class="sensor-box">
+<div class="sensor-head">
+<div>
+<div class="sensor-title" id="tit_sd">SD logging</div>
+<div class="sensor-meta" id="sd_hint">AP mode only, CSV rotation</div>
+</div>
+<label class="switch"><input id="sdOn" type="checkbox"/><span class="switch-ui"></span><span id="sw_on_off_sd">On</span></label>
+</div>
+<div class="field"><label for="sdBase" id="lab_sd_base">Base filename</label><input id="sdBase" maxlength="24"/></div>
+<div class="field"><label for="sdRotateKB" id="lab_sd_rotate">Rotate at, KB</label><input id="sdRotateKB" min="64" step="64" type="number"/></div>
+<div class="note" id="sd_note">A file with suffix _001, _002, ... is created automatically when the size limit is reached.</div>
+<div class="kv" style="margin-top:8px">
+<div class="k" id="lab_sd_file">Current CSV</div><div class="v mono" id="sdfile">-</div>
+</div>
+<div class="row" style="margin-top:8px">
+<button class="btn" id="browseCsvBtn" type="button">Browse / download CSV</button>
+</div>
+</div>
+<div class="summary" id="perfBox">Estimated AP speed: -</div>
+<div class="status" id="measMsg"></div>
+<button class="btn btn-block" id="saveMeasBtn" type="button">Save measurement settings</button>
+</div>
+</section></div></div></section><section aria-labelledby="tabBtn-system" class="tab-panel" data-tab="system" id="tabPanel-system" role="tabpanel"><div class="tabs-inner-grid system-grid"><div class="tabs-stack"><section class="card">
+<h3 id="h_controller">Controller</h3>
+<div class="kv">
+<div class="k" id="lab_mode">Mode</div><div class="v" id="mode">-</div>
+<div class="k" id="lab_ip">IP</div><div class="v mono" id="ip">-</div>
+<div class="k" id="lab_uptime">Uptime</div><div class="v"><span id="uptime">-</span> s</div>
+<div class="k" id="lab_heap">Heap</div><div class="v"><span id="heap">-</span> B</div>
+<div class="k" id="lab_board">Board</div><div class="v" id="board">-</div>
+<div class="k" id="lab_chip">Chip</div><div class="v" id="chip">-</div>
+<div class="k" id="lab_cpu">CPU</div><div class="v"><span id="cpu">-</span> MHz</div>
+<div class="k" id="lab_flash">Flash</div><div class="v"><span id="flash">-</span> MB</div>
+<div class="k" id="lab_apssid">AP SSID</div><div class="v mono" id="apssid">-</div>
+<div class="k" id="lab_sdst">SD</div><div class="v" id="sdstate">-</div>
+<div class="k" id="lab_chipmac">Chip MAC</div><div class="v mono" id="chipmac">-</div>
+<div class="k" id="lab_chipeui">Chip DevEUI</div><div class="v mono" id="chipeui">-</div>
+</div>
+<div class="hr"></div>
+<div aria-live="polite" class="status" id="statusMsg" role="status"></div>
+<div class="status" id="ctrlMsg"></div>
+<button class="btn btn-block" id="resetBtn" type="button">Reboot</button>
+</section></div><div class="tabs-stack"><section class="card">
+<h3 id="h_lora">LoRa</h3>
+<div class="btn-pair">
+<button class="btn" id="readChipBtn" type="button">Read chip DevEUI</button>
+<button class="btn" id="useChipBtn" type="button">Use chip DevEUI</button>
+</div>
+<div class="field"><label for="devEui" id="lab_deveui">DevEUI</label><input autocomplete="off" class="mono" id="devEui" inputmode="latin"/></div>
+<div class="field"><label for="appEui" id="lab_appeui">AppEUI</label><input autocomplete="off" class="mono" id="appEui" inputmode="latin"/></div>
+<div class="field"><label for="appKey" id="lab_appkey">AppKey</label><input autocomplete="off" class="mono" id="appKey" inputmode="latin"/></div>
+<div class="field"><label for="minutes" id="lab_interval">Send interval, min</label><input id="minutes" max="1440" min="1" step="1" type="number"/></div>
+<div class="field"><label for="drMode" id="lab_drate">Data rate</label>
+<select id="drMode">
+<option value="auto">ADR / Auto</option>
+<option value="0">DR0 (SF12)</option>
+<option value="1">DR1 (SF11)</option>
+<option value="2">DR2 (SF10)</option>
+<option value="3">DR3 (SF9)</option>
+<option value="4">DR4 (SF8)</option>
+<option value="5">DR5 (SF7)</option>
+</select>
+</div>
+<div class="summary" id="lora_note" style="margin-top:12px">Saved in AP mode. FIELD mode takes one fresh sensor snapshot immediately before each LoRa send and then returns to LoRaWAN sleep.</div>
+<div class="status mono" id="chipInfo" style="margin-top:12px"></div>
+<div class="status" id="loraMsg" style="margin-top:8px"></div>
+<button class="btn btn-block" id="saveLoRaBtn" type="button">Save LoRa settings</button>
+</section></div></div></section></div></div>
 </main>
-
+<div class="hidden" id="sdModal" style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;padding:18px;">
+<div style="max-width:780px;margin:0 auto;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;max-height:90vh;display:flex;flex-direction:column;gap:10px;">
+<div class="row" style="justify-content:space-between;align-items:center;">
+<h3 id="sdModalTitle" style="margin:0">Files on SD</h3>
+<button class="btn" id="closeSdModalBtn" type="button">Close</button>
+</div>
+<div class="row">
+<button class="btn" id="refreshCsvListBtn" type="button">Refresh list</button>
+<button class="btn" id="selectAllCsvBtn" type="button">Select all</button>
+<button class="btn" id="clearAllCsvBtn" type="button">Clear</button>
+<button class="btn" id="downloadSelectedCsvBtn" type="button">Download selected</button>
+<button class="btn" id="deleteSelectedCsvBtn" type="button">Delete selected</button>
+</div>
+<div class="small" id="sdModalHint">Choose one CSV file to download it directly as .csv. Choose multiple CSV files to download them as one real ZIP file without compression. The active current log file cannot be deleted.</div>
+<div class="status" id="sdListMsg"></div>
+<div style="overflow:auto;border:1px solid var(--line);border-radius:12px;">
+<table style="margin-top:0">
+<thead>
+<tr><th style="width:40px"></th><th>Name</th><th>Size</th></tr>
+</thead>
+<tbody id="sdListBody"></tbody>
+</table>
+</div>
+</div>
+</div>
 <footer class="footer">
-  <a href="https://www.marxkrontal.com/de/" target="_blank" rel="noopener noreferrer">© <span id="yr"></span> MKP GmbH</a>
+<a href="https://www.marxkrontal.com/de/" rel="noopener noreferrer" target="_blank">© <span id="yr"></span> MKP GmbH</a>
+<span id="i_footer_by">developed by</span>
+<a href="mailto:roman.sliusar@marxkrontal.com">SLR</a>
+<a href="mailto:evgenij.koloda@marxkrontal.com">KOE</a>
+<a href="mailto:Bernd.Schinkoethe@marxkrontal.com">SCE</a>
 </footer>
 <script>
-document.addEventListener('DOMContentLoaded', function(){
-  var panels = Array.prototype.slice.call(document.querySelectorAll('[data-panel]'));
-  panels.forEach(function(panel){
-    var btn = panel.querySelector('[data-panel-toggle]');
-    if (!btn) return;
-    btn.addEventListener('click', function(){
-      panels.forEach(function(other){
-        var obtn = other.querySelector('[data-panel-toggle]');
-        var open = other === panel ? !other.classList.contains('is-open') : false;
-        other.classList.toggle('is-open', open);
-        if (obtn) obtn.setAttribute('aria-expanded', open ? 'true' : 'false');
-      });
-    });
-  });
-});
-</script>
-<script>
-const THEME_KEY='theme';
-function byId(id){ return document.getElementById(id); }
-function setText(id,val){ const el=byId(id); if(el) el.textContent=val; }
-function setTitle(id,val){ const el=byId(id); if(!el) return; el.title=val||''; el.setAttribute('aria-label',val||''); }
-function fmtTime(){ const d=new Date(),p=n=>String(n).padStart(2,'0'); return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`; }
+var THEME_KEY = 'lora_theme';
+var LANG_KEY = 'lora_lang';
+var currentLang = 'de';
+var I18N = null;
+var LANGS = ['de','en','uk'];
+var liveBusy = false;
+var metaBusy = false;
+var configLoaded = false;
+var plotValues = [];
+var ain2PlotValues = [];
+var PLOT_MAX = 160;
+window.__lastCfg = null;
 
-async function q(url,opts){
-  const r=await fetch(url,opts);
-  if(!r.ok) throw new Error(await r.text());
-  const ct=r.headers.get('content-type')||'';
-  return ct.includes('application/json')?r.json():r.text();
-}
+function $(id){ return document.getElementById(id); }
+function setText(id, value){ var el = $(id); if (el) el.textContent = value; }
+function setMsg(id, value){ var el = $(id); if (el) el.textContent = value || ''; }
+function num(v, d){ return (typeof v === 'number' && isFinite(v)) ? Number(v).toFixed(d) : '-'; }
+function intNum(v){ return (typeof v === 'number' && isFinite(v)) ? String(Math.round(v)) : '-'; }
+function fmtTime(){ var d = new Date(); var p = function(n){ return String(n).padStart(2,'0'); }; return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()); }
+function normalizeHex(s){ return (s || '').replace(/\s+/g, '').toUpperCase(); }
+function exactHex(s, len){ return new RegExp('^[0-9A-F]{' + len + '}$').test(normalizeHex(s)); }
+function boolNum(v){ return v === true || v === 1 || v === '1'; }
+function tr(key, fallback){ var pack = I18N && I18N[currentLang]; return (pack && pack[key]) || fallback || key; }
 
-function logMsg(text){
-  const el=byId('msg'); if(!el) return;
-  const ts=new Date().toLocaleTimeString();
-  const line=`[${ts}] ${text}`;
-  el.textContent = el.textContent ? (el.textContent+'\n'+line) : line;
-}
-
-function markDirty(el){ if(el) el.dataset.dirty="1"; }
-function clearDirty(el){ if(el) delete el.dataset.dirty; }
-function bindDirty(id){
-  const el=byId(id); if(!el) return;
-  el.addEventListener('input',()=>markDirty(el));
-  el.addEventListener('change',()=>markDirty(el));
-}
-function setInputIfIdle(id,val){
-  const el=byId(id); if(!el) return;
-  if(el.dataset.dirty==="1") return;
-  if(document.activeElement===el) return;
-  const v = (val ?? "");
-  if(el.dataset.inited!=="1" || el.value!==String(v)){
-    el.value=String(v);
-    el.dataset.inited="1";
-  }
+async function api(url, opt){
+  var r = await fetch(url, opt || {});
+  var txt = await r.text();
+  var data = {};
+  try { data = txt ? JSON.parse(txt) : {}; }
+  catch (e) { throw new Error(txt || ('HTTP ' + r.status)); }
+  if (!r.ok || data.ok === false) throw new Error(data.error || ('HTTP ' + r.status));
+  return data;
 }
 
 function setTheme(t){
-  document.documentElement.dataset.theme=t;
-  setText('themeBtn', t==='dark'?'☀️':'🌙');
-  localStorage.setItem(THEME_KEY,t);
+  document.documentElement.dataset.theme = t;
+  $('themeBtn').textContent = t === 'dark' ? '☀️' : '🌙';
+  localStorage.setItem(THEME_KEY, t);
+  drawPlots();
 }
 
-function normHex(s){ return (s||'').trim().replace(/\s+/g,'').toUpperCase(); }
-function n(v){ const x=Number(v); return Number.isFinite(x)?x:null; }
-function mmFromX1000(x){ const v=n(x); return (v==null)?null:(v/1000.0); }
-function fmtMm(x){ const v=n(x); return (v==null)?null:v.toFixed(3); }
-function fmtC(x){ const v=n(x); return (v==null)?null:v.toFixed(2); }
+async function loadI18n(){
+  try {
+    var r = await fetch('/i18n.json');
+    if (r.ok) I18N = await r.json();
+  } catch (e) {}
+}
 
-function renderLog(log){
-  const body=byId('logBody');
-  if(!body) return;
-  body.innerHTML='';
+function applyLang(){
+  document.documentElement.lang = currentLang;
+  $('langBtn').textContent = currentLang.toUpperCase();
+  setText('i_title', tr('title','MKP LoRaSense Node'));
+  setText('sub_title', tr('subtitle','AP live measurement / FIELD LoRa snapshot'));
+  setText('lab_fw', tr('firmware','Firmware'));
+  setText('h_measurements', tr('measurements','Measurements'));
+  setText('lab_time', tr('time','Time'));
+  setText('lab_selftest', tr('selftest','Self-test'));
+  setText('lab_delta', tr('delta','Delta'));
+  setText('lab_dms_raw', tr('dms_raw','DMS raw'));
+  setText('lab_dms_mvv', tr('dms_mvv','DMS mV/V'));
+  setText('lab_dms_mv', tr('dms_mv','DMS est. mV'));
+  setText('lab_dms_actual', tr('dms_actual','DMS actual'));
+  setText('plot_caption', tr('plot_caption','Live trend: DMS mV/V'));
+  setText('plot_caption_ain2', tr('plot_caption_ain2','Live trend: AIN2 scaled'));
+  setText('lab_ain2_raw', tr('ain2_raw','AIN2 raw'));
+  setText('lab_ain2_adc', tr('ain2_adc','AIN2 ADC'));
+  setText('lab_ain2_scaled', tr('ain2_scaled','AIN2 scaled'));
+  setText('lab_ain2_actual', tr('ain2_actual','AIN2 actual'));
+  setText('lab_temp', tr('temperature','Temperature'));
+  setText('lab_total_actual', tr('total_actual','Total actual'));
 
-  for(let i=0;i<log.length;i++){
-    const r=log[i]||{};
-    const age=(r.age_s!=null)?r.age_s:'-';
-    const tc=(r.t_c!=null)?Number(r.t_c).toFixed(2):'-';
-    // firmware currently returns crack_mm in log rows (we set it in /api/state)
-    const cm=(r.crack_mm!=null)?Number(r.crack_mm).toFixed(3):'-';
+  setText('h_controller', tr('controller','Controller'));
+  setText('lab_mode', tr('mode','Mode'));
+  setText('lab_ip', tr('ip','IP'));
+  setText('lab_uptime', tr('uptime','Uptime'));
+  setText('lab_heap', tr('heap','Heap'));
+  setText('lab_board', tr('board','Board'));
+  setText('lab_chip', tr('chip','Chip'));
+  setText('lab_cpu', tr('cpu','CPU'));
+  setText('lab_flash', tr('flash','Flash'));
+  setText('lab_apssid', tr('ap_ssid','AP SSID'));
+  setText('lab_sdst', tr('sd_state','SD'));
+  setText('lab_chipmac', tr('chip_mac','Chip MAC'));
+  setText('lab_chipeui', tr('chip_eui','Chip DevEUI'));
+  setText('resetBtn', tr('reboot','Reboot'));
 
-    const tr=document.createElement('tr');
-    tr.innerHTML=`<td>${i+1}</td><td>${age}</td><td>${tc}</td><td>${cm}</td>`;
-    body.appendChild(tr);
+  setText('h_lora', tr('lora','LoRa'));
+  setText('readChipBtn', tr('read_chip','Read chip DevEUI'));
+  setText('useChipBtn', tr('use_chip','Use chip DevEUI'));
+  setText('lab_deveui', tr('deveui','DevEUI'));
+  setText('lab_appeui', tr('appeui','AppEUI'));
+  setText('lab_appkey', tr('appkey','AppKey'));
+  setText('lab_interval', tr('interval','Send interval, min'));
+  setText('lab_drate', tr('drate','Data rate'));
+  setText('lora_note', tr('lora_note','Saved in AP mode. FIELD mode takes one fresh sensor snapshot immediately before each LoRa send and then returns to LoRaWAN sleep.'));
+  setText('saveLoRaBtn', tr('save_lora','Save LoRa settings'));
+
+  setText('h_measure_cfg', tr('measure_cfg','Measurement settings'));
+  setText('tit_dms', tr('tit_dms','DMS / AIN0-AIN1'));
+  setText('dms_hint', tr('dms_hint','Fast differential channel'));
+  setText('sw_on_off_dms', tr('on','On'));
+  setText('lab_dms_hz', tr('dms_hz','Frequency, Hz'));
+  setText('tit_ain2', tr('tit_ain2','AIN2'));
+  setText('ain2_hint', tr('ain2_hint','Potentiometer or 0-10 V input'));
+  setText('sw_on_off_ain2', tr('on','On'));
+  setText('lab_ain2_hz', tr('ain2_hz','Frequency, Hz'));
+  setText('lab_ain2_type', tr('ain2_type','AIN2 type'));
+  setText('opt_ain2_pot', tr('ain2_pot','Potentiometer / Wegsensor'));
+  setText('opt_ain2_volt', tr('ain2_volt','0-10 V input'));
+  setText('lab_preset', tr('preset','Sensor length preset'));
+  setText('lab_length', tr('length','Length, mm'));
+  setText('opt_custom', tr('custom','Custom'));
+  setText('lab_adc_fs', tr('adc_fs','ADC full-scale, V'));
+  setText('lab_input_fs', tr('input_fs','Input full-scale, V'));
+  setText('volt_note', tr('volt_note','Example: if the adapter maps 0-10 V to 0-3.123 V, keep 3.123 and 10.0.'));
+  setText('tit_temp', tr('tit_temp','Temperature'));
+  setText('temp_hint', tr('temp_hint','DS18B20 fixed rate'));
+  setText('sw_on_off_temp', tr('on','On'));
+  setText('tit_sd', tr('tit_sd','SD logging'));
+  setText('sd_hint', tr('sd_hint','AP mode only, CSV rotation'));
+  setText('sw_on_off_sd', tr('on','On'));
+  setText('lab_sd_base', tr('sd_base','Base filename'));
+  setText('lab_sd_rotate', tr('sd_rotate','Rotate at, KB'));
+  setText('sd_note', tr('sd_note','A file with suffix _001, _002, ... is created automatically when the size limit is reached.'));
+  setText('lab_sd_file', tr('sd_file','Current CSV'));
+  setText('browseCsvBtn', tr('browse_csv','Browse / download CSV'));
+  setText('deleteSelectedCsvBtn', tr('delete_selected','Delete selected'));
+  setText('sdModalTitle', tr('sd_files','Files on SD'));
+  setText('closeSdModalBtn', tr('close','Close'));
+  setText('refreshCsvListBtn', tr('refresh_list','Refresh list'));
+  setText('selectAllCsvBtn', tr('select_all','Select all'));
+  setText('clearAllCsvBtn', tr('clear','Clear'));
+  setText('downloadSelectedCsvBtn', tr('download_tar','Download selected'));
+  setText('sdModalHint', tr('sd_modal_hint','Choose one CSV file to download it directly as .csv. Choose multiple CSV files to download them as one real ZIP file without compression. The active current log file cannot be deleted.'));
+  setText('saveMeasBtn', tr('save_meas','Save measurement settings'));
+  setText('footer_by', tr('footer_by','developed by'));
+
+  $('devEui').placeholder = tr('ph_deveui','DevEUI');
+  $('appEui').placeholder = tr('ph_appeui','AppEUI');
+  $('appKey').placeholder = tr('ph_appkey','AppKey');
+  $('minutes').placeholder = tr('ph_minutes','Interval, min');
+  $('sdBase').placeholder = tr('sd_base','Base filename');
+
+  updateStatusText($('mode').textContent || 'CONFIG');
+  updatePerfBox(window.__lastLive || null, window.__lastCfg || null);
+  drawPlots();
+}
+
+function syncPreset(){
+  var len = Number($('ain2Len').value);
+  var preset = $('potPreset');
+  var opts = ['5','10','25','50','75','100','150','200'];
+  var match = opts.find(function(v){ return Math.abs(Number(v) - len) < 0.001; });
+  preset.value = match || 'custom';
+}
+
+function updateAin2Mode(){
+  var isVolt = $('ain2Mode').value === 'volt';
+  $('voltBlock').classList.toggle('hidden', !isVolt);
+  $('potBlock').classList.toggle('hidden', isVolt);
+}
+
+function fillConfig(cfg){
+  window.__lastCfg = cfg || null;
+  $('devEui').value = cfg.devEui || '';
+  $('appEui').value = cfg.appEui || '';
+  $('appKey').value = cfg.appKey || '';
+  $('minutes').value = cfg.minutes != null ? cfg.minutes : 15;
+  $('dmsOn').checked = boolNum(cfg.dms_enabled);
+  $('dmsHz').value = Number(cfg.dms_hz != null ? cfg.dms_hz : 200).toFixed(1);
+  $('ain2On').checked = boolNum(cfg.ain2_enabled);
+  $('ain2Hz').value = Number(cfg.ain2_hz != null ? cfg.ain2_hz : 1).toFixed(1);
+  $('ain2Mode').value = cfg.ain2_mode || 'pot';
+  $('ain2Len').value = Number(cfg.ain2_length_mm != null ? cfg.ain2_length_mm : 10).toFixed(2);
+  $('adcFs').value = Number(cfg.ain2_adc_fullscale_v != null ? cfg.ain2_adc_fullscale_v : 3.123).toFixed(3);
+  $('inputFs').value = Number(cfg.ain2_input_fullscale_v != null ? cfg.ain2_input_fullscale_v : 10).toFixed(1);
+  $('tempOn').checked = boolNum(cfg.temp_enabled);
+  $('sdOn').checked = boolNum(cfg.sd_log_enabled);
+  $('sdBase').value = cfg.sd_base || 'lorasense';
+  $('sdRotateKB').value = cfg.sd_rotate_kb != null ? cfg.sd_rotate_kb : 1024;
+  $('drMode').value = boolNum(cfg.adr) ? 'auto' : String(cfg.dr != null ? cfg.dr : 5);
+  syncPreset();
+  updateAin2Mode();
+  updatePerfBox(window.__lastLive || null, cfg);
+}
+
+function updateLive(s){
+  window.__lastLive = s || null;
+  setText('time', fmtTime());
+  $('selftest').textContent = s.selftest_ok ? tr('ok','OK') : tr('fail','FAIL');
+  $('selftest').className = 'badge ' + (s.selftest_ok ? 'ok' : 'bad');
+  setText('selftest_delta', num(s.selftest_delta_mV, 6));
+
+  setText('dms_raw', boolNum(s.dms_enabled) ? intNum(s.dms_raw) : tr('off','OFF'));
+  setText('dms_mvv', boolNum(s.dms_enabled) ? (boolNum(s.dms_valid) ? num(s.dms_mV_per_V, 6) : '-') : tr('off','OFF'));
+  setText('dms_mv', boolNum(s.dms_enabled) ? (boolNum(s.dms_valid) ? num(s.dms_mV, 6) : '-') : tr('off','OFF'));
+  setText('dms_actual', boolNum(s.dms_enabled) ? num(s.dms_rate_hz_actual, 0) : tr('off','OFF'));
+
+  setText('ain2_raw', boolNum(s.ain2_enabled) ? intNum(s.ain2_raw) : tr('off','OFF'));
+  setText('ain2_mv', boolNum(s.ain2_enabled) ? (boolNum(s.ain2_valid) ? num(s.ain2_mV, 3) : '-') : tr('off','OFF'));
+  setText('ain2_scaled', boolNum(s.ain2_enabled) ? (boolNum(s.ain2_valid) ? num(s.ain2_value, s.ain2_mode === 'volt' ? 3 : 2) : '-') : tr('off','OFF'));
+  setText('ain2_unit', boolNum(s.ain2_enabled) ? (s.ain2_unit || '-') : '');
+  setText('ain2_actual', boolNum(s.ain2_enabled) ? num(s.ain2_rate_hz_actual, 0) : tr('off','OFF'));
+
+  setText('temp', boolNum(s.temp_enabled) ? (boolNum(s.temp_valid) ? num(s.temp_C, 2) : '-') : tr('off','OFF'));
+  setText('total_actual', num(s.total_rate_hz_actual, 0));
+  setText('sdstate', s.sd_status || '-');
+
+  pushPlot(boolNum(s.dms_enabled) && boolNum(s.dms_valid) ? Number(s.dms_mV_per_V) : null);
+  pushAin2Plot(boolNum(s.ain2_enabled) && boolNum(s.ain2_valid) ? Number(s.ain2_value) : null);
+  updatePerfBox(s, window.__lastCfg || null);
+}
+
+function updateMeta(s){
+  setText('fw', s.fw || '-');
+  setText('mode', s.mode || '-');
+  setText('ip', s.ip || '-');
+  setText('uptime', intNum(s.uptime_s));
+  setText('heap', intNum(s.heap_free));
+
+  var c = s.controller || {};
+  setText('board', c.board || '-');
+  var chipTxt = c.chip_model || '-';
+  if (c.chip_rev != null) chipTxt += ' rev ' + c.chip_rev;
+  setText('chip', chipTxt);
+  setText('cpu', intNum(c.cpu_mhz));
+  setText('flash', intNum(c.flash_mb));
+  setText('apssid', c.ap_ssid || '-');
+  setText('sdstate', c.sd_status || s.sd_status || '-');
+  setText('sdfile', s.sd_file || '-');
+  setText('chipmac', c.chip_mac48 || '-');
+  setText('chipeui', c.chip_eui64 || '-');
+  updateStatusText(s.mode || 'CONFIG');
+}
+
+function updatePerfBox(live, cfg){
+  var src = (live && live.perf) || (cfg && cfg.perf) || null;
+  if (!src) { setText('perfBox', tr('perf_est','Estimated AP speed') + ': -'); return; }
+  var parts = [];
+  parts.push(tr('perf_est','Estimated AP speed') + ': ' + num(src.total_est_hz, 1) + ' Hz');
+  parts.push(tr('perf_dms','DMS') + ' ' + num(src.dms_est_hz, 1));
+  parts.push(tr('perf_ain2','AIN2') + ' ' + num(src.ain2_est_hz, 1));
+  parts.push(tr('perf_load','ADS load') + ' ' + num(src.ads_load_pct, 0) + '%');
+  setText('perfBox', parts.join(' | '));
+}
+
+function updateStatusText(mode){
+  var m = mode || 'CONFIG';
+  var text = (m === 'FIELD')
+    ? tr('status_field','FIELD mode active. Device sends one fresh snapshot per LoRa interval and then returns to LoRaWAN sleep.')
+    : tr('status_ap','AP mode active. Web UI, fast measurement and optional SD CSV logging are available here.');
+  setMsg('statusMsg', text);
+}
+
+function pushPlot(value){
+  plotValues.push({ t: Date.now(), v: value });
+  while (plotValues.length > PLOT_MAX) plotValues.shift();
+  drawPlots();
+}
+
+function pushAin2Plot(value){
+  ain2PlotValues.push({ t: Date.now(), v: value });
+  while (ain2PlotValues.length > PLOT_MAX) ain2PlotValues.shift();
+  drawPlots();
+}
+
+function drawSinglePlot(canvasId, series, emptyText){
+  var c = $(canvasId);
+  if (!c) return;
+  var ctx = c.getContext('2d');
+  var w = c.width, h = c.height;
+  var theme = getComputedStyle(document.documentElement);
+  var bg = theme.getPropertyValue('--plot-bg').trim();
+  var fg = theme.getPropertyValue('--muted').trim();
+  var line = theme.getPropertyValue('--line').trim();
+  var accent = theme.getPropertyValue('--accent').trim();
+  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle = bg;
+  ctx.fillRect(0,0,w,h);
+
+  ctx.strokeStyle = line;
+  ctx.lineWidth = 1;
+  for (var i=1;i<4;i++){
+    var y = Math.round(i*h/4)+0.5;
+    ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke();
+  }
+
+  var vals = series.map(function(p){ return p.v; }).filter(function(v){ return typeof v === 'number' && isFinite(v); });
+  if (!vals.length) {
+    ctx.fillStyle = fg;
+    ctx.font = '12px system-ui';
+    ctx.fillText(emptyText, 10, 20);
+    return;
+  }
+
+  var min = Math.min.apply(null, vals);
+  var max = Math.max.apply(null, vals);
+  if (Math.abs(max - min) < 1e-9) { max += 1; min -= 1; }
+  var pad = (max - min) * 0.12;
+  min -= pad; max += pad;
+
+  ctx.strokeStyle = accent;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  var started = false;
+  for (var j=0;j<series.length;j++){
+    var p = series[j];
+    if (!(typeof p.v === 'number' && isFinite(p.v))) { started = false; continue; }
+    var x = series.length <= 1 ? 0 : (j / (series.length - 1)) * (w - 1);
+    var yv = h - ((p.v - min) / (max - min)) * (h - 1);
+    if (!started) { ctx.moveTo(x, yv); started = true; }
+    else ctx.lineTo(x, yv);
+  }
+  ctx.stroke();
+
+  ctx.fillStyle = fg;
+  ctx.font = '12px system-ui';
+  ctx.fillText(max.toFixed(4), 8, 14);
+  ctx.fillText(min.toFixed(4), 8, h - 6);
+}
+
+function drawPlots(){
+  drawSinglePlot('dmsPlot', plotValues, tr('plot_wait','Waiting for DMS data...'));
+  drawSinglePlot('ain2Plot', ain2PlotValues, tr('plot_wait_ain2','Waiting for AIN2 data...'));
+}
+
+async function loadConfig(){
+  var cfg = await api('/api/config');
+  fillConfig(cfg);
+  configLoaded = true;
+}
+
+async function loadStateOnce(){
+  var s = await api('/api/state');
+  updateMeta(s);
+  updateLive(s);
+  if (!configLoaded && s.cfg) {
+    fillConfig(s.cfg);
+    configLoaded = true;
   }
 }
 
-function setCrackRow(mmId, xId, mmVal, xVal){
-  if(mmVal==null) setText(mmId,'-'); else setText(mmId, fmtMm(mmVal));
-  if(xVal==null) setText(xId,''); else setText(xId, `(${Math.trunc(Number(xVal))} x1000)`);
+function fmtBytes(n){
+  n = Number(n || 0);
+  if (n < 1024) return n + ' B';
+  if (n < 1024*1024) return (n/1024).toFixed(1) + ' KB';
+  return (n/1024/1024).toFixed(2) + ' MB';
 }
 
-async function load(){
-  try{
-    const s=await q('/api/state');
-    setText('t',fmtTime());
+function openSdModal(){ $('sdModal').classList.remove('hidden'); }
+function closeSdModal(){ $('sdModal').classList.add('hidden'); }
 
-    setText('fw', s.fw || s.version || '—');
-    if(s.fw_build){ setTitle('fw', `Build: ${s.fw_build}`); }
-
-    setText('mode', s.mode||'-');
-    setText('ip', s.ip||'-');
-    setText('up', s.uptime_s??'-');
-    setText('heap', s.heap_free??'-');
-    setText('joined', (s.joined===true)?'yes':((s.joined===false)?'no':'-'));
-    setText('nexttx', (s.next_tx_s!=null)?s.next_tx_s:'-');
-
-    // Battery + DS: firmware exposes batt_mV; temp window exposes t_cur_c etc
-    setText('bat', (s.batt_mV??'-'));
-
-    // DS display: firmware doesn't expose DS18B20_Temp; use window current as DS display
-    if(s.t_cur_c!=null){
-      setText('ds', fmtC(s.t_cur_c));
-      setText('ds_unit',' °C');
-    }else{
-      setText('ds','N/C');
-      setText('ds_unit','');
+async function refreshSdList(){
+  setMsg('sdListMsg', '');
+  var body = $('sdListBody');
+  body.innerHTML = '<tr><td colspan="3">' + tr('loading','Loading...') + '</td></tr>';
+  try {
+    var r = await api('/api/sd/list');
+    var files = Array.isArray(r.files) ? r.files.slice() : [];
+    files.sort(function(a,b){ return String(a.name||'').localeCompare(String(b.name||'')); });
+    if (!files.length) {
+      body.innerHTML = '<tr><td colspan="3">' + tr('no_csv_files','No CSV files on SD.') + '</td></tr>';
+      return;
     }
-
-    // Window info
-    const wc = (s.window_count!=null)?s.window_count:'-';
-    const ws = (s.window_samples!=null)?s.window_samples:'-';
-    setText('win',`${wc}/${ws}`);
-
-    // Temperature window
-    setText('tcur', (s.t_cur_c!=null)?fmtC(s.t_cur_c):'-');
-    setText('tavg', (s.t_avg_c!=null)?fmtC(s.t_avg_c):'-');
-    setText('tmin', (s.t_min_c!=null)?fmtC(s.t_min_c):'-');
-    setText('tmax', (s.t_max_c!=null)?fmtC(s.t_max_c):'-');
-
-    // Crack window:
-    // - firmware provides crack_*_mm (double) and crack_*_x1000 (uint)
-    setCrackRow('ccur','ccur_x', s.crack_cur_mm, s.crack_cur_x1000);
-    setCrackRow('cavg','cavg_x', s.crack_avg_mm, s.crack_avg_x1000);
-    setCrackRow('cmin','cmin_x', s.crack_min_mm, s.crack_min_x1000);
-    setCrackRow('cmax','cmax_x', s.crack_max_mm, s.crack_max_x1000);
-
-    // Optional raw display if firmware adds it later
-    const raw0 = s.crack_raw0;
-    const raw1 = s.crack_raw1;
-    const autoUsed = s.crack_auto_used;
-    const rawEl = byId('crkRaw');
-    if(rawEl && (raw0!=null || raw1!=null || autoUsed!=null)){
-      rawEl.style.display='';
-      rawEl.textContent =
-        `ADS raw: CH0=${raw0!=null?raw0:'-'}  CH1=${raw1!=null?raw1:'-'}\n`+
-        `auto_used=${autoUsed!=null?autoUsed:'-'}`;
-    }else if(rawEl){
-      rawEl.style.display='none';
-    }
-
-    // Config
-    if(s.cfg){
-      setInputIfIdle('devEuiField', s.cfg.devEui_lsb||'');
-      setInputIfIdle('appEuiField', s.cfg.appEui_lsb||'');
-      setInputIfIdle('appKeyField', s.cfg.appKey_msb||'');
-      setInputIfIdle('minutesField', s.cfg.minutes??10);
-      setInputIfIdle('measField', 10);
-
-      // DR/ADR selector
-      const drSel=byId('drField');
-      if(drSel && drSel.dataset.dirty!=="1" && document.activeElement!==drSel){
-        if(s.cfg.adr===true) drSel.value='auto';
-        else if(s.cfg.dr!=null && s.cfg.dr>=0 && s.cfg.dr<=5) drSel.value=String(s.cfg.dr);
-        else drSel.value='auto';
-        drSel.dataset.inited="1";
-      }
-
-      // crack settings (nested)
-      const cr = s.cfg.crack || {};
-      const refMode = cr.ref_mode || 'auto';
-      setInputIfIdle('crRefMode', refMode);
-      setInputIfIdle('crLen', cr.len_mm!=null ? Number(cr.len_mm).toFixed(2) : '');
-      setInputIfIdle('crR0', cr.r0!=null ? cr.r0 : '');
-      setInputIfIdle('crR1', cr.r1!=null ? cr.r1 : '');
-      setInputIfIdle('crMm0', cr.mm0!=null ? Number(cr.mm0).toFixed(2) : '');
-      setInputIfIdle('crMm1', cr.mm1!=null ? Number(cr.mm1).toFixed(2) : '');
-    }
-
-    renderLog(s.log||[]);
-  }catch(e){
-    logMsg('state error');
+    body.innerHTML = '';
+    files.forEach(function(f, idx){
+      var trEl = document.createElement('tr');
+      var checked = (r.current && f.name === r.current) ? ' checked' : '';
+      trEl.innerHTML = '<td><input type="checkbox" class="sdFileChk" value="' + String(f.name).replace(/"/g,'&quot;') + '"' + checked + '></td>' +
+                       '<td class="mono">' + (f.name || '-') + (r.current === f.name ? ' <span class="badge">current</span>' : '') + '</td>' +
+                       '<td>' + fmtBytes(f.size) + '</td>';
+      body.appendChild(trEl);
+    });
+  } catch (e) {
+    body.innerHTML = '';
+    setMsg('sdListMsg', tr('load_list_error','Failed to load file list') + ': ' + e.message);
   }
 }
 
-async function saveAll(){
-  const sel = byId('drField') ? byId('drField').value : 'auto';
+function selectedCsvNames(){
+  return Array.prototype.slice.call(document.querySelectorAll('.sdFileChk:checked')).map(function(el){ return el.value; });
+}
 
-  const payload = {
-    devEui_lsb: normHex(byId('devEuiField').value),
-    appEui_lsb: normHex(byId('appEuiField').value),
-    appKey_msb: normHex(byId('appKeyField').value),
-    minutes: parseInt(byId('minutesField').value||'10',10),
-    meas_period_s: 10, // fixed
-    crack: {
-      ref_mode: (byId('crRefMode').value==='manual') ? 'manual' : 'auto',
-      len_mm: parseFloat(byId('crLen').value||'10'),
-      r0: parseInt(byId('crR0').value||'5',10),
-      r1: parseInt(byId('crR1').value||'25480',10),
-      mm0: parseFloat(byId('crMm0').value||'0'),
-      mm1: parseFloat(byId('crMm1').value||'10'),
-    }
-  };
-
-  if(sel==='auto'){
-    payload.adr = true;
-  }else{
-    payload.dr = parseInt(sel,10);
-    payload.adr = false;
+function triggerArchiveDownload(names){
+  if (!names.length) {
+    setMsg('sdListMsg', tr('no_csv_selected','No CSV selected.'));
+    return;
   }
+  var q = names.map(function(n){ return 'name=' + encodeURIComponent(n); }).join('&');
+  window.location = '/api/sd/archive?' + q;
+}
 
-  try{
-    const r = await fetch('/api/config/lora',{
+async function deleteSelectedCsv(names){
+  if (!names.length) {
+    setMsg('sdListMsg', tr('no_csv_selected','No CSV selected.'));
+    return;
+  }
+  if (!confirm(tr('confirm_delete_csv','Delete selected CSV files from SD?'))) return;
+  try {
+    var r = await api('/api/sd/delete', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify(payload)
+      body: JSON.stringify({ names:names })
     });
-    if(!r.ok) throw new Error(await r.text());
-    logMsg('Saved');
-    [
-      'devEuiField','appEuiField','appKeyField','minutesField','measField',
-      'drField','crRefMode','crLen','crR0','crR1','crMm0','crMm1'
-    ].forEach(id=>clearDirty(byId(id)));
-  }catch(e){
-    logMsg('Save error');
+    var parts = [];
+    if (r.deleted && r.deleted.length) parts.push(tr('deleted_csv','Deleted') + ': ' + r.deleted.length);
+    if (r.skipped && r.skipped.length) parts.push(tr('skipped_csv','Skipped') + ': ' + r.skipped.length);
+    setMsg('sdListMsg', parts.join(' | ') || tr('done','Done'));
+    await refreshSdList();
+  } catch (e) {
+    setMsg('sdListMsg', tr('delete_error','Delete error') + ': ' + e.message);
   }
 }
 
-byId('btnSend').onclick=async()=>{
-  try{
-    const r=await fetch('/api/send',{method:'POST'});
-    logMsg(r.ok?'LoRa queued':'Send error');
-  }catch(e){
-    logMsg('Send error');
-  }
-};
+async function pollLive(){
+  if (liveBusy) return;
+  liveBusy = true;
+  try {
+    var s = await api('/api/live');
+    updateLive(s);
+  } catch (e) {}
+  liveBusy = false;
+}
 
-byId('btnReset').onclick=async()=>{
-  try{
-    const r=await fetch('/api/reset',{method:'POST'});
-    logMsg(r.ok?'restarting…':'reset error');
-  }catch(e){
-    logMsg('reset error');
-  }
-};
+async function pollMeta(){
+  if (metaBusy) return;
+  metaBusy = true;
+  try {
+    var s = await api('/api/state');
+    updateMeta(s);
+  } catch (e) {}
+  metaBusy = false;
+}
 
-byId('btnSaveAll').onclick=saveAll;
+async function saveLoRa(){
+  var devEui = normalizeHex($('devEui').value);
+  var appEui = normalizeHex($('appEui').value);
+  var appKey = normalizeHex($('appKey').value);
+  if (!exactHex(devEui, 16)) throw new Error(tr('invalid_deveui','DevEUI must be 16 hex characters.'));
+  if (!exactHex(appEui, 16)) throw new Error(tr('invalid_appeui','AppEUI must be 16 hex characters.'));
+  if (!exactHex(appKey, 32)) throw new Error(tr('invalid_appkey','AppKey must be 32 hex characters.'));
 
-[
-  'devEuiField','appEuiField','appKeyField','minutesField','drField',
-  'crRefMode','crLen','crR0','crR1','crMm0','crMm1'
-].forEach(bindDirty);
+  var payload = {
+    devEui: devEui,
+    appEui: appEui,
+    appKey: appKey,
+    minutes: Number($('minutes').value || 15)
+  };
+  if ($('drMode').value === 'auto') { payload.adr = true; payload.dr = 5; }
+  else { payload.adr = false; payload.dr = Number($('drMode').value || 5); }
 
-document.addEventListener('DOMContentLoaded',()=>{
-  const savedTheme=localStorage.getItem(THEME_KEY);
-  const initTheme=savedTheme||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
-  setTheme(initTheme);
-  byId('themeBtn').onclick=()=>setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark');
+  var r = await api('/api/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+  if (r.cfg) fillConfig(r.cfg);
+  setMsg('loraMsg', tr('lora_saved','LoRa settings saved to controller.'));
+}
 
-  const y=byId('yr'); if(y) y.textContent=new Date().getFullYear();
+async function saveMeas(){
+  var payload = {
+    dms_enabled: $('dmsOn').checked ? 1 : 0,
+    dms_hz: Number($('dmsHz').value || 200),
+    ain2_enabled: $('ain2On').checked ? 1 : 0,
+    ain2_hz: Number($('ain2Hz').value || 1),
+    ain2_mode: $('ain2Mode').value,
+    ain2_length_mm: Number($('ain2Len').value || 10),
+    ain2_adc_fullscale_v: Number($('adcFs').value || 3.123),
+    ain2_input_fullscale_v: Number($('inputFs').value || 10),
+    temp_enabled: $('tempOn').checked ? 1 : 0,
+    sd_log_enabled: $('sdOn').checked ? 1 : 0,
+    sd_base: $('sdBase').value || 'lorasense',
+    sd_rotate_kb: Number($('sdRotateKB').value || 1024)
+  };
+  var r = await api('/api/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+  if (r.cfg) fillConfig(r.cfg);
+  setMsg('measMsg', tr('meas_saved','Measurement settings saved to controller.'));
+}
 
-  setInterval(load,1000);
-  load();
+$('saveLoRaBtn').addEventListener('click', async function(){
+  try { await saveLoRa(); }
+  catch (e) { setMsg('loraMsg', tr('save_error','Save error') + ': ' + e.message); }
 });
+
+$('saveMeasBtn').addEventListener('click', async function(){
+  try { await saveMeas(); }
+  catch (e) { setMsg('measMsg', tr('save_error','Save error') + ': ' + e.message); }
+});
+
+$('readChipBtn').addEventListener('click', async function(){
+  try {
+    var r = await api('/api/deveui');
+    var msg = tr('chip_active','Active DevEUI') + ': ' + (r.activeLoRaDevEUI || '-') + '\n' +
+      tr('chip_hw','Chip DevEUI') + ': ' + (r.chipEUI || '-') + '\n' +
+      tr('chip_mac','Chip MAC') + ': ' + (r.chipMac48 || '-');
+    setMsg('chipInfo', msg);
+    setMsg('loraMsg', '');
+  } catch (e) {
+    setMsg('loraMsg', tr('save_error','Save error') + ': ' + e.message);
+  }
+});
+
+$('useChipBtn').addEventListener('click', async function(){
+  try {
+    var r = await api('/api/deveui', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ use:'chip' }) });
+    if (r.storedDevEUI) $('devEui').value = r.storedDevEUI;
+    var msg = tr('chip_active','Active DevEUI') + ': ' + (r.activeLoRaDevEUI || '-') + '\n' +
+      tr('chip_hw','Chip DevEUI') + ': ' + (r.chipEUI || '-');
+    setMsg('chipInfo', msg);
+    setMsg('loraMsg', tr('use_chip_saved','Chip DevEUI stored in controller.'));
+  } catch (e) {
+    setMsg('loraMsg', tr('save_error','Save error') + ': ' + e.message);
+  }
+});
+
+$('resetBtn').addEventListener('click', async function(){
+  try {
+    await api('/api/reset', { method:'POST' });
+    setMsg('ctrlMsg', tr('reset_msg','Controller restarting...'));
+  } catch (e) {
+    setMsg('ctrlMsg', tr('save_error','Save error') + ': ' + e.message);
+  }
+});
+
+
+$('browseCsvBtn').addEventListener('click', async function(){
+  openSdModal();
+  await refreshSdList();
+});
+$('closeSdModalBtn').addEventListener('click', closeSdModal);
+$('refreshCsvListBtn').addEventListener('click', refreshSdList);
+$('selectAllCsvBtn').addEventListener('click', function(){
+  Array.prototype.forEach.call(document.querySelectorAll('.sdFileChk'), function(el){ el.checked = true; });
+});
+$('clearAllCsvBtn').addEventListener('click', function(){
+  Array.prototype.forEach.call(document.querySelectorAll('.sdFileChk'), function(el){ el.checked = false; });
+});
+$('downloadSelectedCsvBtn').addEventListener('click', function(){
+  triggerArchiveDownload(selectedCsvNames());
+});
+$('deleteSelectedCsvBtn').addEventListener('click', function(){
+  deleteSelectedCsv(selectedCsvNames());
+});
+$('sdModal').addEventListener('click', function(ev){ if (ev.target === $('sdModal')) closeSdModal(); });
+
+$('potPreset').addEventListener('change', function(){
+  if ($('potPreset').value !== 'custom') $('ain2Len').value = Number($('potPreset').value).toFixed(2);
+});
+$('ain2Len').addEventListener('input', syncPreset);
+$('ain2Mode').addEventListener('change', updateAin2Mode);
+$('themeBtn').addEventListener('click', function(){
+  setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
+});
+$('langBtn').addEventListener('click', function(){
+  var idx = LANGS.indexOf(currentLang);
+  currentLang = LANGS[(idx + 1) % LANGS.length];
+  localStorage.setItem(LANG_KEY, currentLang);
+  applyLang();
+});
+window.addEventListener('resize', drawPlots);
+
+
+function initTabs(){
+  var btns = Array.prototype.slice.call(document.querySelectorAll('.tab-btn'));
+  var panels = Array.prototype.slice.call(document.querySelectorAll('.tab-panel'));
+  if (!btns.length || !panels.length) return;
+  function activate(name){
+    btns.forEach(function(btn){
+      var active = btn.dataset.tab === name;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+    panels.forEach(function(panel){
+      panel.classList.toggle('active', panel.dataset.tab === name);
+    });
+  }
+  btns.forEach(function(btn){
+    btn.addEventListener('click', function(){ activate(btn.dataset.tab); });
+  });
+  activate('measure');
+}
+
+async function boot(){
+  setText('yr', new Date().getFullYear());
+  var savedTheme = localStorage.getItem(THEME_KEY) || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  setTheme(savedTheme);
+  currentLang = localStorage.getItem(LANG_KEY) || 'de';
+  await loadI18n();
+  applyLang();
+  initTabs();
+  updateAin2Mode();
+  try { await loadConfig(); } catch (e) { setMsg('loraMsg', tr('save_error','Save error') + ': ' + e.message); }
+  try { await loadStateOnce(); } catch (e) { setMsg('ctrlMsg', tr('save_error','Save error') + ': ' + e.message); }
+  setInterval(pollLive, 250);
+  setInterval(pollMeta, 5000);
+}
+
+boot();
 </script>
 </body>
 </html>
