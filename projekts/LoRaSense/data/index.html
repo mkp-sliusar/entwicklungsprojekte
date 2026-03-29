@@ -5,7 +5,7 @@
 <meta charset="utf-8"/>
 <meta content="width=device-width,initial-scale=1" name="viewport"/>
 <meta content="dark light" name="color-scheme"/>
-<title>MKP LoRaSense Node</title>
+<title>MKP LoRaSense File Node</title>
 <style>
 :root{
   --ff:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
@@ -147,8 +147,8 @@ button{cursor:pointer}
 <a class="brand" href="https://www.marxkrontal.com/de/" rel="noopener noreferrer" target="_blank">
 <img alt="MKP" src="/logo.svg"/>
 <div class="title-wrap">
-<div class="title" id="i_title">MKP LoRaSense Node</div>
-<div class="sub" id="sub_title">AP live measurement / FIELD LoRa snapshot</div>
+<div class="title" id="i_title">MKP LoRaSense File Node</div>
+<div class="sub" id="sub_title">AP live measurement / file logging / FIELD LoRa snapshot</div>
 </div>
 </a>
 <div class="header-tools">
@@ -255,18 +255,25 @@ button{cursor:pointer}
 <div class="sensor-head">
 <div>
 <div class="sensor-title" id="tit_sd">SD logging</div>
-<div class="sensor-meta" id="sd_hint">AP mode only, CSV rotation</div>
+<div class="sensor-meta" id="sd_hint">AP mode only, BIN / DAT / CSV / UDBF rotation</div>
 </div>
 <label class="switch"><input id="sdOn" type="checkbox"/><span class="switch-ui"></span><span id="sw_on_off_sd">On</span></label>
 </div>
 <div class="field"><label for="sdBase" id="lab_sd_base">Base filename</label><input id="sdBase" maxlength="24"/></div>
 <div class="field"><label for="sdRotateKB" id="lab_sd_rotate">Rotate at, KB</label><input id="sdRotateKB" min="64" step="64" type="number"/></div>
-<div class="note" id="sd_note">A file with suffix _001, _002, ... is created automatically when the size limit is reached.</div>
+<div class="field"><label for="timeMode" id="lab_time_mode">Time axis mode</label>
+<select id="timeMode">
+<option value="adaptive" id="opt_time_adaptive">Adaptive smooth</option>
+<option value="real" id="opt_time_real">Real time</option>
+<option value="both" id="opt_time_both">Both in CSV</option>
+</select>
+</div>
+<div class="note" id="sd_note">Files with suffix _001, _002, ... are created automatically when the size limit is reached.</div>
 <div class="kv" style="margin-top:8px">
-<div class="k" id="lab_sd_file">Current CSV</div><div class="v mono" id="sdfile">-</div>
+<div class="k" id="lab_sd_file">Current file</div><div class="v mono" id="sdfile">-</div>
 </div>
 <div class="row" style="margin-top:8px">
-<button class="btn" id="browseCsvBtn" type="button">Browse / download CSV</button>
+<button class="btn" id="browseDatBtn" type="button">Browse / download files</button>
 </div>
 </div>
 <div class="summary" id="perfBox">Estimated AP speed: -</div>
@@ -314,7 +321,7 @@ button{cursor:pointer}
 <option value="5">DR5 (SF7)</option>
 </select>
 </div>
-<div class="summary" id="lora_note" style="margin-top:12px">Saved in AP mode. FIELD mode takes one fresh sensor snapshot immediately before each LoRa send and then returns to LoRaWAN sleep.</div>
+<div class="summary" id="lora_note" style="margin-top:12px">Saved in AP mode. FIELD mode takes one fresh sensor snapshot immediately before each LoRa send and then returns to LoRaWAN sleep. AP mode stores all supported log files on SD.</div>
 <div class="status mono" id="chipInfo" style="margin-top:12px"></div>
 <div class="status" id="loraMsg" style="margin-top:8px"></div>
 <button class="btn btn-block" id="saveLoRaBtn" type="button">Save LoRa settings</button>
@@ -327,13 +334,14 @@ button{cursor:pointer}
 <button class="btn" id="closeSdModalBtn" type="button">Close</button>
 </div>
 <div class="row">
-<button class="btn" id="refreshCsvListBtn" type="button">Refresh list</button>
-<button class="btn" id="selectAllCsvBtn" type="button">Select all</button>
-<button class="btn" id="clearAllCsvBtn" type="button">Clear</button>
-<button class="btn" id="downloadSelectedCsvBtn" type="button">Download selected</button>
-<button class="btn" id="deleteSelectedCsvBtn" type="button">Delete selected</button>
+<button class="btn" id="refreshDatListBtn" type="button">Refresh list</button>
+<button class="btn" id="selectAllDatBtn" type="button">Select all</button>
+<button class="btn" id="clearAllDatBtn" type="button">Clear</button>
+<button class="btn" id="downloadSelectedDatBtn" type="button">Download selected</button>
+<button class="btn" id="convertBinCsvBtn" type="button">Convert BIN to CSV</button>
+<button class="btn" id="deleteSelectedDatBtn" type="button">Delete selected</button>
 </div>
-<div class="small" id="sdModalHint">Choose one CSV file to download it directly as .csv. Choose multiple CSV files to download them as one real ZIP file without compression. The active current log file cannot be deleted.</div>
+<div class="small" id="sdModalHint">Choose one file to download it directly. Choose multiple files to download them as one real ZIP file without compression. The active current log file cannot be deleted.</div>
 <div class="status" id="sdListMsg"></div>
 <div style="overflow:auto;border:1px solid var(--line);border-radius:12px;">
 <table style="margin-top:0">
@@ -411,8 +419,8 @@ async function loadI18n(){
 function applyLang(){
   document.documentElement.lang = currentLang;
   $('langBtn').textContent = currentLang.toUpperCase();
-  setText('i_title', tr('title','MKP LoRaSense Node'));
-  setText('sub_title', tr('subtitle','AP live measurement / FIELD LoRa snapshot'));
+  setText('i_title', tr('title','MKP LoRaSense File Node'));
+  setText('sub_title', tr('subtitle','AP live measurement / file logging / FIELD LoRa snapshot'));
   setText('lab_fw', tr('firmware','Firmware'));
   setText('h_measurements', tr('measurements','Measurements'));
   setText('lab_time', tr('time','Time'));
@@ -454,7 +462,7 @@ function applyLang(){
   setText('lab_appkey', tr('appkey','AppKey'));
   setText('lab_interval', tr('interval','Send interval, min'));
   setText('lab_drate', tr('drate','Data rate'));
-  setText('lora_note', tr('lora_note','Saved in AP mode. FIELD mode takes one fresh sensor snapshot immediately before each LoRa send and then returns to LoRaWAN sleep.'));
+  setText('lora_note', tr('lora_note','Saved in AP mode. FIELD mode takes one fresh sensor snapshot immediately before each LoRa send and then returns to LoRaWAN sleep. AP mode stores all supported log files on SD.'));
   setText('saveLoRaBtn', tr('save_lora','Save LoRa settings'));
 
   setText('h_measure_cfg', tr('measure_cfg','Measurement settings'));
@@ -479,21 +487,26 @@ function applyLang(){
   setText('temp_hint', tr('temp_hint','DS18B20 fixed rate'));
   setText('sw_on_off_temp', tr('on','On'));
   setText('tit_sd', tr('tit_sd','SD logging'));
-  setText('sd_hint', tr('sd_hint','AP mode only, CSV rotation'));
+  setText('sd_hint', tr('sd_hint','AP mode only, BIN / DAT / CSV / UDBF rotation'));
   setText('sw_on_off_sd', tr('on','On'));
   setText('lab_sd_base', tr('sd_base','Base filename'));
   setText('lab_sd_rotate', tr('sd_rotate','Rotate at, KB'));
-  setText('sd_note', tr('sd_note','A file with suffix _001, _002, ... is created automatically when the size limit is reached.'));
-  setText('lab_sd_file', tr('sd_file','Current CSV'));
-  setText('browseCsvBtn', tr('browse_csv','Browse / download CSV'));
-  setText('deleteSelectedCsvBtn', tr('delete_selected','Delete selected'));
+  setText('lab_time_mode', tr('time_mode','Time axis mode'));
+  setText('opt_time_adaptive', tr('time_adaptive','Adaptive smooth'));
+  setText('opt_time_real', tr('time_real','Real time'));
+  setText('opt_time_both', tr('time_both','Both in CSV'));
+  setText('sd_note', tr('sd_note','Files with suffix _001, _002, ... are created automatically when the size limit is reached. Time axis mode selects real time, adaptive smooth time, or both columns in CSV export.'));
+  setText('lab_sd_file', tr('sd_file','Current file'));
+  setText('browseDatBtn', tr('browse_dat','Browse / download files'));
+  setText('deleteSelectedDatBtn', tr('delete_selected','Delete selected'));
   setText('sdModalTitle', tr('sd_files','Files on SD'));
   setText('closeSdModalBtn', tr('close','Close'));
-  setText('refreshCsvListBtn', tr('refresh_list','Refresh list'));
-  setText('selectAllCsvBtn', tr('select_all','Select all'));
-  setText('clearAllCsvBtn', tr('clear','Clear'));
-  setText('downloadSelectedCsvBtn', tr('download_tar','Download selected'));
-  setText('sdModalHint', tr('sd_modal_hint','Choose one CSV file to download it directly as .csv. Choose multiple CSV files to download them as one real ZIP file without compression. The active current log file cannot be deleted.'));
+  setText('refreshDatListBtn', tr('refresh_list','Refresh list'));
+  setText('selectAllDatBtn', tr('select_all','Select all'));
+  setText('clearAllDatBtn', tr('clear','Clear'));
+  setText('downloadSelectedDatBtn', tr('download_tar','Download selected'));
+  setText('convertBinCsvBtn', tr('convert_bin_csv','Convert BIN to CSV'));
+  setText('sdModalHint', tr('sd_modal_hint','Choose one file to download it directly. Choose multiple files to download them as one real ZIP file without compression. The active current log file cannot be deleted.'));
   setText('saveMeasBtn', tr('save_meas','Save measurement settings'));
   setText('footer_by', tr('footer_by','developed by'));
 
@@ -540,6 +553,7 @@ function fillConfig(cfg){
   $('sdOn').checked = boolNum(cfg.sd_log_enabled);
   $('sdBase').value = cfg.sd_base || 'lorasense';
   $('sdRotateKB').value = cfg.sd_rotate_kb != null ? cfg.sd_rotate_kb : 1024;
+  setSelectValue('timeMode', cfg.time_mode != null ? cfg.time_mode : 'adaptive', 'adaptive');
   $('drMode').value = boolNum(cfg.adr) ? 'auto' : String(cfg.dr != null ? cfg.dr : 5);
   syncPreset();
   updateAin2Mode();
@@ -596,7 +610,13 @@ function updateMeta(s){
     c.heap != null ? c.heap :
     sys.heap != null ? sys.heap : null;
 
-  setText('fw', s.fw || c.fw || sys.fw || '-');
+  var fwVal = s.fw || c.fw || sys.fw || '-';
+  var buildDateVal = s.build_date || c.build_date || sys.build_date || '';
+  var buildTimeVal = s.build_time || c.build_time || sys.build_time || '';
+  if (fwVal !== '-' && (buildDateVal || buildTimeVal)) {
+    fwVal = fwVal + ' (' + [buildDateVal, buildTimeVal].filter(Boolean).join(' ') + ')';
+  }
+  setText('fw', fwVal);
   setText('mode', modeVal);
   setText('ip', ipVal);
   setText('uptime', uptimeVal != null ? String(Math.round(Number(uptimeVal))) : '-');
@@ -633,7 +653,7 @@ function updateStatusText(mode){
   var m = mode || 'CONFIG';
   var text = (m === 'FIELD')
     ? tr('status_field','FIELD mode active. Device sends one fresh snapshot per LoRa interval and then returns to LoRaWAN sleep.')
-    : tr('status_ap','AP mode active. Web UI, fast measurement and optional SD CSV logging are available here.');
+    : tr('status_ap','AP mode active. Web UI, fast measurement and optional SD DAT logging are available here.');
   setMsg('statusMsg', text);
 }
 
@@ -742,9 +762,17 @@ async function refreshSdList(){
   try {
     var r = await api('/api/sd/list');
     var files = Array.isArray(r.files) ? r.files.slice() : [];
+    if ((!files || !files.length) && r.current) {
+      files = [{ name: String(r.current), size: 0 }];
+    }
+    files = files.map(function(f){
+      var name = String(f.name || '');
+      if (name && name.charAt(0) !== '/') name = '/' + name;
+      return { name: name, size: Number(f.size || 0) };
+    });
     files.sort(function(a,b){ return String(a.name||'').localeCompare(String(b.name||'')); });
     if (!files.length) {
-      body.innerHTML = '<tr><td colspan="3">' + tr('no_csv_files','No CSV files on SD.') + '</td></tr>';
+      body.innerHTML = '<tr><td colspan="3">' + tr('no_dat_files','No Files on SD.') + '</td></tr>';
       return;
     }
     body.innerHTML = '';
@@ -762,25 +790,51 @@ async function refreshSdList(){
   }
 }
 
-function selectedCsvNames(){
+function selectedDatNames(){
   return Array.prototype.slice.call(document.querySelectorAll('.sdFileChk:checked')).map(function(el){ return el.value; });
+}
+
+async function triggerBinCsvConvert(names){
+  if (!names.length) {
+    setMsg('sdListMsg', tr('no_file_selected','No file selected.'));
+    return;
+  }
+  if (names.length !== 1) {
+    setMsg('sdListMsg', tr('select_one_bin','Select exactly one BIN file.'));
+    return;
+  }
+  var name = String(names[0] || '');
+  if (!/\.bin$/i.test(name)) {
+    setMsg('sdListMsg', tr('select_one_bin','Select exactly one BIN file.'));
+    return;
+  }
+  try {
+    setMsg('sdListMsg', tr('convert_running','Converting BIN to CSV on SD...'));
+    var r = await api('/api/sd/convert_bin_csv?name=' + encodeURIComponent(name));
+    var saved = r.saved || '-';
+    var rows = Number(r.rows || 0);
+    setMsg('sdListMsg', tr('convert_done','CSV saved on SD') + ': ' + saved + ' | ' + tr('rows','rows') + ': ' + rows);
+    await refreshSdList();
+  } catch (e) {
+    setMsg('sdListMsg', tr('convert_error','Convert error') + ': ' + e.message);
+  }
 }
 
 function triggerArchiveDownload(names){
   if (!names.length) {
-    setMsg('sdListMsg', tr('no_csv_selected','No CSV selected.'));
+    setMsg('sdListMsg', tr('no_file_selected','No file selected.'));
     return;
   }
   var q = names.map(function(n){ return 'name=' + encodeURIComponent(n); }).join('&');
   window.location = '/api/sd/archive?' + q;
 }
 
-async function deleteSelectedCsv(names){
+async function deleteSelectedDat(names){
   if (!names.length) {
-    setMsg('sdListMsg', tr('no_csv_selected','No CSV selected.'));
+    setMsg('sdListMsg', tr('no_file_selected','No file selected.'));
     return;
   }
-  if (!confirm(tr('confirm_delete_csv','Delete selected CSV files from SD?'))) return;
+  if (!confirm(tr('confirm_delete_files','Delete selected files from SD?'))) return;
   try {
     var r = await api('/api/sd/delete', {
       method:'POST',
@@ -788,8 +842,8 @@ async function deleteSelectedCsv(names){
       body: JSON.stringify({ names:names })
     });
     var parts = [];
-    if (r.deleted && r.deleted.length) parts.push(tr('deleted_csv','Deleted') + ': ' + r.deleted.length);
-    if (r.skipped && r.skipped.length) parts.push(tr('skipped_csv','Skipped') + ': ' + r.skipped.length);
+    if (r.deleted && r.deleted.length) parts.push(tr('deleted_files','Deleted') + ': ' + r.deleted.length);
+    if (r.skipped && r.skipped.length) parts.push(tr('skipped_files','Skipped') + ': ' + r.skipped.length);
     setMsg('sdListMsg', parts.join(' | ') || tr('done','Done'));
     await refreshSdList();
   } catch (e) {
@@ -852,7 +906,8 @@ async function saveMeas(){
     temp_enabled: $('tempOn').checked ? 1 : 0,
     sd_log_enabled: $('sdOn').checked ? 1 : 0,
     sd_base: $('sdBase').value || 'lorasense',
-    sd_rotate_kb: Number($('sdRotateKB').value || 1024)
+    sd_rotate_kb: Number($('sdRotateKB').value || 1024),
+    time_mode: $('timeMode').value || 'adaptive'
   };
   var r = await api('/api/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
   if (r.cfg) fillConfig(r.cfg);
@@ -905,23 +960,26 @@ $('resetBtn').addEventListener('click', async function(){
 });
 
 
-$('browseCsvBtn').addEventListener('click', async function(){
+$('browseDatBtn').addEventListener('click', async function(){
   openSdModal();
   await refreshSdList();
 });
 $('closeSdModalBtn').addEventListener('click', closeSdModal);
-$('refreshCsvListBtn').addEventListener('click', refreshSdList);
-$('selectAllCsvBtn').addEventListener('click', function(){
+$('refreshDatListBtn').addEventListener('click', refreshSdList);
+$('selectAllDatBtn').addEventListener('click', function(){
   Array.prototype.forEach.call(document.querySelectorAll('.sdFileChk'), function(el){ el.checked = true; });
 });
-$('clearAllCsvBtn').addEventListener('click', function(){
+$('clearAllDatBtn').addEventListener('click', function(){
   Array.prototype.forEach.call(document.querySelectorAll('.sdFileChk'), function(el){ el.checked = false; });
 });
-$('downloadSelectedCsvBtn').addEventListener('click', function(){
-  triggerArchiveDownload(selectedCsvNames());
+$('downloadSelectedDatBtn').addEventListener('click', function(){
+  triggerArchiveDownload(selectedDatNames());
 });
-$('deleteSelectedCsvBtn').addEventListener('click', function(){
-  deleteSelectedCsv(selectedCsvNames());
+$('convertBinCsvBtn').addEventListener('click', async function(){
+  await triggerBinCsvConvert(selectedDatNames());
+});
+$('deleteSelectedDatBtn').addEventListener('click', function(){
+  deleteSelectedDat(selectedDatNames());
 });
 $('sdModal').addEventListener('click', function(ev){ if (ev.target === $('sdModal')) closeSdModal(); });
 
