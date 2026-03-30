@@ -1,0 +1,1074 @@
+<!DOCTYPE html>
+
+<html data-theme="dark" lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width,initial-scale=1" name="viewport"/>
+<meta content="dark light" name="color-scheme"/>
+<title>MKP LoRaSense File Node</title>
+<style>
+:root{
+  --ff:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+  --fs:14px;
+  --radius:16px;
+  --shadow:0 10px 24px rgba(0,0,0,.14);
+  --header-h:50px;
+  --accent:#54b8e6;
+  --accent-2:#1a8fc7;
+  --ok:#1bb15f;
+  --bad:#e05b5b;
+}
+html[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#090c10;
+  --fg:#edf2f8;
+  --muted:#9eb0c2;
+  --line:#24303d;
+  --card:#111821;
+  --card-2:#131d28;
+  --field:#0d141d;
+  --btn:#192330;
+  --btn-h:#213142;
+  --chip:#0f1620;
+  --plot-bg:#0c131c;
+}
+html[data-theme="light"]{
+  color-scheme:light;
+  --bg:#eef4f8;
+  --fg:#172331;
+  --muted:#607384;
+  --line:#c8d5df;
+  --card:#ffffff;
+  --card-2:#f7fbfd;
+  --field:#ffffff;
+  --btn:#eef5fa;
+  --btn-h:#e4edf4;
+  --chip:#ffffff;
+  --plot-bg:#f4f9fc;
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;font-family:var(--ff);font-size:var(--fs);background:var(--bg);color:var(--fg)}
+body{padding:8px 16px 0;display:flex;flex-direction:column;overflow-x:hidden;min-height:100vh}
+a{color:inherit}
+button,input,select,textarea{font:inherit;color:inherit}
+button,input,select,textarea{border:1px solid var(--line);background:var(--field);border-radius:14px;min-width:0}
+button,input,select,textarea:focus{outline:none;box-shadow:0 0 0 2px rgba(84,184,230,.18)}
+button{cursor:pointer}
+.main{flex:1 1 auto;display:flex;flex-direction:column;width:100%}
+.header{width:min(100%,1160px);display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 auto 10px;min-height:var(--header-h)}
+.brand{display:flex;align-items:center;gap:12px;text-decoration:none;color:inherit;min-width:0}
+.brand img{height:30px;width:auto;display:block}
+.title-wrap{display:flex;flex-direction:column;min-width:0}
+.title{font-size:18px;font-weight:800;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sub{font-size:12px;color:var(--muted)}
+.header-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.fw-chip{display:flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:var(--chip);white-space:nowrap}
+.icon-btn,.lang-btn{height:34px;min-width:46px;padding:0 12px;border-radius:999px;background:var(--btn);font-weight:700}
+.icon-btn:hover,.lang-btn:hover{background:var(--btn-h)}
+.grid{display:grid;grid-template-columns:repeat(4,minmax(270px,1fr));gap:12px;align-items:start}
+.card{background:linear-gradient(180deg,var(--card),var(--card-2));border:1px solid var(--line);border-radius:var(--radius);padding:12px;box-shadow:var(--shadow);min-height:0}
+.card h3{margin:0 0 8px;font-size:17px;line-height:1.2;font-weight:800}
+.hr{height:1px;background:var(--line);margin:9px 0}
+.kv{display:grid;grid-template-columns:minmax(102px,auto) 1fr;gap:4px 10px;align-items:start}
+.kv .k{color:var(--muted)}
+.kv .v{font-weight:600;word-break:break-word}
+.stack{display:flex;flex-direction:column;gap:12px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.btn{height:40px;padding:0 14px;background:var(--btn);font-weight:700}
+.btn:hover{background:var(--btn-h)}
+.btn-block{display:block;width:100%}
+.btn-pair{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.badge{display:inline-flex;align-items:center;justify-content:center;min-height:28px;padding:0 10px;border:1px solid var(--line);border-radius:999px;background:var(--btn);font-size:12px;font-weight:800}
+.badge.ok{color:var(--ok)}
+.badge.bad{color:var(--bad)}
+.badge.off{color:var(--muted)}
+.small{font-size:12px;color:var(--muted)}
+.note{font-size:12px;color:var(--muted);line-height:1.45}
+.status{font-size:12px;color:var(--muted);white-space:pre-line;word-break:break-word;min-height:2.4em}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.plot-wrap{margin-top:10px;border:1px solid var(--line);border-radius:14px;background:var(--plot-bg);padding:8px}
+.plot-wrap + .plot-wrap{margin-top:10px}
+#dmsPlot,#ain2Plot{display:block;width:100%;height:136px}
+.compact-group{display:grid;gap:12px}
+.sensor-box{display:grid;gap:12px;border:1px solid var(--line);border-radius:14px;padding:12px;background:rgba(127,127,127,.04)}
+.sensor-head{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:0}
+.sensor-title{font-weight:800}
+.sensor-meta{font-size:12px;color:var(--muted)}
+.field{display:grid;grid-template-columns:minmax(112px,auto) 1fr;gap:8px;align-items:center}
+.field label{color:var(--muted)}
+.field input,.field select{height:38px;padding:0 12px;width:100%}
+.field .fixed{height:38px;display:flex;align-items:center;padding:0 12px;border:1px solid var(--line);background:var(--field);border-radius:14px}
+.switch{position:relative;display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-weight:700}
+.switch input{position:absolute;opacity:0;pointer-events:none}
+.switch-ui{position:relative;width:42px;height:24px;border-radius:999px;background:var(--btn);border:1px solid var(--line);transition:.18s}
+.switch-ui:after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:var(--muted);transition:.18s}
+.switch input:checked + .switch-ui{background:rgba(84,184,230,.2);border-color:rgba(84,184,230,.5)}
+.switch input:checked + .switch-ui:after{left:20px;background:var(--accent)}
+.summary{padding:9px 12px;border:1px dashed var(--line);border-radius:14px;background:rgba(84,184,230,.04);font-size:12px;line-height:1.45}
+.hidden{display:none !important}
+.footer{width:min(100%,1160px);margin:30px auto 0;padding:18px 0 30px;border-top:1px solid var(--line);font-size:12px;color:var(--muted);display:flex;justify-content:center;gap:8px;flex-wrap:wrap;align-items:center;flex-shrink:0}
+.footer a{text-decoration:none}
+.footer a:hover{text-decoration:underline}
+@media (max-width:1460px){.grid{grid-template-columns:repeat(2,minmax(270px,1fr));}}
+@media (max-width:780px){
+  body{padding:8px 10px 0}
+  .header{width:100%;flex-direction:column;align-items:flex-start}
+  .header-tools{width:100%;justify-content:space-between}
+  .grid{grid-template-columns:1fr}
+  .btn-pair{grid-template-columns:1fr}
+  .field,.kv{grid-template-columns:1fr}
+  .title{white-space:normal}
+}
+
+
+.tabs-shell{max-width:1160px;margin:0 auto;display:flex;flex-direction:column;gap:18px;width:100%}
+.tabs-bar{display:grid;grid-template-columns:repeat(3,minmax(220px,1fr));gap:14px;justify-content:center;align-content:center;max-width:980px;margin:0 auto}
+.tab-btn{position:relative;display:flex;align-items:center;justify-content:center;height:52px;width:100%;padding:0 22px;border-radius:16px;background:var(--btn);font-weight:800;color:var(--muted);text-align:center;transition:background .2s ease,color .2s ease,transform .2s ease,border-color .2s ease,box-shadow .2s ease}
+.tab-btn:hover{background:var(--btn-h);color:var(--fg);transform:translateY(-1px)}
+.tab-btn.active{background:linear-gradient(180deg,rgba(84,184,230,.22),rgba(84,184,230,.12));border-color:rgba(84,184,230,.45);color:var(--fg);box-shadow:0 8px 22px rgba(84,184,230,.14)}
+.tab-btn.active:after{content:"";position:absolute;left:18px;right:18px;bottom:6px;height:3px;border-radius:999px;background:var(--accent)}
+.tab-panels{position:relative}
+.tab-panel{display:none;opacity:0;transform:translateX(22px)}
+.tab-panel.active{display:block;animation:tabSlideIn .28s ease forwards}
+@keyframes tabSlideIn{from{opacity:0;transform:translateX(22px)}to{opacity:1;transform:translateX(0)}}
+.tabs-inner-grid,.tabs-inner-grid.system-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;align-items:stretch}
+.tabs-stack{display:flex;flex-direction:column;gap:18px;height:100%;min-height:100%}
+.tabs-stack > .card{flex:1 1 auto;display:flex;flex-direction:column}
+.tabs-inner-grid .card,.tabs-inner-grid.system-grid .card{width:100%;height:100%}
+.field{display:grid;grid-template-columns:180px minmax(0,1fr);gap:12px;align-items:center;margin:0}.system-grid .card:last-child .field + .field{margin-top:12px}.system-grid .card:last-child .summary{margin-top:16px !important}.system-grid .card:last-child .status{margin-top:12px !important}.system-grid .card:last-child .btn-pair{margin-bottom:16px}.system-grid .card #resetBtn,.system-grid .card #saveLoRaBtn{margin-top:auto}
+.field input,.field select,.field .fixed{width:100%;min-width:0}
+.btn-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:12px}
+@media (max-width:980px){.tabs-inner-grid,.tabs-inner-grid.system-grid{grid-template-columns:1fr}.tabs-shell{max-width:960px}}
+@media (max-width:780px){.tabs-bar{grid-template-columns:1fr;max-width:100%}.tab-btn{width:100%}.field{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header class="header">
+<a class="brand" href="https://www.marxkrontal.com/de/" rel="noopener noreferrer" target="_blank">
+<img alt="MKP" src="/logo.svg"/>
+<div class="title-wrap">
+<div class="title" id="i_title">MKP LoRaSense File Node</div>
+<div class="sub" id="sub_title">AP live measurement / BIN logging / PC stream / FIELD LoRa snapshot</div>
+</div>
+</a>
+<div class="header-tools">
+<div class="fw-chip"><span id="lab_fw">Firmware</span>: <b id="fw">-</b></div>
+<button class="lang-btn" id="langBtn" type="button">DE</button>
+<button aria-label="Theme" class="icon-btn" id="themeBtn" type="button">☀️</button>
+</div>
+</header>
+<main class="main">
+<div class="tabs-shell"><div aria-label="Main sections" class="tabs-bar" role="tablist"><button aria-controls="tabPanel-measure" aria-selected="true" class="tab-btn active" data-tab="measure" id="tabBtn-measure" role="tab" type="button">Measurements &amp; settings</button><button aria-controls="tabPanel-system" aria-selected="false" class="tab-btn" data-tab="system" id="tabBtn-system" role="tab" type="button">LoRa &amp; controller</button><button aria-controls="tabPanel-stream" aria-selected="false" class="tab-btn" data-tab="stream" id="tabBtn-stream" role="tab" type="button">PC Stream</button></div><div class="tab-panels"><section aria-labelledby="tabBtn-measure" class="tab-panel active" data-tab="measure" id="tabPanel-measure" role="tabpanel"><div class="tabs-inner-grid"><div class="tabs-stack"><section class="card">
+<h3 id="h_measurements">Measurements</h3>
+<div class="kv">
+<div class="k" id="lab_time">Time</div><div class="v" id="time">--:--:--</div>
+<div class="k" id="lab_selftest">Self-test</div><div class="v"><span class="badge" id="selftest">-</span></div>
+<div class="k" id="lab_delta">Delta</div><div class="v"><span id="selftest_delta">-</span> mV</div>
+</div>
+<div class="hr"></div>
+<div class="kv">
+<div class="k" id="lab_dms_raw">DMS raw</div><div class="v" id="dms_raw">-</div>
+<div class="k" id="lab_dms_mvv">DMS mV/V</div><div class="v" id="dms_mvv">-</div>
+<div class="k" id="lab_dms_mv">DMS est. mV</div><div class="v" id="dms_mv">-</div>
+<div class="k" id="lab_dms_actual">DMS actual</div><div class="v"><span id="dms_actual">-</span> Hz</div>
+</div>
+<div class="plot-wrap">
+<canvas height="136" id="dmsPlot" width="640"></canvas>
+<div class="small" id="plot_caption">Live trend: DMS mV/V</div>
+</div>
+<div class="hr"></div>
+<div class="kv">
+<div class="k" id="lab_ain2_raw">AIN2 raw</div><div class="v" id="ain2_raw">-</div>
+<div class="k" id="lab_ain2_adc">AIN2 ADC</div><div class="v"><span id="ain2_mv">-</span> mV</div>
+<div class="k" id="lab_ain2_scaled">AIN2 scaled</div><div class="v"><span id="ain2_scaled">-</span> <span id="ain2_unit">-</span></div>
+<div class="k" id="lab_ain2_actual">AIN2 actual</div><div class="v"><span id="ain2_actual">-</span> Hz</div>
+</div>
+<div class="plot-wrap">
+<canvas height="136" id="ain2Plot" width="640"></canvas>
+<div class="small" id="plot_caption_ain2">Live trend: AIN2 scaled</div>
+</div>
+<div class="hr"></div>
+<div class="kv">
+<div class="k" id="lab_temp">Temperature</div><div class="v"><span id="temp">-</span> °C</div>
+<div class="k" id="lab_total_actual">Total actual</div><div class="v"><span id="total_actual">-</span> Hz</div>
+</div>
+</section></div><div class="tabs-stack"><section class="card">
+<h3 id="h_measure_cfg">Measurement settings</h3>
+<div class="compact-group">
+<div class="sensor-box">
+<div class="sensor-head">
+<div>
+<div class="sensor-title" id="tit_dms">DMS / AIN0-AIN1</div>
+<div class="sensor-meta" id="dms_hint">Fast differential channel</div>
+</div>
+<label class="switch"><input id="dmsOn" type="checkbox"/><span class="switch-ui"></span><span id="sw_on_off_dms">On</span></label>
+</div>
+<div class="field"><label for="dmsHz" id="lab_dms_hz">Frequency, Hz</label><select id="dmsHz"><option value="5">5</option><option value="11.25">11.25</option><option value="20">20</option><option value="22.5">22.5</option><option value="40">40</option><option value="44">44</option><option value="45">45</option><option value="82.5">82.5</option><option value="90">90</option><option value="150">150</option><option value="175">175</option><option value="180">180</option><option value="250">250</option><option value="330">330</option><option value="350">350</option><option value="600">600</option><option value="660">660</option><option value="1000">1000</option><option value="1200">1200</option><option value="2000">2000</option></select></div>
+</div>
+<div class="sensor-box">
+<div class="sensor-head">
+<div>
+<div class="sensor-title" id="tit_ain2">AIN2</div>
+<div class="sensor-meta" id="ain2_hint">Potentiometer or 0-10 V input</div>
+</div>
+<label class="switch"><input id="ain2On" type="checkbox"/><span class="switch-ui"></span><span id="sw_on_off_ain2">On</span></label>
+</div>
+<div class="field"><label for="ain2Hz" id="lab_ain2_hz">Frequency, Hz</label><select id="ain2Hz"><option value="5">5</option><option value="11.25">11.25</option><option value="20">20</option><option value="22.5">22.5</option><option value="40">40</option><option value="44">44</option><option value="45">45</option><option value="82.5">82.5</option><option value="90">90</option><option value="150">150</option><option value="175">175</option><option value="180">180</option><option value="250">250</option><option value="330">330</option><option value="350">350</option><option value="600">600</option><option value="660">660</option><option value="1000">1000</option><option value="1200">1200</option><option value="2000">2000</option></select></div>
+<div class="field"><label for="ain2Mode" id="lab_ain2_type">AIN2 type</label>
+<select id="ain2Mode">
+<option id="opt_ain2_pot" value="pot">Potentiometer / Wegsensor</option>
+<option id="opt_ain2_volt" value="volt">0-10 V input</option>
+</select>
+</div>
+<div class="stack" id="potBlock">
+<div class="field"><label for="potPreset" id="lab_preset">Sensor length preset</label>
+<select id="potPreset">
+<option value="5">5 mm</option>
+<option value="10">10 mm</option>
+<option value="25">25 mm</option>
+<option value="50">50 mm</option>
+<option value="75">75 mm</option>
+<option value="100">100 mm</option>
+<option value="150">150 mm</option>
+<option value="200">200 mm</option>
+<option id="opt_custom" value="custom">Custom</option>
+</select>
+</div>
+<div class="field"><label for="ain2Len" id="lab_length">Length, mm</label><input id="ain2Len" min="0.01" step="0.01" type="number"/></div>
+</div>
+<div class="stack hidden" id="voltBlock">
+<div class="field"><label for="adcFs" id="lab_adc_fs">ADC full-scale, V</label><input id="adcFs" min="0.1" step="0.001" type="number"/></div>
+<div class="field"><label for="inputFs" id="lab_input_fs">Input full-scale, V</label><input id="inputFs" min="0.1" step="0.1" type="number"/></div>
+<div class="note" id="volt_note">Example: if the adapter maps 0-10 V to 0-3.123 V, keep 3.123 and 10.0.</div>
+</div>
+</div>
+<div class="sensor-box">
+<div class="sensor-head">
+<div>
+<div class="sensor-title" id="tit_temp">Temperature</div>
+<div class="sensor-meta" id="temp_hint">DS18B20 fixed rate</div>
+</div>
+<label class="switch"><input id="tempOn" type="checkbox"/><span class="switch-ui"></span><span id="sw_on_off_temp">On</span></label>
+</div>
+</div>
+<div class="sensor-box">
+<div class="sensor-head">
+<div>
+<div class="sensor-title" id="tit_sd">SD logging</div>
+<div class="sensor-meta" id="sd_hint">AP mode only, BIN / CSV logging</div>
+</div>
+<label class="switch"><input id="sdOn" type="checkbox"/><span class="switch-ui"></span><span id="sw_on_off_sd">On</span></label>
+</div>
+<div class="field"><label for="sdBase" id="lab_sd_base">Base filename</label><input id="sdBase" maxlength="24"/></div>
+<div class="field"><label for="sdRotateKB" id="lab_sd_rotate">Rotate at, KB</label><input id="sdRotateKB" min="64" step="64" type="number"/></div>
+<div class="note" id="sd_note">Files with suffix _001, _002, ... are created automatically when the size limit is reached.</div>
+<div class="kv" style="margin-top:8px">
+<div class="k" id="lab_sd_file">Current file</div><div class="v mono" id="sdfile">-</div>
+</div>
+<div class="row" style="margin-top:8px">
+<button class="btn" id="browseDatBtn" type="button">Browse / download files</button>
+</div>
+</div>
+<div class="summary" id="perfBox">Estimated AP speed: -</div>
+<div class="status" id="measMsg"></div>
+<button class="btn btn-block" id="saveMeasBtn" type="button">Save measurement settings</button>
+</div>
+</section></div></div></section><section aria-labelledby="tabBtn-system" class="tab-panel" data-tab="system" id="tabPanel-system" role="tabpanel"><div class="tabs-inner-grid system-grid"><div class="tabs-stack"><section class="card">
+<h3 id="h_controller">Controller</h3>
+<div class="kv">
+<div class="k" id="lab_mode">Mode</div><div class="v" id="mode">-</div>
+<div class="k" id="lab_ip">IP</div><div class="v mono" id="ip">-</div>
+<div class="k" id="lab_uptime">Uptime</div><div class="v"><span id="uptime">-</span> s</div>
+<div class="k" id="lab_heap">Heap</div><div class="v"><span id="heap">-</span> B</div>
+<div class="k" id="lab_board">Board</div><div class="v" id="board">-</div>
+<div class="k" id="lab_chip">Chip</div><div class="v" id="chip">-</div>
+<div class="k" id="lab_cpu">CPU</div><div class="v"><span id="cpu">-</span> MHz</div>
+<div class="k" id="lab_flash">Flash</div><div class="v"><span id="flash">-</span> MB</div>
+<div class="k" id="lab_apssid">AP SSID</div><div class="v mono" id="apssid">-</div>
+<div class="k" id="lab_sdst">SD</div><div class="v" id="sdstate">-</div>
+<div class="k" id="lab_chipmac">Chip MAC</div><div class="v mono" id="chipmac">-</div>
+<div class="k" id="lab_chipeui">Chip DevEUI</div><div class="v mono" id="chipeui">-</div>
+</div>
+<div class="hr"></div>
+<div aria-live="polite" class="status" id="statusMsg" role="status"></div>
+<div class="status" id="ctrlMsg"></div>
+<button class="btn btn-block" id="resetBtn" type="button">Reboot</button>
+</section></div><div class="tabs-stack"><section class="card">
+<h3 id="h_lora">LoRa</h3>
+<div class="btn-pair">
+<button class="btn" id="readChipBtn" type="button">Read chip DevEUI</button>
+<button class="btn" id="useChipBtn" type="button">Use chip DevEUI</button>
+</div>
+<div class="field"><label for="devEui" id="lab_deveui">DevEUI</label><input autocomplete="off" class="mono" id="devEui" inputmode="latin"/></div>
+<div class="field"><label for="appEui" id="lab_appeui">AppEUI</label><input autocomplete="off" class="mono" id="appEui" inputmode="latin"/></div>
+<div class="field"><label for="appKey" id="lab_appkey">AppKey</label><input autocomplete="off" class="mono" id="appKey" inputmode="latin"/></div>
+<div class="field"><label for="minutes" id="lab_interval">Send interval, min</label><input id="minutes" max="1440" min="1" step="1" type="number"/></div>
+<div class="field"><label for="drMode" id="lab_drate">Data rate</label>
+<select id="drMode">
+<option value="auto">ADR / Auto</option>
+<option value="0">DR0 (SF12)</option>
+<option value="1">DR1 (SF11)</option>
+<option value="2">DR2 (SF10)</option>
+<option value="3">DR3 (SF9)</option>
+<option value="4">DR4 (SF8)</option>
+<option value="5">DR5 (SF7)</option>
+</select>
+</div>
+<div class="summary" id="lora_note" style="margin-top:12px">Saved in AP mode. FIELD mode takes one fresh sensor snapshot immediately before each LoRa send and then returns to LoRaWAN sleep. AP mode stores BIN logs on SD and converts them to CSV with real-time timestamps. PC Stream mode disables SD logging and sends compact binary frames directly to a desktop receiver.</div>
+<div class="status mono" id="chipInfo" style="margin-top:12px"></div>
+<div class="status" id="loraMsg" style="margin-top:8px"></div>
+<button class="btn btn-block" id="saveLoRaBtn" type="button">Save LoRa settings</button>
+</section></div></div></section><section aria-labelledby="tabBtn-stream" class="tab-panel" data-tab="stream" id="tabPanel-stream" role="tabpanel"><div class="tabs-inner-grid system-grid"><div class="tabs-stack"><section class="card">
+<h3>PC Stream mode</h3>
+<div class="summary">This mode disables SD logging and keeps the controller focused on acquisition plus direct transfer to a PC over the AP. Use it to reach the highest stable measurement speed with the least interference on the shared SPI bus.</div>
+<div class="hr"></div>
+<div class="kv">
+<div class="k">Mode</div><div class="v" id="streamModeState">-</div>
+<div class="k">Status</div><div class="v" id="streamStatus">-</div>
+<div class="k">AP SSID</div><div class="v mono" id="streamSsid">-</div>
+<div class="k">IP</div><div class="v mono" id="streamIp">-</div>
+<div class="k">TCP port</div><div class="v mono" id="streamPort">-</div>
+<div class="k">Client</div><div class="v" id="streamClient">-</div>
+</div>
+<div class="hr"></div>
+<div class="btn-pair">
+<button class="btn" id="enableStreamBtn" type="button">Enable stream mode</button>
+<button class="btn" id="disableStreamBtn" type="button">Disable stream mode</button>
+</div>
+<div class="status" id="streamMsg"></div>
+</section></div><div class="tabs-stack"><section class="card">
+<h3>Desktop app</h3>
+<div style="display:flex;justify-content:center;align-items:center;min-height:240px;border:1px dashed var(--line);border-radius:18px;background:rgba(84,184,230,.05);font-weight:800;font-size:18px;text-align:center;padding:20px">QR placeholder<br/>Desktop receiver download</div>
+<div class="note" style="margin-top:12px">Planned workflow: connect the PC to the controller AP, start the desktop receiver, then enable PC Stream mode here. The controller will push compact binary frames directly to the computer. Visualization, saving, filtering and analysis move to the PC side.</div>
+</section></div></div></section></div></div>
+</main>
+<div class="hidden" id="sdModal" style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;padding:18px;">
+<div style="max-width:780px;margin:0 auto;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;max-height:90vh;display:flex;flex-direction:column;gap:10px;">
+<div class="row" style="justify-content:space-between;align-items:center;">
+<h3 id="sdModalTitle" style="margin:0">Files on SD</h3>
+<button class="btn" id="closeSdModalBtn" type="button">Close</button>
+</div>
+<div class="row">
+<button class="btn" id="refreshDatListBtn" type="button">Refresh list</button>
+<button class="btn" id="selectAllDatBtn" type="button">Select all</button>
+<button class="btn" id="clearAllDatBtn" type="button">Clear</button>
+<button class="btn" id="downloadSelectedDatBtn" type="button">Download selected</button>
+<button class="btn" id="convertBinCsvBtn" type="button">Convert BIN to CSV</button>
+<button class="btn" id="deleteSelectedDatBtn" type="button">Delete selected</button>
+</div>
+<div class="small" id="sdModalHint">Choose one file to download it directly. Choose multiple files to download them as one real ZIP file without compression. The active current log file cannot be deleted.</div>
+<div class="status" id="sdListMsg"></div>
+<div style="overflow:auto;border:1px solid var(--line);border-radius:12px;">
+<table style="margin-top:0">
+<thead>
+<tr><th style="width:40px"></th><th>Name</th><th>Size</th></tr>
+</thead>
+<tbody id="sdListBody"></tbody>
+</table>
+</div>
+</div>
+</div>
+<footer class="footer">
+<a href="https://www.marxkrontal.com/de/" rel="noopener noreferrer" target="_blank">© <span id="yr"></span> MKP GmbH</a>
+<span id="i_footer_by">developed by</span>
+<a href="mailto:roman.sliusar@marxkrontal.com">SLR</a>
+<a href="mailto:evgenij.koloda@marxkrontal.com">KOE</a>
+<a href="mailto:Bernd.Schinkoethe@marxkrontal.com">SCE</a>
+</footer>
+<script>
+var THEME_KEY = 'lora_theme';
+var LANG_KEY = 'lora_lang';
+var currentLang = 'de';
+var I18N = null;
+var LANGS = ['de','en','uk'];
+var liveBusy = false;
+var metaBusy = false;
+var configLoaded = false;
+var plotValues = [];
+var ain2PlotValues = [];
+var PLOT_MAX = 160;
+window.__lastCfg = null;
+
+function $(id){ return document.getElementById(id); }
+function setText(id, value){ var el = $(id); if (el) el.textContent = value; }
+function setMsg(id, value){ var el = $(id); if (el) el.textContent = value || ''; }
+function num(v, d){ return (typeof v === 'number' && isFinite(v)) ? Number(v).toFixed(d) : '-'; }
+function intNum(v){ return (typeof v === 'number' && isFinite(v)) ? String(Math.round(v)) : '-'; }
+function fmtTime(){ var d = new Date(); var p = function(n){ return String(n).padStart(2,'0'); }; return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()); }
+function normalizeHex(s){ return (s || '').replace(/\s+/g, '').toUpperCase(); }
+function exactHex(s, len){ return new RegExp('^[0-9A-F]{' + len + '}$').test(normalizeHex(s)); }
+function boolNum(v){ return v === true || v === 1 || v === '1'; }
+function setSelectValue(id, value, fallback){
+  var el = $(id);
+  if (!el) return;
+  var val = String(value);
+  var has = Array.prototype.some.call(el.options || [], function(opt){ return opt.value === val; });
+  el.value = has ? val : String(fallback);
+}
+function tr(key, fallback){ var pack = I18N && I18N[currentLang]; return (pack && pack[key]) || fallback || key; }
+
+async function api(url, opt){
+  var r = await fetch(url, opt || {});
+  var txt = await r.text();
+  var data = {};
+  try { data = txt ? JSON.parse(txt) : {}; }
+  catch (e) { throw new Error(txt || ('HTTP ' + r.status)); }
+  if (!r.ok || data.ok === false) throw new Error(data.error || ('HTTP ' + r.status));
+  return data;
+}
+
+function setTheme(t){
+  document.documentElement.dataset.theme = t;
+  $('themeBtn').textContent = t === 'dark' ? '☀️' : '🌙';
+  localStorage.setItem(THEME_KEY, t);
+  drawPlots();
+}
+
+async function loadI18n(){
+  try {
+    var r = await fetch('/i18n.json');
+    if (r.ok) I18N = await r.json();
+  } catch (e) {}
+}
+
+function applyLang(){
+  document.documentElement.lang = currentLang;
+  $('langBtn').textContent = currentLang.toUpperCase();
+  setText('i_title', tr('title','MKP LoRaSense File Node'));
+  setText('sub_title', tr('subtitle','AP live measurement / BIN logging / PC stream / FIELD LoRa snapshot'));
+  setText('lab_fw', tr('firmware','Firmware'));
+  setText('h_measurements', tr('measurements','Measurements'));
+  setText('lab_time', tr('time','Time'));
+  setText('lab_selftest', tr('selftest','Self-test'));
+  setText('lab_delta', tr('delta','Delta'));
+  setText('lab_dms_raw', tr('dms_raw','DMS raw'));
+  setText('lab_dms_mvv', tr('dms_mvv','DMS mV/V'));
+  setText('lab_dms_mv', tr('dms_mv','DMS est. mV'));
+  setText('lab_dms_actual', tr('dms_actual','DMS actual'));
+  setText('plot_caption', tr('plot_caption','Live trend: DMS mV/V'));
+  setText('plot_caption_ain2', tr('plot_caption_ain2','Live trend: AIN2 scaled'));
+  setText('lab_ain2_raw', tr('ain2_raw','AIN2 raw'));
+  setText('lab_ain2_adc', tr('ain2_adc','AIN2 ADC'));
+  setText('lab_ain2_scaled', tr('ain2_scaled','AIN2 scaled'));
+  setText('lab_ain2_actual', tr('ain2_actual','AIN2 actual'));
+  setText('lab_temp', tr('temperature','Temperature'));
+  setText('lab_total_actual', tr('total_actual','Total actual'));
+
+  setText('h_controller', tr('controller','Controller'));
+  setText('lab_mode', tr('mode','Mode'));
+  setText('lab_ip', tr('ip','IP'));
+  setText('lab_uptime', tr('uptime','Uptime'));
+  setText('lab_heap', tr('heap','Heap'));
+  setText('lab_board', tr('board','Board'));
+  setText('lab_chip', tr('chip','Chip'));
+  setText('lab_cpu', tr('cpu','CPU'));
+  setText('lab_flash', tr('flash','Flash'));
+  setText('lab_apssid', tr('ap_ssid','AP SSID'));
+  setText('lab_sdst', tr('sd_state','SD'));
+  setText('lab_chipmac', tr('chip_mac','Chip MAC'));
+  setText('lab_chipeui', tr('chip_eui','Chip DevEUI'));
+  setText('resetBtn', tr('reboot','Reboot'));
+
+  setText('h_lora', tr('lora','LoRa'));
+  setText('readChipBtn', tr('read_chip','Read chip DevEUI'));
+  setText('useChipBtn', tr('use_chip','Use chip DevEUI'));
+  setText('lab_deveui', tr('deveui','DevEUI'));
+  setText('lab_appeui', tr('appeui','AppEUI'));
+  setText('lab_appkey', tr('appkey','AppKey'));
+  setText('lab_interval', tr('interval','Send interval, min'));
+  setText('lab_drate', tr('drate','Data rate'));
+  setText('lora_note', tr('lora_note','Saved in AP mode. FIELD mode takes one fresh sensor snapshot immediately before each LoRa send and then returns to LoRaWAN sleep. AP mode stores BIN logs on SD and converts them to CSV with real-time timestamps. PC Stream mode disables SD logging and sends compact binary frames directly to a desktop receiver.'));
+  setText('saveLoRaBtn', tr('save_lora','Save LoRa settings'));
+
+  setText('h_measure_cfg', tr('measure_cfg','Measurement settings'));
+  setText('tit_dms', tr('tit_dms','DMS / AIN0-AIN1'));
+  setText('dms_hint', tr('dms_hint','Fast differential channel'));
+  setText('sw_on_off_dms', tr('on','On'));
+  setText('lab_dms_hz', tr('dms_hz','Frequency, Hz'));
+  setText('tit_ain2', tr('tit_ain2','AIN2'));
+  setText('ain2_hint', tr('ain2_hint','Potentiometer or 0-10 V input'));
+  setText('sw_on_off_ain2', tr('on','On'));
+  setText('lab_ain2_hz', tr('ain2_hz','Frequency, Hz'));
+  setText('lab_ain2_type', tr('ain2_type','AIN2 type'));
+  setText('opt_ain2_pot', tr('ain2_pot','Potentiometer / Wegsensor'));
+  setText('opt_ain2_volt', tr('ain2_volt','0-10 V input'));
+  setText('lab_preset', tr('preset','Sensor length preset'));
+  setText('lab_length', tr('length','Length, mm'));
+  setText('opt_custom', tr('custom','Custom'));
+  setText('lab_adc_fs', tr('adc_fs','ADC full-scale, V'));
+  setText('lab_input_fs', tr('input_fs','Input full-scale, V'));
+  setText('volt_note', tr('volt_note','Example: if the adapter maps 0-10 V to 0-3.123 V, keep 3.123 and 10.0.'));
+  setText('tit_temp', tr('tit_temp','Temperature'));
+  setText('temp_hint', tr('temp_hint','DS18B20 fixed rate'));
+  setText('sw_on_off_temp', tr('on','On'));
+  setText('tit_sd', tr('tit_sd','SD logging'));
+  setText('sd_hint', tr('sd_hint','AP mode only, BIN / DAT / CSV / UDBF rotation'));
+  setText('sw_on_off_sd', tr('on','On'));
+  setText('lab_sd_base', tr('sd_base','Base filename'));
+  setText('lab_sd_rotate', tr('sd_rotate','Rotate at, KB'));
+  setText('sd_note', tr('sd_note','Files with suffix _001, _002, ... are created automatically when the size limit is reached. CSV export uses only real time.'));
+  setText('lab_sd_file', tr('sd_file','Current file'));
+  setText('browseDatBtn', tr('browse_dat','Browse / download files'));
+  setText('deleteSelectedDatBtn', tr('delete_selected','Delete selected'));
+  setText('sdModalTitle', tr('sd_files','Files on SD'));
+  setText('closeSdModalBtn', tr('close','Close'));
+  setText('refreshDatListBtn', tr('refresh_list','Refresh list'));
+  setText('selectAllDatBtn', tr('select_all','Select all'));
+  setText('clearAllDatBtn', tr('clear','Clear'));
+  setText('downloadSelectedDatBtn', tr('download_tar','Download selected'));
+  setText('convertBinCsvBtn', tr('convert_bin_csv','Convert BIN to CSV'));
+  setText('sdModalHint', tr('sd_modal_hint','Choose one file to download it directly. Choose multiple files to download them as one real ZIP file without compression. The active current log file cannot be deleted.'));
+  setText('saveMeasBtn', tr('save_meas','Save measurement settings'));
+  setText('footer_by', tr('footer_by','developed by'));
+
+  $('devEui').placeholder = tr('ph_deveui','DevEUI');
+  $('appEui').placeholder = tr('ph_appeui','AppEUI');
+  $('appKey').placeholder = tr('ph_appkey','AppKey');
+  $('minutes').placeholder = tr('ph_minutes','Interval, min');
+  $('sdBase').placeholder = tr('sd_base','Base filename');
+
+  updateStatusText($('mode').textContent || 'CONFIG');
+  updatePerfBox(window.__lastLive || null, window.__lastCfg || null);
+  drawPlots();
+}
+
+function syncPreset(){
+  var len = Number($('ain2Len').value);
+  var preset = $('potPreset');
+  var opts = ['5','10','25','50','75','100','150','200'];
+  var match = opts.find(function(v){ return Math.abs(Number(v) - len) < 0.001; });
+  preset.value = match || 'custom';
+}
+
+function updateAin2Mode(){
+  var isVolt = $('ain2Mode').value === 'volt';
+  $('voltBlock').classList.toggle('hidden', !isVolt);
+  $('potBlock').classList.toggle('hidden', isVolt);
+}
+
+function fillConfig(cfg){
+  window.__lastCfg = cfg || null;
+  $('devEui').value = cfg.devEui || '';
+  $('appEui').value = cfg.appEui || '';
+  $('appKey').value = cfg.appKey || '';
+  $('minutes').value = cfg.minutes != null ? cfg.minutes : 15;
+  $('dmsOn').checked = boolNum(cfg.dms_enabled);
+  setSelectValue('dmsHz', cfg.dms_hz != null ? cfg.dms_hz : 2000, 2000);
+  $('ain2On').checked = boolNum(cfg.ain2_enabled);
+  setSelectValue('ain2Hz', cfg.ain2_hz != null ? cfg.ain2_hz : 20, 20);
+  $('ain2Mode').value = cfg.ain2_mode || 'pot';
+  $('ain2Len').value = Number(cfg.ain2_length_mm != null ? cfg.ain2_length_mm : 10).toFixed(2);
+  $('adcFs').value = Number(cfg.ain2_adc_fullscale_v != null ? cfg.ain2_adc_fullscale_v : 3.123).toFixed(3);
+  $('inputFs').value = Number(cfg.ain2_input_fullscale_v != null ? cfg.ain2_input_fullscale_v : 10).toFixed(1);
+  $('tempOn').checked = boolNum(cfg.temp_enabled);
+  $('sdOn').checked = boolNum(cfg.sd_log_enabled);
+  $('sdBase').value = cfg.sd_base || 'lorasense';
+  $('sdRotateKB').value = cfg.sd_rotate_kb != null ? cfg.sd_rotate_kb : 1024;
+  $('drMode').value = boolNum(cfg.adr) ? 'auto' : String(cfg.dr != null ? cfg.dr : 5);
+  syncPreset();
+  updateAin2Mode();
+  updatePerfBox(window.__lastLive || null, cfg);
+}
+
+function updateLive(s){
+  window.__lastLive = s || null;
+  setText('time', fmtTime());
+  $('selftest').textContent = s.selftest_ok ? tr('ok','OK') : tr('fail','FAIL');
+  $('selftest').className = 'badge ' + (s.selftest_ok ? 'ok' : 'bad');
+  setText('selftest_delta', num(s.selftest_delta_mV, 6));
+
+  setText('dms_raw', boolNum(s.dms_enabled) ? intNum(s.dms_raw) : tr('off','OFF'));
+  setText('dms_mvv', boolNum(s.dms_enabled) ? (boolNum(s.dms_valid) ? num(s.dms_mV_per_V, 6) : '-') : tr('off','OFF'));
+  setText('dms_mv', boolNum(s.dms_enabled) ? (boolNum(s.dms_valid) ? num(s.dms_mV, 6) : '-') : tr('off','OFF'));
+  setText('dms_actual', boolNum(s.dms_enabled) ? num(s.dms_rate_hz_actual, 0) : tr('off','OFF'));
+
+  setText('ain2_raw', boolNum(s.ain2_enabled) ? intNum(s.ain2_raw) : tr('off','OFF'));
+  setText('ain2_mv', boolNum(s.ain2_enabled) ? (boolNum(s.ain2_valid) ? num(s.ain2_mV, 3) : '-') : tr('off','OFF'));
+  setText('ain2_scaled', boolNum(s.ain2_enabled) ? (boolNum(s.ain2_valid) ? num(s.ain2_value, s.ain2_mode === 'volt' ? 3 : 2) : '-') : tr('off','OFF'));
+  setText('ain2_unit', boolNum(s.ain2_enabled) ? (s.ain2_unit || '-') : '');
+  setText('ain2_actual', boolNum(s.ain2_enabled) ? num(s.ain2_rate_hz_actual, 0) : tr('off','OFF'));
+
+  setText('temp', boolNum(s.temp_enabled) ? (boolNum(s.temp_valid) ? num(s.temp_C, 2) : '-') : tr('off','OFF'));
+  setText('total_actual', num(s.total_rate_hz_actual, 0));
+  setText('sdstate', s.sd_status || '-');
+
+  pushPlot(boolNum(s.dms_enabled) && boolNum(s.dms_valid) ? Number(s.dms_mV_per_V) : null);
+  pushAin2Plot(boolNum(s.ain2_enabled) && boolNum(s.ain2_valid) ? Number(s.ain2_value) : null);
+  updatePerfBox(s, window.__lastCfg || null);
+}
+
+function updateMeta(s){
+  var c = s.controller || {};
+  var sys = s.system || {};
+
+  var modeVal = (s.mode != null ? s.mode : (c.mode != null ? c.mode : (sys.mode != null ? sys.mode : '-')));
+  var ipVal = (s.ip != null ? s.ip : (c.ip != null ? c.ip : (c.ap_ip != null ? c.ap_ip : (sys.ip != null ? sys.ip : '-'))));
+
+  var uptimeVal =
+    s.uptime_s != null ? s.uptime_s :
+    c.uptime_s != null ? c.uptime_s :
+    sys.uptime_s != null ? sys.uptime_s :
+    s.uptime != null ? s.uptime :
+    c.uptime != null ? c.uptime :
+    sys.uptime != null ? sys.uptime : null;
+
+  var heapVal =
+    s.heap_free != null ? s.heap_free :
+    c.heap_free != null ? c.heap_free :
+    sys.heap_free != null ? sys.heap_free :
+    s.heap != null ? s.heap :
+    c.heap != null ? c.heap :
+    sys.heap != null ? sys.heap : null;
+
+  var fwVal = s.fw || c.fw || sys.fw || '-';
+  var buildDateVal = s.build_date || c.build_date || sys.build_date || '';
+  var buildTimeVal = s.build_time || c.build_time || sys.build_time || '';
+  if (fwVal !== '-' && (buildDateVal || buildTimeVal)) {
+    fwVal = fwVal + ' (' + [buildDateVal, buildTimeVal].filter(Boolean).join(' ') + ')';
+  }
+  setText('fw', fwVal);
+  setText('mode', modeVal);
+  setText('ip', ipVal);
+  setText('uptime', uptimeVal != null ? String(Math.round(Number(uptimeVal))) : '-');
+  setText('heap', heapVal != null ? String(Math.round(Number(heapVal))) : '-');
+
+  setText('board', c.board || s.board || '-');
+  var chipTxt = c.chip_model || s.chip_model || '-';
+  var chipRev = c.chip_rev != null ? c.chip_rev : s.chip_rev;
+  if (chipRev != null) chipTxt += ' rev ' + chipRev;
+  setText('chip', chipTxt);
+  setText('cpu', c.cpu_mhz != null ? String(Math.round(Number(c.cpu_mhz))) : '-');
+  setText('flash', c.flash_mb != null ? String(Math.round(Number(c.flash_mb))) : '-');
+  setText('apssid', c.ap_ssid || s.ap_ssid || '-');
+  setText('sdstate', c.sd_status || s.sd_status || '-');
+  setText('sdfile', s.sd_file || c.sd_file || '-');
+  setText('chipmac', c.chip_mac48 || s.chip_mac48 || '-');
+  setText('chipeui', c.chip_eui64 || s.chip_eui64 || '-');
+
+  var streamEnabled = !!(c.stream_mode_enabled || (s.cfg && s.cfg.stream_mode_enabled) || s.stream_mode_enabled);
+  setText('streamModeState', streamEnabled ? 'Enabled' : 'Disabled');
+  setText('streamStatus', c.stream_status || s.stream_status || '-');
+  setText('streamSsid', c.ap_ssid || s.ap_ssid || '-');
+  setText('streamIp', ipVal || '-');
+  setText('streamPort', String(c.stream_port || s.stream_port || 3333));
+  setText('streamClient', (c.stream_client_connected || s.stream_client_connected) ? 'Connected' : 'Waiting');
+
+  updateStatusText(modeVal || 'CONFIG');
+}
+
+function updatePerfBox(live, cfg){
+  var src = (live && live.perf) || (cfg && cfg.perf) || null;
+  if (!src) { setText('perfBox', tr('perf_est','Estimated AP speed') + ': -'); return; }
+  var parts = [];
+  parts.push(tr('perf_est','Estimated AP speed') + ': ' + num(src.total_est_hz, 1) + ' Hz');
+  parts.push(tr('perf_dms','DMS') + ' ' + num(src.dms_est_hz, 1));
+  parts.push(tr('perf_ain2','AIN2') + ' ' + num(src.ain2_est_hz, 1));
+  parts.push(tr('perf_load','ADS load') + ' ' + num(src.ads_load_pct, 0) + '%');
+  setText('perfBox', parts.join(' | '));
+}
+
+function updateStatusText(mode){
+  var m = mode || 'CONFIG';
+  var text = (m === 'FIELD')
+    ? tr('status_field','FIELD mode active. Device sends one fresh snapshot per LoRa interval and then returns to LoRaWAN sleep.')
+    : tr('status_ap','AP mode active. Web UI, fast measurement and optional SD DAT logging are available here.');
+  setMsg('statusMsg', text);
+}
+
+function pushPlot(value){
+  plotValues.push({ t: Date.now(), v: value });
+  while (plotValues.length > PLOT_MAX) plotValues.shift();
+  drawPlots();
+}
+
+function pushAin2Plot(value){
+  ain2PlotValues.push({ t: Date.now(), v: value });
+  while (ain2PlotValues.length > PLOT_MAX) ain2PlotValues.shift();
+  drawPlots();
+}
+
+function drawSinglePlot(canvasId, series, emptyText){
+  var c = $(canvasId);
+  if (!c) return;
+  var ctx = c.getContext('2d');
+  var w = c.width, h = c.height;
+  var theme = getComputedStyle(document.documentElement);
+  var bg = theme.getPropertyValue('--plot-bg').trim();
+  var fg = theme.getPropertyValue('--muted').trim();
+  var line = theme.getPropertyValue('--line').trim();
+  var accent = theme.getPropertyValue('--accent').trim();
+  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle = bg;
+  ctx.fillRect(0,0,w,h);
+
+  ctx.strokeStyle = line;
+  ctx.lineWidth = 1;
+  for (var i=1;i<4;i++){
+    var y = Math.round(i*h/4)+0.5;
+    ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke();
+  }
+
+  var vals = series.map(function(p){ return p.v; }).filter(function(v){ return typeof v === 'number' && isFinite(v); });
+  if (!vals.length) {
+    ctx.fillStyle = fg;
+    ctx.font = '12px system-ui';
+    ctx.fillText(emptyText, 10, 20);
+    return;
+  }
+
+  var min = Math.min.apply(null, vals);
+  var max = Math.max.apply(null, vals);
+  if (Math.abs(max - min) < 1e-9) { max += 1; min -= 1; }
+  var pad = (max - min) * 0.12;
+  min -= pad; max += pad;
+
+  ctx.strokeStyle = accent;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  var started = false;
+  for (var j=0;j<series.length;j++){
+    var p = series[j];
+    if (!(typeof p.v === 'number' && isFinite(p.v))) { started = false; continue; }
+    var x = series.length <= 1 ? 0 : (j / (series.length - 1)) * (w - 1);
+    var yv = h - ((p.v - min) / (max - min)) * (h - 1);
+    if (!started) { ctx.moveTo(x, yv); started = true; }
+    else ctx.lineTo(x, yv);
+  }
+  ctx.stroke();
+
+  ctx.fillStyle = fg;
+  ctx.font = '12px system-ui';
+  ctx.fillText(max.toFixed(4), 8, 14);
+  ctx.fillText(min.toFixed(4), 8, h - 6);
+}
+
+function drawPlots(){
+  drawSinglePlot('dmsPlot', plotValues, tr('plot_wait','Waiting for DMS data...'));
+  drawSinglePlot('ain2Plot', ain2PlotValues, tr('plot_wait_ain2','Waiting for AIN2 data...'));
+}
+
+async function loadConfig(){
+  var cfg = await api('/api/config');
+  fillConfig(cfg);
+  configLoaded = true;
+}
+
+async function loadStateOnce(){
+  var s = await api('/api/state');
+  updateMeta(s);
+  updateLive(s);
+  if (!configLoaded && s.cfg) {
+    fillConfig(s.cfg);
+    configLoaded = true;
+  }
+}
+
+function fmtBytes(n){
+  n = Number(n || 0);
+  if (n < 1024) return n + ' B';
+  if (n < 1024*1024) return (n/1024).toFixed(1) + ' KB';
+  return (n/1024/1024).toFixed(2) + ' MB';
+}
+
+function openSdModal(){ $('sdModal').classList.remove('hidden'); }
+function closeSdModal(){ $('sdModal').classList.add('hidden'); }
+
+async function refreshSdList(){
+  setMsg('sdListMsg', '');
+  var body = $('sdListBody');
+  body.innerHTML = '<tr><td colspan="3">' + tr('loading','Loading...') + '</td></tr>';
+  try {
+    var r = await api('/api/sd/list');
+    var files = Array.isArray(r.files) ? r.files.slice() : [];
+    if ((!files || !files.length) && r.current) {
+      files = [{ name: String(r.current), size: 0 }];
+    }
+    files = files.map(function(f){
+      var name = String(f.name || '');
+      if (name && name.charAt(0) !== '/') name = '/' + name;
+      return { name: name, size: Number(f.size || 0) };
+    });
+    files.sort(function(a,b){ return String(a.name||'').localeCompare(String(b.name||'')); });
+    if (!files.length) {
+      body.innerHTML = '<tr><td colspan="3">' + tr('no_dat_files','No Files on SD.') + '</td></tr>';
+      return;
+    }
+    body.innerHTML = '';
+    files.forEach(function(f, idx){
+      var trEl = document.createElement('tr');
+      var checked = (r.current && f.name === r.current) ? ' checked' : '';
+      trEl.innerHTML = '<td><input type="checkbox" class="sdFileChk" value="' + String(f.name).replace(/"/g,'&quot;') + '"' + checked + '></td>' +
+                       '<td class="mono">' + (f.name || '-') + (r.current === f.name ? ' <span class="badge">current</span>' : '') + '</td>' +
+                       '<td>' + fmtBytes(f.size) + '</td>';
+      body.appendChild(trEl);
+    });
+  } catch (e) {
+    body.innerHTML = '';
+    setMsg('sdListMsg', tr('load_list_error','Failed to load file list') + ': ' + e.message);
+  }
+}
+
+function selectedDatNames(){
+  return Array.prototype.slice.call(document.querySelectorAll('.sdFileChk:checked')).map(function(el){ return el.value; });
+}
+
+async function triggerBinCsvConvert(names){
+  if (!names.length) {
+    setMsg('sdListMsg', tr('no_file_selected','No file selected.'));
+    return;
+  }
+  if (names.length !== 1) {
+    setMsg('sdListMsg', tr('select_one_bin','Select exactly one BIN file.'));
+    return;
+  }
+  var name = String(names[0] || '');
+  if (!/\.bin$/i.test(name)) {
+    setMsg('sdListMsg', tr('select_one_bin','Select exactly one BIN file.'));
+    return;
+  }
+  try {
+    setMsg('sdListMsg', tr('convert_running','Converting BIN to CSV on SD...'));
+    var r = await api('/api/sd/convert_bin_csv?name=' + encodeURIComponent(name));
+    var saved = r.saved || '-';
+    var rows = Number(r.rows || 0);
+    setMsg('sdListMsg', tr('convert_done','CSV saved on SD') + ': ' + saved + ' | ' + tr('rows','rows') + ': ' + rows);
+    await refreshSdList();
+  } catch (e) {
+    setMsg('sdListMsg', tr('convert_error','Convert error') + ': ' + e.message);
+  }
+}
+
+function triggerArchiveDownload(names){
+  if (!names.length) {
+    setMsg('sdListMsg', tr('no_file_selected','No file selected.'));
+    return;
+  }
+  var q = names.map(function(n){ return 'name=' + encodeURIComponent(n); }).join('&');
+  window.location = '/api/sd/archive?' + q;
+}
+
+async function deleteSelectedDat(names){
+  if (!names.length) {
+    setMsg('sdListMsg', tr('no_file_selected','No file selected.'));
+    return;
+  }
+  if (!confirm(tr('confirm_delete_files','Delete selected files from SD?'))) return;
+  try {
+    var r = await api('/api/sd/delete', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ names:names })
+    });
+    var parts = [];
+    if (r.deleted && r.deleted.length) parts.push(tr('deleted_files','Deleted') + ': ' + r.deleted.length);
+    if (r.skipped && r.skipped.length) parts.push(tr('skipped_files','Skipped') + ': ' + r.skipped.length);
+    setMsg('sdListMsg', parts.join(' | ') || tr('done','Done'));
+    await refreshSdList();
+  } catch (e) {
+    setMsg('sdListMsg', tr('delete_error','Delete error') + ': ' + e.message);
+  }
+}
+
+async function pollLive(){
+  if (liveBusy) return;
+  liveBusy = true;
+  try {
+    var s = await api('/api/live');
+    updateLive(s);
+  } catch (e) {}
+  liveBusy = false;
+}
+
+async function pollMeta(){
+  if (metaBusy) return;
+  metaBusy = true;
+  try {
+    var s = await api('/api/state');
+    updateMeta(s);
+  } catch (e) {}
+  metaBusy = false;
+}
+
+async function saveLoRa(){
+  var devEui = normalizeHex($('devEui').value);
+  var appEui = normalizeHex($('appEui').value);
+  var appKey = normalizeHex($('appKey').value);
+  if (!exactHex(devEui, 16)) throw new Error(tr('invalid_deveui','DevEUI must be 16 hex characters.'));
+  if (!exactHex(appEui, 16)) throw new Error(tr('invalid_appeui','AppEUI must be 16 hex characters.'));
+  if (!exactHex(appKey, 32)) throw new Error(tr('invalid_appkey','AppKey must be 32 hex characters.'));
+
+  var payload = {
+    devEui: devEui,
+    appEui: appEui,
+    appKey: appKey,
+    minutes: Number($('minutes').value || 15)
+  };
+  if ($('drMode').value === 'auto') { payload.adr = true; payload.dr = 5; }
+  else { payload.adr = false; payload.dr = Number($('drMode').value || 5); }
+
+  var r = await api('/api/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+  if (r.cfg) fillConfig(r.cfg);
+  setMsg('loraMsg', tr('lora_saved','LoRa settings saved to controller.'));
+}
+
+async function saveMeas(){
+  var payload = {
+    dms_enabled: $('dmsOn').checked ? 1 : 0,
+    dms_hz: Number($('dmsHz').value || 200),
+    ain2_enabled: $('ain2On').checked ? 1 : 0,
+    ain2_hz: Number($('ain2Hz').value || 1),
+    ain2_mode: $('ain2Mode').value,
+    ain2_length_mm: Number($('ain2Len').value || 10),
+    ain2_adc_fullscale_v: Number($('adcFs').value || 3.123),
+    ain2_input_fullscale_v: Number($('inputFs').value || 10),
+    temp_enabled: $('tempOn').checked ? 1 : 0,
+    sd_log_enabled: $('sdOn').checked ? 1 : 0,
+    sd_base: $('sdBase').value || 'lorasense',
+    sd_rotate_kb: Number($('sdRotateKB').value || 1024)
+  };
+  var r = await api('/api/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+  if (r.cfg) fillConfig(r.cfg);
+  setMsg('measMsg', tr('meas_saved','Measurement settings saved to controller.'));
+}
+
+
+async function saveStreamMode(enabled){
+  var r = await api('/api/stream', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ enabled: enabled ? 1 : 0 }) });
+  setMsg('streamMsg', enabled ? 'PC Stream mode enabled.' : 'PC Stream mode disabled.');
+  try { await loadStateOnce(); } catch (e) {}
+  return r;
+}
+
+$('saveLoRaBtn').addEventListener('click', async function(){
+  try { await saveLoRa(); }
+  catch (e) { setMsg('loraMsg', tr('save_error','Save error') + ': ' + e.message); }
+});
+
+$('saveMeasBtn').addEventListener('click', async function(){
+  try { await saveMeas(); }
+  catch (e) { setMsg('measMsg', tr('save_error','Save error') + ': ' + e.message); }
+});
+
+$('readChipBtn').addEventListener('click', async function(){
+  try {
+    var r = await api('/api/deveui');
+    var msg = tr('chip_active','Active DevEUI') + ': ' + (r.activeLoRaDevEUI || '-') + '\n' +
+      tr('chip_hw','Chip DevEUI') + ': ' + (r.chipEUI || '-') + '\n' +
+      tr('chip_mac','Chip MAC') + ': ' + (r.chipMac48 || '-');
+    setMsg('chipInfo', msg);
+    setMsg('loraMsg', '');
+  } catch (e) {
+    setMsg('loraMsg', tr('save_error','Save error') + ': ' + e.message);
+  }
+});
+
+$('useChipBtn').addEventListener('click', async function(){
+  try {
+    var r = await api('/api/deveui', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ use:'chip' }) });
+    if (r.storedDevEUI) $('devEui').value = r.storedDevEUI;
+    var msg = tr('chip_active','Active DevEUI') + ': ' + (r.activeLoRaDevEUI || '-') + '\n' +
+      tr('chip_hw','Chip DevEUI') + ': ' + (r.chipEUI || '-');
+    setMsg('chipInfo', msg);
+    setMsg('loraMsg', tr('use_chip_saved','Chip DevEUI stored in controller.'));
+  } catch (e) {
+    setMsg('loraMsg', tr('save_error','Save error') + ': ' + e.message);
+  }
+});
+
+$('resetBtn').addEventListener('click', async function(){
+  try {
+    await api('/api/reset', { method:'POST' });
+    setMsg('ctrlMsg', tr('reset_msg','Controller restarting...'));
+  } catch (e) {
+    setMsg('ctrlMsg', tr('save_error','Save error') + ': ' + e.message);
+  }
+});
+
+
+$('browseDatBtn').addEventListener('click', async function(){
+  openSdModal();
+  await refreshSdList();
+});
+$('closeSdModalBtn').addEventListener('click', closeSdModal);
+$('refreshDatListBtn').addEventListener('click', refreshSdList);
+$('selectAllDatBtn').addEventListener('click', function(){
+  Array.prototype.forEach.call(document.querySelectorAll('.sdFileChk'), function(el){ el.checked = true; });
+});
+$('clearAllDatBtn').addEventListener('click', function(){
+  Array.prototype.forEach.call(document.querySelectorAll('.sdFileChk'), function(el){ el.checked = false; });
+});
+$('downloadSelectedDatBtn').addEventListener('click', function(){
+  triggerArchiveDownload(selectedDatNames());
+});
+$('convertBinCsvBtn').addEventListener('click', async function(){
+  await triggerBinCsvConvert(selectedDatNames());
+});
+$('deleteSelectedDatBtn').addEventListener('click', function(){
+  deleteSelectedDat(selectedDatNames());
+});
+$('sdModal').addEventListener('click', function(ev){ if (ev.target === $('sdModal')) closeSdModal(); });
+
+$('potPreset').addEventListener('change', function(){
+  if ($('potPreset').value !== 'custom') $('ain2Len').value = Number($('potPreset').value).toFixed(2);
+});
+$('ain2Len').addEventListener('input', syncPreset);
+$('ain2Mode').addEventListener('change', updateAin2Mode);
+$('themeBtn').addEventListener('click', function(){
+  setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
+});
+if ($('enableStreamBtn')) $('enableStreamBtn').addEventListener('click', async function(){
+  try { await saveStreamMode(true); }
+  catch (e) { setMsg('streamMsg', 'Save error: ' + e.message); }
+});
+if ($('disableStreamBtn')) $('disableStreamBtn').addEventListener('click', async function(){
+  try { await saveStreamMode(false); }
+  catch (e) { setMsg('streamMsg', 'Save error: ' + e.message); }
+});
+$('langBtn').addEventListener('click', function(){
+  var idx = LANGS.indexOf(currentLang);
+  currentLang = LANGS[(idx + 1) % LANGS.length];
+  localStorage.setItem(LANG_KEY, currentLang);
+  applyLang();
+});
+window.addEventListener('resize', drawPlots);
+
+
+function initTabs(){
+  var btns = Array.prototype.slice.call(document.querySelectorAll('.tab-btn'));
+  var panels = Array.prototype.slice.call(document.querySelectorAll('.tab-panel'));
+  if (!btns.length || !panels.length) return;
+  function activate(name){
+    btns.forEach(function(btn){
+      var active = btn.dataset.tab === name;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+    panels.forEach(function(panel){
+      panel.classList.toggle('active', panel.dataset.tab === name);
+    });
+  }
+  btns.forEach(function(btn){
+    btn.addEventListener('click', function(){ activate(btn.dataset.tab); });
+  });
+  activate((location.hash || '#measure').replace('#','') || 'measure');
+}
+
+async function boot(){
+  setText('yr', new Date().getFullYear());
+  var savedTheme = localStorage.getItem(THEME_KEY) || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  setTheme(savedTheme);
+  currentLang = localStorage.getItem(LANG_KEY) || 'de';
+  await loadI18n();
+  applyLang();
+  initTabs();
+  updateAin2Mode();
+  try { await loadConfig(); } catch (e) { setMsg('loraMsg', tr('save_error','Save error') + ': ' + e.message); }
+  try { await loadStateOnce(); } catch (e) { setMsg('ctrlMsg', tr('save_error','Save error') + ': ' + e.message); }
+  setInterval(pollLive, 250);
+  setInterval(pollMeta, 5000);
+}
+
+boot();
+</script>
+</body>
+</html>

@@ -22,8 +22,8 @@
  *    DevEUI, AppEUI — LSB order end-to-end (UI, storage, prints)
  *    AppKey         — MSB order end-to-end (UI, storage, prints)
  * ---------------------------------------------------------------------
- *  Version:      1.7.1
- *  Date:         2025-10-26
+ *  Version:      1.7.3
+ *  Date:         2026-03-19
  *  Changes:      unified TX policy for unstable networks: confirmed uplink, NbTrans=1, retries=3
  *                removed AP/field TX divergence; enforced policy at init and before each send
  *  Contributors: Bernd Schinköthe, Roman Sliusar, Evgenij Koloda
@@ -61,7 +61,7 @@
 #include <math.h>
 
 // ========================== Frimware version ======================= //
-static constexpr const char* FW_VER = "1.7.1";  // sync with header
+static constexpr const char* FW_VER = "1.7.3";  // sync with header
 
 // ========================== LoRaWAN key slots ======================= //
 // The Heltec core expects these globals. Keep LSB/MSB conventions.
@@ -467,13 +467,87 @@ volatile bool lora_has_rx = false;
 volatile int16_t lora_last_rssi = 0;
 volatile int8_t lora_last_snr = 0;
 volatile uint32_t lora_last_rx_ms = 0;
+
+// Auto-rejoin watchdog state:
+// - We only count a "miss" if no network response was observed for a full TX interval.
+// - A short grace window after join avoids false misses right after the first uplink.
+// - Recovery keeps the same TX cadence; only after 5 missed cycles do we reboot and rejoin.
+static constexpr uint8_t AUTO_REJOIN_MISS_LIMIT = 5;
+static constexpr uint32_t POST_JOIN_GRACE_MS = 90UL * 1000UL;     // ignore miss counting right after join
+static constexpr uint32_t RESPONSE_WAIT_MARGIN_MS = 45UL * 1000UL; // extra time beyond TX interval
+static uint8_t missedNetworkResponses = 0;
+static bool networkResponseSeenThisCycle = false;
+static bool waitingForNetworkResponse = false;
+static bool rejoinRebootRequested = false;
+static uint32_t lastJoinMs = 0;
+static uint32_t lastSendMs = 0;
 extern "C" void downLinkDataHandle(McpsIndication_t* ind) {
   lora_has_rx = true;
   lora_last_rssi = ind->Rssi;
   lora_last_snr = ind->Snr;
   lora_last_rx_ms = millis();
+
+  // Any network response (ACK, MAC command, payload downlink) is enough to prove
+  // that the current OTAA session is still valid. Reset miss accounting.
+  networkResponseSeenThisCycle = true;
+  waitingForNetworkResponse = false;
+  missedNetworkResponses = 0;
+
+  Serial.printf("[DL] network response seen: rssi=%d snr=%d port=%u size=%u\n",
+                ind->Rssi,
+                ind->Snr,
+                ind->Port,
+                ind->BufferSize);
 }
 
+
+/**
+ * @brief Return configured TX interval in ms.
+ */
+static inline uint32_t txIntervalMs() {
+  return 60000UL * cfg.minutes;
+}
+
+/**
+ * @brief Arm watchdog for the current uplink cycle.
+ */
+static inline void markSendWaitingForResponse() {
+  lastSendMs = millis();
+  waitingForNetworkResponse = true;
+  networkResponseSeenThisCycle = false;
+}
+
+/**
+ * @brief Evaluate whether the current cycle has failed to receive any network response.
+ *        This runs at normal loop cadence and does not add extra wake-ups.
+ */
+static void serviceAutoRejoinWatchdog() {
+  if (!waitingForNetworkResponse) return;
+
+  const uint32_t now = millis();
+
+  // Do not count misses immediately after a fresh join.
+  if (lastJoinMs != 0 && (now - lastJoinMs) < POST_JOIN_GRACE_MS) return;
+
+  // Give the stack enough time to finish RX windows and internal retries.
+  if ((now - lastSendMs) < (txIntervalMs() + RESPONSE_WAIT_MARGIN_MS)) return;
+
+  waitingForNetworkResponse = false;
+
+  if (!networkResponseSeenThisCycle) {
+    if (missedNetworkResponses < 255) missedNetworkResponses++;
+    Serial.printf("[REJOIN] missed network response %u/%u\n",
+                  missedNetworkResponses,
+                  AUTO_REJOIN_MISS_LIMIT);
+
+    if (missedNetworkResponses >= AUTO_REJOIN_MISS_LIMIT) {
+      rejoinRebootRequested = true;
+      Serial.println("[REJOIN] scheduled reboot for fresh OTAA join");
+    }
+  } else {
+    missedNetworkResponses = 0;
+  }
+}
 // ============================== OLED =============================== //
 struct OledMarquee {
   String text;
@@ -1050,9 +1124,19 @@ void loop() {
     }
   }
 
+  serviceAutoRejoinWatchdog();
+
+  if (rejoinRebootRequested) {
+    rejoinRebootRequested = false;
+    Serial.println("[REJOIN] rebooting to force fresh OTAA join");
+    delay(200);
+    ESP.restart();
+  }
+
   switch (deviceState) {
     case DEVICE_STATE_INIT:
       // Initialize LoRaWAN and join parameters
+      Serial.println("[LORA] DEVICE_STATE_INIT");
       memcpy(DevEui, cfg.devEui, 8);
       memcpy(AppEui, cfg.appEui, 8);
       memcpy(AppKey, cfg.appKey, 16);
@@ -1065,14 +1149,23 @@ void loop() {
 
     case DEVICE_STATE_JOIN:
       // Start OTAA join; some stacks reset MIB around join
+      Serial.println("[LORA] DEVICE_STATE_JOIN");
       LoRaWAN.join();
       enforceTxPolicy();  // re-apply policy around join
+      lastJoinMs = millis();
+      missedNetworkResponses = 0;
+      waitingForNetworkResponse = false;
+      networkResponseSeenThisCycle = false;
       break;
 
     case DEVICE_STATE_SEND:
       // Prepare and send uplink once per cycle
       enforceTxPolicy();  // enforce before each TX
       prepareTxFrame(UPLINK_PORT);
+      markSendWaitingForResponse();
+      Serial.printf("[TX] waiting for network response, miss=%u/%u\n",
+                    (uint8_t)(missedNetworkResponses + 1),
+                    AUTO_REJOIN_MISS_LIMIT);
       LoRaWAN.send();
       deviceState = DEVICE_STATE_CYCLE;
       break;
