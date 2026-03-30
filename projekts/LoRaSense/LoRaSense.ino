@@ -11,7 +11,6 @@
 #include <ctype.h>
 #include <math.h>
 #include "LoRaWan_APP.h"
-
 // ============================================================
 // MKP LoRaSense - Heltec WiFi LoRa 32 V3 fixed-PCB build
 //
@@ -25,7 +24,6 @@
 //   - one fresh sensor snapshot is captured immediately before
 //     every uplink, then the Heltec LoRaWAN stack returns to sleep
 // ============================================================
-
 // ---------------- PINS ----------------
 static constexpr int PIN_SPI_MISO = 39;
 static constexpr int PIN_SPI_SCK  = 2;
@@ -36,30 +34,24 @@ static constexpr int PIN_ADS_DRDY = 4;
 static constexpr int PIN_MOSFET   = 5;
 static constexpr int PIN_DS18B20  = 6;
 static constexpr int PIN_AP_MODE  = 46;  // jumper to GND => CONFIG / AP mode
-
 static constexpr const char* FW_VERSION = "1.8.0-apfield-sd-hispeed-task";
 static constexpr const char* BOARD_NAME = "Heltec WiFi LoRa 32 V3";
-
 static constexpr uint8_t AIN2_MODE_POT  = 0;
 static constexpr uint8_t AIN2_MODE_VOLT = 1;
-
 static constexpr float TEMP_FIXED_HZ = 1.0f;
 static constexpr float DMS_MIN_HZ = 0.1f;
 static constexpr float DMS_MAX_HZ = 2000.0f;
 static constexpr float AIN2_MIN_HZ = 1.0f;
 static constexpr float AIN2_MAX_HZ = 2000.0f;
 static constexpr float ADS_BUDGET_CONVERSIONS_HZ = 4000.0f;
-
 static constexpr size_t DEV_EUI_HEX_LEN = 16;
 static constexpr size_t APP_EUI_HEX_LEN = 16;
 static constexpr size_t APP_KEY_HEX_LEN = 32;
 static constexpr size_t LOG_BASENAME_LEN = 24;
-
 static WebServer server(80);
 static Preferences prefs;
 static OneWire oneWire(PIN_DS18B20);
 static DallasTemperature dsSensor(&oneWire);
-
 enum class RunMode : uint8_t { FIELD = 0, CONFIG = 1 };
 static RunMode g_mode = RunMode::FIELD;
 static bool g_loraEnabled = false;
@@ -67,7 +59,6 @@ static bool g_loraInitDone = false;
 static uint32_t g_radioQuietUntilMs = 0;
 static IPAddress g_apIp(0, 0, 0, 0);
 static String g_apSsid;
-
 // ---------------- ADS1220 ----------------
 namespace ADS1220 {
   static constexpr uint8_t CMD_RESET = 0x06;
@@ -75,7 +66,6 @@ namespace ADS1220 {
   static constexpr uint8_t CMD_RDATA = 0x10;
   static constexpr uint8_t CMD_WREG  = 0x40;
 }
-
 static constexpr int32_t ADS_FS = 1 << 23;
 static constexpr int32_t ADS_FAIL = INT32_MIN;
 static constexpr float ADS_VREF_VOLTS = 3.3f;
@@ -90,7 +80,6 @@ static constexpr uint32_t ADS_MAX_TIMEOUT_US = 400000;
 static constexpr uint8_t ADS_REG2_EXTREF_BASE = 0x40; // external reference on REFP0/REFN0
 static constexpr uint8_t ADS_REG2_EXTREF_50_60 = 0x44; // external reference + simultaneous 50/60 Hz rejection
 static constexpr uint8_t ADS_REG3 = 0x00;
-
 struct Cfg {
   char devEui[DEV_EUI_HEX_LEN + 1];
   char appEui[APP_EUI_HEX_LEN + 1];
@@ -98,24 +87,19 @@ struct Cfg {
   uint16_t intervalMin;
   bool adr;
   uint8_t dr;
-
   bool dmsEnabled;
   float dmsHz;
-
   bool ain2Enabled;
   float ain2Hz;
   uint8_t ain2Mode;
   float ain2LengthMm;
   float ain2AdcFullscaleV;
   float ain2InputFullscaleV;
-
   bool tempEnabled;
-
   bool sdLogEnabled;
   char logBaseName[LOG_BASENAME_LEN + 1];
   uint32_t logRotateKB;
 };
-
 static Cfg cfg = {
   "631E5618DF8EB3D4",
   "0000000000000000",
@@ -123,19 +107,15 @@ static Cfg cfg = {
   15,
   true,
   5,
-
   true,
   200.0f,
-
   true,
   1.0f,
   AIN2_MODE_POT,
   10.0f,
   3.123f,
   10.0f,
-
   true,
-
   false,
   "lorasense",
   1024
@@ -159,14 +139,12 @@ static bool lastDmsRawSeen = false;
 static bool dms_valid = false;
 static uint8_t g_dmsFailStreak = 0;
 static uint32_t g_dmsLastOkUs = 0;
-
 static float ain2_mV = NAN;
 static int32_t lastAin2Raw = 0;
 static bool lastAin2RawSeen = false;
 static bool ain2_valid = false;
 static uint8_t g_ain2FailStreak = 0;
 static uint32_t g_ain2LastOkUs = 0;
-
 static float ds_temp_c = NAN;
 static bool temp_valid = false;
 static bool ds_pending = false;
@@ -174,13 +152,10 @@ static uint32_t ds_request_ms = 0;
 static uint32_t last_ds_request_loop_ms = 0;
 static uint8_t g_tempFailStreak = 0;
 static uint32_t g_tempLastOkMs = 0;
-
 static bool selfTestOk = false;
 static float selfTestDelta_mV = NAN;
-
 static uint32_t last_dms_read_us = 0;
 static uint32_t last_ain2_read_us = 0;
-
 static uint32_t dmsFramesPerSecond = 0;
 static uint32_t ain2FramesPerSecond = 0;
 static uint32_t tempFramesPerSecond = 0;
@@ -191,8 +166,6 @@ static constexpr uint8_t ADC_FAILS_BEFORE_INVALID = 3;
 static constexpr uint32_t ADC_HOLD_TIMEOUT_US = 250000;
 static constexpr uint8_t TEMP_FAILS_BEFORE_INVALID = 2;
 static constexpr uint32_t TEMP_HOLD_TIMEOUT_MS = 4000;
-
-
 struct AdsChanCfg {
   uint8_t reg0;
   uint8_t reg1;
@@ -201,7 +174,6 @@ struct AdsChanCfg {
   float sps;
   uint32_t timeoutUs;
 };
-
 static AdsChanCfg g_adsDmsCfg{};
 static AdsChanCfg g_adsAin2Cfg{};
 static uint8_t g_adsCurReg0 = 0xFF;
@@ -209,7 +181,6 @@ static uint8_t g_adsCurReg1 = 0xFF;
 static uint8_t g_adsCurReg2 = 0xFF;
 static uint8_t g_adsCurReg3 = 0xFF;
 static bool g_adsConfigSettled = false;
-
 // ---------------- SD logging ----------------
 static bool g_sdMounted = false;
 static bool g_sdMountTried = false;
@@ -224,7 +195,6 @@ static volatile bool g_sdBusy = false;
 static uint32_t g_lastLogWriteMs = 0;
 static uint32_t g_logPeriodMs = 0;   // 0 = log every captured sample (use real sample timestamps)
 static uint32_t g_logFlushPeriodMs = 5000; // flush раз на 5 секунд
-
 struct LogSample {
   uint32_t t_ms;
   uint32_t t_us;
@@ -244,18 +214,16 @@ struct LogSample {
   float temp_C;
   uint8_t selftest_ok;
 };
-
 #pragma pack(push,1)
 struct BinLogHeader {
-  char magic[8];      // MKPBIN1\0
+  char magic[8];      // MKPBIN2\0
   uint16_t version;
   uint16_t headerSize;
   uint16_t recordSize;
-  uint16_t flags;
+  uint16_t flags;     // bit0 dms, bit1 ain2, bit2 temp, bit3 ain2_mode_volt
   uint32_t sampleHzNominal;
 };
-
-struct BinLogRecord {
+struct BinLogRecordV1 {
   uint32_t dt_us;       // delta from file start, microseconds
   int32_t dms_raw;      // ADS1220 raw signed code
   int32_t ain2_raw;     // ADS1220 raw signed code
@@ -265,21 +233,20 @@ struct BinLogRecord {
   uint8_t reserved;
 };
 #pragma pack(pop)
-
+static constexpr uint16_t BIN_FLAG_DMS_ENABLED       = 0x0001;
+static constexpr uint16_t BIN_FLAG_AIN2_ENABLED      = 0x0002;
+static constexpr uint16_t BIN_FLAG_TEMP_ENABLED      = 0x0004;
+static constexpr uint16_t BIN_FLAG_AIN2_MODE_VOLT    = 0x0008;
 static_assert(sizeof(BinLogHeader) == 20, "BinLogHeader size");
-static_assert(sizeof(BinLogRecord) == 18, "BinLogRecord size");
-
+static_assert(sizeof(BinLogRecordV1) == 18, "BinLogRecordV1 size");
 static uint32_t g_udbfFileStartUs = 0;
-
 enum class UdbfSignalKind : uint8_t {
   DmsMvPerV = 0,
   Ain2Volt = 1,
   Ain2WayMm = 2,
   TempC = 3,
 };
-
 static uint16_t readVBatMilli() { return 0; }
-
 static uint32_t nominalLogHz() {
   float maxHz = 0.0f;
   if (cfg.dmsEnabled && cfg.dmsHz > maxHz) maxHz = cfg.dmsHz;
@@ -288,19 +255,32 @@ static uint32_t nominalLogHz() {
   if (maxHz > 20000.0f) maxHz = 20000.0f;
   return (uint32_t)(maxHz + 0.5f);
 }
-
+static uint16_t currentBinFlags() {
+  uint16_t flags = 0;
+  if (cfg.dmsEnabled) flags |= BIN_FLAG_DMS_ENABLED;
+  if (cfg.ain2Enabled) flags |= BIN_FLAG_AIN2_ENABLED;
+  if (cfg.tempEnabled) flags |= BIN_FLAG_TEMP_ENABLED;
+  if (cfg.ain2Mode == AIN2_MODE_VOLT) flags |= BIN_FLAG_AIN2_MODE_VOLT;
+  return flags;
+}
+static uint16_t currentBinRecordSize() {
+  uint16_t size = sizeof(uint32_t); // TimeCounter in microseconds
+  if (cfg.dmsEnabled) size += sizeof(int32_t);
+  if (cfg.ain2Enabled) size += sizeof(int32_t);
+  if (cfg.tempEnabled) size += sizeof(int16_t);
+  return size;
+}
 static bool writeBinHeader(File& f) {
   BinLogHeader h{};
-  memcpy(h.magic, "MKPBIN1", 7);
+  memcpy(h.magic, "MKPBIN2", 7);
   h.magic[7] = 0;
-  h.version = 1;
+  h.version = 2;
   h.headerSize = (uint16_t)sizeof(BinLogHeader);
-  h.recordSize = (uint16_t)sizeof(BinLogRecord);
-  h.flags = 0;
+  h.recordSize = currentBinRecordSize();
+  h.flags = currentBinFlags();
   h.sampleHzNominal = nominalLogHz();
   return f.write((const uint8_t*)&h, sizeof(h)) == sizeof(h);
 }
-
 static uint16_t quantizeTempC100(float t) {
   if (!isfinite(t)) return 0;
   long v = lroundf(t * 100.0f);
@@ -308,42 +288,38 @@ static uint16_t quantizeTempC100(float t) {
   if (v > 32767L) v = 32767L;
   return (uint16_t)(int16_t)v;
 }
-
 static bool writeBinRecord(File& f, const LogSample& s) {
-  BinLogRecord r{};
   if (g_udbfFileStartUs == 0) g_udbfFileStartUs = s.t_us;
-
-  uint32_t realDtUs = (s.t_us >= g_udbfFileStartUs)
+  const uint32_t timeCounterUs = (s.t_us >= g_udbfFileStartUs)
     ? (uint32_t)(s.t_us - g_udbfFileStartUs)
     : 0U;
-
-  r.dt_us = realDtUs;
-
-  r.dms_raw = s.dms_on ? s.dms_raw : 0;
-  r.ain2_raw = s.ain2_on ? s.ain2_raw : 0;
-  r.temp_c_x100 = (int16_t)quantizeTempC100(s.temp_C);
-  r.vbat_mV = 0;
-  if (s.dms_valid) r.flags |= 0x01;
-  if (s.ain2_valid) r.flags |= 0x02;
-  if (s.temp_valid) r.flags |= 0x04;
-  if (s.selftest_ok) r.flags |= 0x08;
-  return f.write((const uint8_t*)&r, sizeof(r)) == sizeof(r);
+  if (f.write((const uint8_t*)&timeCounterUs, sizeof(timeCounterUs)) != sizeof(timeCounterUs)) return false;
+  if (cfg.dmsEnabled) {
+    const int32_t v = s.dms_on ? s.dms_raw : 0;
+    if (f.write((const uint8_t*)&v, sizeof(v)) != sizeof(v)) return false;
+  }
+  if (cfg.ain2Enabled) {
+    const int32_t v = s.ain2_on ? s.ain2_raw : 0;
+    if (f.write((const uint8_t*)&v, sizeof(v)) != sizeof(v)) return false;
+  }
+  if (cfg.tempEnabled) {
+    const int16_t v = (int16_t)quantizeTempC100(s.temp_C);
+    if (f.write((const uint8_t*)&v, sizeof(v)) != sizeof(v)) return false;
+  }
+  return true;
 }
-
 struct UdbfVarDef {
   const char* name;
   const char* unit;
   uint16_t precision;
   UdbfSignalKind kind;
 };
-
 static UdbfVarDef g_udbfVars[3];
 static uint16_t g_udbfVarCount = 0;
 static uint64_t g_udbfStartNs = 0;
 static bool g_udbfHeaderWritten = false;
 static uint64_t g_udbfRecordIndex = 0;
 static uint32_t g_lastQueuedLogMs = 0;
-
 static int monthFromShortName(const char* mon) {
   if (!mon) return 1;
   if (!strncmp(mon, "Jan", 3)) return 1;
@@ -360,18 +336,15 @@ static int monthFromShortName(const char* mon) {
   if (!strncmp(mon, "Dec", 3)) return 12;
   return 1;
 }
-
 static bool isLeapYear(int year) {
   return ((year % 4) == 0 && (year % 100) != 0) || ((year % 400) == 0);
 }
-
 static int daysInMonth(int year, int month) {
   static const int kDays[12] = {31,28,31,30,31,30,31,31,30,31,30,31};
   if (month == 2 && isLeapYear(year)) return 29;
   if (month < 1 || month > 12) return 30;
   return kDays[month - 1];
 }
-
 static int64_t daysFromCivil(int year, int month, int day) {
   year -= (month <= 2) ? 1 : 0;
   const int era = (year >= 0 ? year : year - 399) / 400;
@@ -380,7 +353,6 @@ static int64_t daysFromCivil(int year, int month, int day) {
   const unsigned doe = yoe * 365U + yoe / 4U - yoe / 100U + doy;
   return (int64_t)era * 146097LL + (int64_t)doe - 719468LL; // days since 1970-01-01
 }
-
 static double makeOleDate(int year, int month, int day, int hour, int minute, int second) {
   // OLE Automation epoch = 1899-12-30
   const int64_t unixDays = daysFromCivil(year, month, day);
@@ -388,7 +360,6 @@ static double makeOleDate(int year, int month, int day, int hour, int minute, in
   const double frac = ((double)hour * 3600.0 + (double)minute * 60.0 + (double)second) / 86400.0;
   return (double)(unixDays + oleOffsetDays) + frac;
 }
-
 static double compileTimeOleDate() {
   char mon[4] = {0, 0, 0, 0};
   int day = 1;
@@ -396,14 +367,12 @@ static double compileTimeOleDate() {
   int hh = 0;
   int mm = 0;
   int ss = 0;
-
   // __DATE__ => "Mmm dd yyyy", __TIME__ => "hh:mm:ss"
   sscanf(__DATE__, "%3s %d %d", mon, &day, &year);
   sscanf(__TIME__, "%d:%d:%d", &hh, &mm, &ss);
   const int month = monthFromShortName(mon);
   return makeOleDate(year, month, day, hh, mm, ss);
 }
-
 static void rebuildUdbfLayout() {
   g_udbfVarCount = 0;
   if (cfg.dmsEnabled) {
@@ -420,29 +389,23 @@ static void rebuildUdbfLayout() {
     g_udbfVars[g_udbfVarCount++] = {"TEMP", "C", 2, UdbfSignalKind::TempC};
   }
 }
-
 static void udbfWriteU16(File& f, uint16_t v) {
   uint8_t b[2] = {(uint8_t)(v & 0xFF), (uint8_t)((v >> 8) & 0xFF)};
   f.write(b, sizeof(b));
 }
-
 static void udbfWriteDouble(File& f, double v) {
   uint8_t b[sizeof(double)];
   memcpy(b, &v, sizeof(double));
   f.write(b, sizeof(double));
 }
-
-
 static void udbfWriteU32(File& f, uint32_t v) {
   uint8_t b[4] = {(uint8_t)(v & 0xFF), (uint8_t)((v >> 8) & 0xFF), (uint8_t)((v >> 16) & 0xFF), (uint8_t)((v >> 24) & 0xFF)};
   f.write(b, sizeof(b));
 }
-
 static void udbfWriteI16(File& f, int16_t v) {
   uint8_t b[2] = {(uint8_t)(v & 0xFF), (uint8_t)((uint16_t)v >> 8)};
   f.write(b, sizeof(b));
 }
-
 static int16_t udbfQuantizeValue(float v, uint16_t precision) {
   if (!isfinite(v)) return 0;
   float scale = 1.0f;
@@ -452,7 +415,6 @@ static int16_t udbfQuantizeValue(float v, uint16_t precision) {
   if (q > 32767L) q = 32767L;
   return (int16_t)q;
 }
-
 static void udbfWriteCompactStringField(File& f, const char* txt) {
   const uint16_t len = (uint16_t)(strlen(txt) + 1U);
   udbfWriteU16(f, len);
@@ -460,26 +422,22 @@ static void udbfWriteCompactStringField(File& f, const char* txt) {
   f.write((uint8_t)0);
   f.write((uint8_t)0);
 }
-
 static void udbfWriteCompactUnitField(File& f, const char* txt) {
   const size_t len = strlen(txt) + 1U;
   f.write((const uint8_t*)txt, len);
   f.write((uint8_t)0);
   f.write((uint8_t)0);
 }
-
 static void udbfWriteU64(File& f, uint64_t v) {
   uint8_t b[8];
   for (int i = 0; i < 8; ++i) b[i] = (uint8_t)((v >> (8 * i)) & 0xFF);
   f.write(b, sizeof(b));
 }
-
 static void udbfWriteFloat(File& f, float v) {
   uint8_t b[sizeof(float)];
   memcpy(b, &v, sizeof(float));
   f.write(b, sizeof(float));
 }
-
 static void udbfWriteCString(File& f, const char* txt) {
   const size_t len = strlen(txt) + 1U;
   udbfWriteU16(f, (uint16_t)len);
@@ -494,13 +452,11 @@ static uint64_t fnv1a64(const char* txt) {
   }
   return h;
 }
-
 static String hexByte(uint8_t v) {
   char buf[3];
   snprintf(buf, sizeof(buf), "%02x", v);
   return String(buf);
 }
-
 static String pseudoUuidFromSeed(const String& seed) {
   uint64_t h1 = fnv1a64(seed.c_str());
   String s2 = seed + "#alt";
@@ -512,7 +468,6 @@ static String pseudoUuidFromSeed(const String& seed) {
   }
   b[6] = (uint8_t)((b[6] & 0x0F) | 0x40); // UUID v4 style
   b[8] = (uint8_t)((b[8] & 0x3F) | 0x80);
-
   String out;
   out.reserve(36);
   for (int i = 0; i < 16; ++i) {
@@ -521,7 +476,6 @@ static String pseudoUuidFromSeed(const String& seed) {
   }
   return out;
 }
-
 static void udbfWriteVarAdditionalData(File& f, const char* uuidText) {
   // Mirrors the structure seen in the original DAT files:
   // u16 blockLen, u16 tag=5, u16 subtype=2, cstring uuid
@@ -532,7 +486,6 @@ static void udbfWriteVarAdditionalData(File& f, const char* uuidText) {
   udbfWriteU16(f, 2);
   udbfWriteCString(f, uuidText);
 }
-
 static void udbfWriteFileAdditionalData(File& f, const char* jsonText) {
   // Best-effort reproduction of the extra file metadata block used by Gantner.
   // Layout observed in the reference file:
@@ -549,26 +502,22 @@ static void udbfWriteFileAdditionalData(File& f, const char* jsonText) {
   udbfWriteU16(f, 3);
   f.write((const uint8_t*)jsonText, jsonLen);
 }
-
 static String udbfBuildMetadataJson() {
   const uint64_t mac = ESP.getEfuseMac();
   char serial[17];
   snprintf(serial, sizeof(serial), "%04X%08lX", (uint16_t)(mac >> 32), (unsigned long)(mac & 0xFFFFFFFFUL));
-
   char measName[32];
   char mon[4] = {0,0,0,0};
   int day = 1, year = 2026, hh = 0, mi = 0, ss = 0;
   sscanf(__DATE__, "%3s %d %d", mon, &day, &year);
   sscanf(__TIME__, "%d:%d:%d", &hh, &mi, &ss);
   snprintf(measName, sizeof(measName), "%04d-%02d-%02d %02d:%02d:%02d", year, monthFromShortName(mon), day, hh, mi, ss);
-
   String deviceSeed = String("device:") + serial + ":" + BOARD_NAME;
   String measSeed   = String("meas:") + serial + ":" + measName;
   String sourceSeed = String("source:") + serial + ":" + cfg.logBaseName;
   String deviceId = pseudoUuidFromSeed(deviceSeed);
   String measId   = pseudoUuidFromSeed(measSeed);
   String sourceId = pseudoUuidFromSeed(sourceSeed);
-
   String json;
   json.reserve(512);
   json += '{';
@@ -584,7 +533,6 @@ static String udbfBuildMetadataJson() {
   json += '}';
   return json;
 }
-
 static bool writeUdbfHeader(File& f) {
   rebuildUdbfLayout();
   static const char kVendor[] = "UniversalDataBinFile - GANTNER Instruments";
@@ -592,7 +540,6 @@ static bool writeUdbfHeader(File& f) {
   static const uint16_t kTimestampDataType = 7;   // Python DAT opens with this compact uint32 timestamp type
   static const double kTimestampToSecondFactor = 1e-6; // timestamps stored in microseconds
   const double startOleDate = compileTimeOleDate();
-
   f.write((uint8_t)0);
   udbfWriteU16(f, 107);
   udbfWriteU16(f, (uint16_t)sizeof(kVendor));
@@ -606,7 +553,6 @@ static bool writeUdbfHeader(File& f) {
   udbfWriteDouble(f, startOleDate);
   udbfWriteU64(f, 0ULL);
   udbfWriteU16(f, g_udbfVarCount);
-
   for (uint16_t i = 0; i < g_udbfVarCount; ++i) {
     const UdbfVarDef& v = g_udbfVars[i];
     // Python-generated DAT that opens correctly in test.viewer uses a very small
@@ -620,13 +566,11 @@ static bool writeUdbfHeader(File& f) {
     udbfWriteU16(f, v.precision);
     udbfWriteCompactUnitField(f, v.unit);
   }
-
   static const char kSep[] = "***********************";
   f.write((const uint8_t*)kSep, sizeof(kSep) - 1U);
   g_udbfHeaderWritten = true;
   return true;
 }
-
 static float udbfValueFor(const LogSample& s, UdbfSignalKind kind) {
   switch (kind) {
     case UdbfSignalKind::DmsMvPerV:
@@ -640,7 +584,6 @@ static float udbfValueFor(const LogSample& s, UdbfSignalKind kind) {
   }
   return 0.0f;
 }
-
 static constexpr uint16_t LOG_BUF_SIZE = 1024;
 static constexpr uint16_t LOG_BATCH_SIZE = 64;
 static constexpr uint32_t LOG_FORCE_FLUSH_MS = 250;
@@ -658,7 +601,6 @@ uint8_t appKey[16]  = { 0 };
 uint8_t nwkSKey[16] = { 0 };
 uint8_t appSKey[16] = { 0 };
 uint32_t devAddr    = 0;
-
 // Compatibility aliases for older Heltec cores.
 uint8_t DevEui[8]   = { 0 };
 uint8_t AppEui[8]   = { 0 };
@@ -666,10 +608,8 @@ uint8_t AppKey[16]  = { 0 };
 uint8_t NwkSKey[16] = { 0 };
 uint8_t AppSKey[16] = { 0 };
 uint32_t DevAddr    = 0;
-
 extern uint8_t appData[];
 extern uint8_t appDataSize;
-
 uint32_t appTxDutyCycle = 15UL * 60UL * 1000UL;
 bool overTheAirActivation = true;
 bool loraWanAdr = true;
@@ -679,7 +619,6 @@ uint8_t confirmedNbTrials = 3;
 uint16_t userChannelsMask[6] = { 0x00FF, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000 };
 LoRaMacRegion_t loraWanRegion = ACTIVE_REGION;
 DeviceClass_t loraWanClass = CLASS_A;
-
 // High-speed sampling task (CONFIG/AP mode)
 static TaskHandle_t g_sensorTaskHandle = nullptr;
 static TaskHandle_t g_sdTaskHandle = nullptr;
@@ -688,20 +627,16 @@ static SPISettings g_adsSpiSettings(4000000, MSBFIRST, SPI_MODE1);
 static SemaphoreHandle_t g_spiBusMutex = nullptr;
 static portMUX_TYPE g_logBufMux = portMUX_INITIALIZER_UNLOCKED;
 static char g_sdWriteBuf[4096];
-
 // ============================================================
 // Helpers
 // ============================================================
 static bool spiBusLock(TickType_t timeoutTicks = pdMS_TO_TICKS(5)) {
   return g_spiBusMutex && (xSemaphoreTake(g_spiBusMutex, timeoutTicks) == pdTRUE);
 }
-
 static void spiBusUnlock() {
   if (g_spiBusMutex) xSemaphoreGive(g_spiBusMutex);
 }
-
 static inline void adsCS(bool en) { digitalWrite(PIN_ADS_CS, en ? LOW : HIGH); }
-
 static void restoreAdsBusAfterSd() {
   digitalWrite(PIN_SD_CS, HIGH);
   adsCS(false);
@@ -710,7 +645,6 @@ static void restoreAdsBusAfterSd() {
     restoreDmsRunMode();
   }
 }
-
 static inline bool adsBusPrepare() {
   if (!spiBusLock(pdMS_TO_TICKS(2))) return false;
   digitalWrite(PIN_SD_CS, HIGH);
@@ -718,61 +652,49 @@ static inline bool adsBusPrepare() {
   SPI.beginTransaction(g_adsSpiSettings);
   return true;
 }
-
 static inline void adsBusDone() {
   SPI.endTransaction();
   spiBusUnlock();
 }
-
 static inline void sdBusPrepare() {
   adsCS(false);
   SPI.begin(PIN_SPI_SCK, PIN_SPI_MISO, PIN_SPI_MOSI, PIN_SD_CS);
 }
-
 static uint8_t adsXfer(uint8_t b) {
   return SPI.transfer(b);
 }
-
 static inline bool isApModeRequested() {
   pinMode(PIN_AP_MODE, INPUT_PULLUP);
   delay(2);
   return digitalRead(PIN_AP_MODE) == LOW;
 }
-
 static float rawTo_mV_gain(int32_t raw, float gain) {
   float v = ((float)raw * ADS_VREF_VOLTS) / (gain * (float)ADS_FS);
   return v * 1000.0f;
 }
-
 static float dmsTo_mV_per_V(float dms_mV_local) {
   return dms_mV_local / ADS_VREF_VOLTS;
 }
-
 static float clampf(float v, float lo, float hi) {
   if (v < lo) return lo;
   if (v > hi) return hi;
   return v;
 }
-
 static const char* ain2ModeName() {
   return (cfg.ain2Mode == AIN2_MODE_VOLT) ? "volt" : "pot";
 }
-
 static const char* ain2ModeNameFor(uint8_t mode) {
   return (mode == AIN2_MODE_VOLT) ? "volt" : "pot";
 }
-
 static const char* ain2DerivedUnitFor(uint8_t mode) {
   return (mode == AIN2_MODE_VOLT) ? "V" : "mm";
 }
-
 static uint8_t hexNibble(char c) {
   if (c >= '0' && c <= '9') return (uint8_t)(c - '0');
   if (c >= 'A' && c <= 'F') return (uint8_t)(10 + c - 'A');
   if (c >= 'a' && c <= 'f') return (uint8_t)(10 + c - 'a');
   return 0;
 }
-
 static bool parseHexToBytes(const char* hex, uint8_t* out, size_t outLen) {
   size_t hexLen = strlen(hex);
   if (hexLen != outLen * 2) return false;
@@ -781,7 +703,6 @@ static bool parseHexToBytes(const char* hex, uint8_t* out, size_t outLen) {
   }
   return true;
 }
-
 static void bytesToHex(const uint8_t* in, size_t len, char* out) {
   static const char* lut = "0123456789ABCDEF";
   for (size_t i = 0; i < len; ++i) {
@@ -790,7 +711,6 @@ static void bytesToHex(const uint8_t* in, size_t len, char* out) {
   }
   out[len * 2] = '\0';
 }
-
 static void copyUpperNoSpace(char* dst, size_t dstLen, const char* src) {
   if (dstLen == 0) return;
   size_t j = 0;
@@ -801,7 +721,6 @@ static void copyUpperNoSpace(char* dst, size_t dstLen, const char* src) {
   }
   dst[j] = '\0';
 }
-
 static void sanitizeFileStem(char* dst, size_t dstLen, const char* src) {
   if (dstLen == 0) return;
   size_t j = 0;
@@ -817,7 +736,6 @@ static void sanitizeFileStem(char* dst, size_t dstLen, const char* src) {
   }
   dst[j] = '\0';
 }
-
 static bool isExactHex(const char* s, size_t len) {
   if (!s || strlen(s) != len) return false;
   for (size_t i = 0; i < len; ++i) {
@@ -826,41 +744,34 @@ static bool isExactHex(const char* s, size_t len) {
   }
   return true;
 }
-
 static float hzToPeriodMsFloat(float hz) {
   if (hz <= 0.0001f) return 1000000.0f;
   return 1000.0f / hz;
 }
-
 static uint32_t hzToPeriodMsClamped(float hz, uint32_t minMs, uint32_t maxMs) {
   float ms = hzToPeriodMsFloat(hz);
   if (ms < (float)minMs) ms = (float)minMs;
   if (ms > (float)maxMs) ms = (float)maxMs;
   return (uint32_t)(ms + 0.5f);
 }
-
 static float hzToPeriodUsFloat(float hz) {
   if (hz <= 0.0001f) return 1000000.0f;
   return 1000000.0f / hz;
 }
-
 static uint32_t hzToPeriodUsClamped(float hz, uint32_t minUs, uint32_t maxUs) {
   float us = hzToPeriodUsFloat(hz);
   if (us < (float)minUs) us = (float)minUs;
   if (us > (float)maxUs) us = (float)maxUs;
   return (uint32_t)(us + 0.5f);
 }
-
 static float periodMsToHz(uint32_t ms) {
   if (ms == 0) return 0.0f;
   return 1000.0f / (float)ms;
 }
-
 static float periodUsToHz(uint32_t us) {
   if (us == 0) return 0.0f;
   return 1000000.0f / (float)us;
 }
-
 static void syncLoraCompatAliases() {
   memcpy(DevEui, devEui, sizeof(devEui));
   memcpy(AppEui, appEui, sizeof(appEui));
@@ -869,17 +780,13 @@ static void syncLoraCompatAliases() {
   memcpy(AppSKey, appSKey, sizeof(appSKey));
   DevAddr = devAddr;
 }
-
-
 static PerfEstimate makePerfEstimate() {
   PerfEstimate p{};
   p.dmsTargetHz = cfg.dmsEnabled ? cfg.dmsHz : 0.0f;
   p.ain2TargetHz = cfg.ain2Enabled ? cfg.ain2Hz : 0.0f;
   p.tempTargetHz = cfg.tempEnabled ? TEMP_FIXED_HZ : 0.0f;
-
   float ain2Conv = 0.0f;
   if (cfg.ain2Enabled) ain2Conv = cfg.dmsEnabled ? 3.0f : 2.0f; // discard + read + optional DMS restore
-
   p.adsRequestedConvHz = p.dmsTargetHz + p.ain2TargetHz * ain2Conv;
   p.scale = 1.0f;
   if (p.adsRequestedConvHz > ADS_BUDGET_CONVERSIONS_HZ && p.adsRequestedConvHz > 0.0001f) {
@@ -891,12 +798,10 @@ static PerfEstimate makePerfEstimate() {
   p.totalEstimatedHz = p.dmsEstimatedHz + p.ain2EstimatedHz + p.tempTargetHz;
   return p;
 }
-
 static void getChipMac48(uint8_t out[6]) {
   uint64_t mac = ESP.getEfuseMac();
   for (int i = 0; i < 6; ++i) out[5 - i] = (uint8_t)((mac >> (i * 8)) & 0xFF);
 }
-
 static void makeChipDevEui(uint8_t out[8]) {
   uint8_t mac[6];
   getChipMac48(mac);
@@ -909,32 +814,26 @@ static void makeChipDevEui(uint8_t out[8]) {
   out[6] = mac[4];
   out[7] = mac[5];
 }
-
 static void chipMac48Hex(char out[13]) {
   uint8_t mac[6];
   getChipMac48(mac);
   bytesToHex(mac, 6, out);
 }
-
 static void chipDevEuiHex(char out[17]) {
   uint8_t eui[8];
   makeChipDevEui(eui);
   bytesToHex(eui, 8, out);
 }
-
 static void normalizeCfg(Cfg& c) {
   copyUpperNoSpace(c.devEui, sizeof(c.devEui), c.devEui);
   copyUpperNoSpace(c.appEui, sizeof(c.appEui), c.appEui);
   copyUpperNoSpace(c.appKey, sizeof(c.appKey), c.appKey);
   sanitizeFileStem(c.logBaseName, sizeof(c.logBaseName), c.logBaseName);
-
   if (c.intervalMin < 1) c.intervalMin = 1;
   if (c.intervalMin > 1440) c.intervalMin = 1440;
   if (c.dr > 5) c.dr = 5;
-
   c.dmsHz = clampf(c.dmsHz, DMS_MIN_HZ, DMS_MAX_HZ);
   c.ain2Hz = clampf(c.ain2Hz, AIN2_MIN_HZ, AIN2_MAX_HZ);
-
   if (c.ain2Mode != AIN2_MODE_POT && c.ain2Mode != AIN2_MODE_VOLT) c.ain2Mode = AIN2_MODE_POT;
   if (!(c.ain2LengthMm > 0.0f)) c.ain2LengthMm = 10.0f;
   if (!(c.ain2AdcFullscaleV > 0.05f)) c.ain2AdcFullscaleV = 3.123f;
@@ -942,7 +841,6 @@ static void normalizeCfg(Cfg& c) {
   if (c.logRotateKB < 64) c.logRotateKB = 64;
   if (c.logRotateKB > 1024UL * 1024UL) c.logRotateKB = 1024UL * 1024UL;
 }
-
 static bool validateCfg(const Cfg& c, String* errOut = nullptr) {
   if (!isExactHex(c.devEui, DEV_EUI_HEX_LEN)) {
     if (errOut) *errOut = "invalid DevEUI (need 16 hex chars)";
@@ -958,7 +856,6 @@ static bool validateCfg(const Cfg& c, String* errOut = nullptr) {
   }
   return true;
 }
-
 static void printHexLine(const char* label, const uint8_t* data, size_t len) {
   char buf[65];
   if (len * 2 >= sizeof(buf)) return;
@@ -966,7 +863,6 @@ static void printHexLine(const char* label, const uint8_t* data, size_t len) {
   Serial.print(label);
   Serial.println(buf);
 }
-
 static void dumpLoraBuffers(const char* tag) {
   Serial.print("[LORA] ");
   Serial.println(tag);
@@ -974,10 +870,8 @@ static void dumpLoraBuffers(const char* tag) {
   printHexLine("  appEui=", appEui, sizeof(appEui));
   printHexLine("  appKey=", appKey, sizeof(appKey));
 }
-
 static void loadCfg() {
   Cfg defaults = cfg;
-
   prefs.begin("lorasense", true);
   String dE = prefs.getString("devEui", defaults.devEui);
   String aE = prefs.getString("appEui", defaults.appEui);
@@ -985,34 +879,27 @@ static void loadCfg() {
   cfg.intervalMin = prefs.getUShort("minutes", defaults.intervalMin);
   cfg.adr = prefs.getBool("adr", defaults.adr);
   cfg.dr = prefs.getUChar("dr", defaults.dr);
-
   uint32_t oldDmsPerUs = prefs.getUInt("dmsperus", 0);
   uint32_t oldAin2PerUs = prefs.getUInt("aperus", 0);
   uint32_t oldDmsPer = prefs.getUInt("dmsper", hzToPeriodMsClamped(defaults.dmsHz, 1, 600000UL));
   uint32_t oldAin2Per = prefs.getUInt("aper", hzToPeriodMsClamped(defaults.ain2Hz, 1, 600000UL));
-
   cfg.dmsEnabled = prefs.getBool("dmson", defaults.dmsEnabled);
   cfg.dmsHz = prefs.getFloat("dmsHz", oldDmsPerUs ? periodUsToHz(oldDmsPerUs) : periodMsToHz(oldDmsPer));
-
   cfg.ain2Enabled = prefs.getBool("a2on", defaults.ain2Enabled);
   cfg.ain2Hz = prefs.getFloat("a2Hz", oldAin2PerUs ? periodUsToHz(oldAin2PerUs) : periodMsToHz(oldAin2Per));
   cfg.ain2Mode = prefs.getUChar("a2mode", defaults.ain2Mode);
   cfg.ain2LengthMm = prefs.getFloat("a2len", defaults.ain2LengthMm);
   cfg.ain2AdcFullscaleV = prefs.getFloat("a2adcfs", defaults.ain2AdcFullscaleV);
   cfg.ain2InputFullscaleV = prefs.getFloat("a2infs", defaults.ain2InputFullscaleV);
-
   cfg.tempEnabled = prefs.getBool("tmpon", defaults.tempEnabled);
-
   cfg.sdLogEnabled = prefs.getBool("sdon", defaults.sdLogEnabled);
   String base = prefs.getString("sdbase", defaults.logBaseName);
   cfg.logRotateKB = prefs.getUInt("sdkb", defaults.logRotateKB);
   prefs.end();
-
   strlcpy(cfg.devEui, dE.c_str(), sizeof(cfg.devEui));
   strlcpy(cfg.appEui, aE.c_str(), sizeof(cfg.appEui));
   strlcpy(cfg.appKey, aK.c_str(), sizeof(cfg.appKey));
   strlcpy(cfg.logBaseName, base.c_str(), sizeof(cfg.logBaseName));
-
   normalizeCfg(cfg);
   String err;
   if (!validateCfg(cfg, &err)) {
@@ -1022,7 +909,6 @@ static void loadCfg() {
     normalizeCfg(cfg);
   }
 }
-
 static void saveCfg() {
   normalizeCfg(cfg);
   prefs.begin("lorasense", false);
@@ -1032,12 +918,10 @@ static void saveCfg() {
   prefs.putUShort("minutes", cfg.intervalMin);
   prefs.putBool("adr", cfg.adr);
   prefs.putUChar("dr", cfg.dr);
-
   prefs.putBool("dmson", cfg.dmsEnabled);
   prefs.putFloat("dmsHz", cfg.dmsHz);
   prefs.putUInt("dmsper", hzToPeriodMsClamped(cfg.dmsHz, 1, 600000UL));
   prefs.putUInt("dmsperus", hzToPeriodUsClamped(cfg.dmsHz, 500, 600000000UL));
-
   prefs.putBool("a2on", cfg.ain2Enabled);
   prefs.putFloat("a2Hz", cfg.ain2Hz);
   prefs.putUInt("aper", hzToPeriodMsClamped(cfg.ain2Hz, 1, 600000UL));
@@ -1046,15 +930,12 @@ static void saveCfg() {
   prefs.putFloat("a2len", cfg.ain2LengthMm);
   prefs.putFloat("a2adcfs", cfg.ain2AdcFullscaleV);
   prefs.putFloat("a2infs", cfg.ain2InputFullscaleV);
-
   prefs.putBool("tmpon", cfg.tempEnabled);
-
   prefs.putBool("sdon", cfg.sdLogEnabled);
   prefs.putString("sdbase", cfg.logBaseName);
   prefs.putUInt("sdkb", cfg.logRotateKB);
   prefs.end();
 }
-
 static void applyLoraConfig() {
   memset(devEui, 0, sizeof(devEui));
   memset(appEui, 0, sizeof(appEui));
@@ -1062,16 +943,13 @@ static void applyLoraConfig() {
   memset(nwkSKey, 0, sizeof(nwkSKey));
   memset(appSKey, 0, sizeof(appSKey));
   devAddr = 0;
-
   parseHexToBytes(cfg.devEui, devEui, sizeof(devEui));
   parseHexToBytes(cfg.appEui, appEui, sizeof(appEui));
   parseHexToBytes(cfg.appKey, appKey, sizeof(appKey));
-
   syncLoraCompatAliases();
   appTxDutyCycle = (uint32_t)cfg.intervalMin * 60UL * 1000UL;
   loraWanAdr = cfg.adr;
 }
-
 static float ain2DerivedValue() {
   if (!ain2_valid || isnan(ain2_mV)) return NAN;
   if (cfg.ain2Mode == AIN2_MODE_VOLT) {
@@ -1083,15 +961,12 @@ static float ain2DerivedValue() {
   float ratio = (ain2_mV / 1000.0f) / cfg.ain2AdcFullscaleV;
   return clampf(ratio, 0.0f, 1.0f) * cfg.ain2LengthMm;
 }
-
 static const char* ain2DerivedUnit() {
   return (cfg.ain2Mode == AIN2_MODE_VOLT) ? "V" : "mm";
 }
-
 static uint8_t adsBuildReg1(uint8_t drBits, uint8_t modeBits) {
   return (uint8_t)(((drBits & 0x07u) << 5) | ((modeBits & 0x03u) << 3));
 }
-
 static uint32_t adsTimeoutUsForSps(float sps) {
   if (!(sps > 0.0f)) return ADS_MAX_TIMEOUT_US;
   float us = (1000000.0f / sps) * 1.6f + 3000.0f;
@@ -1099,7 +974,6 @@ static uint32_t adsTimeoutUsForSps(float sps) {
   if (us > (float)ADS_MAX_TIMEOUT_US) us = (float)ADS_MAX_TIMEOUT_US;
   return (uint32_t)us;
 }
-
 static AdsChanCfg makeAdsChanCfg(uint8_t reg0, float gain, float requestedHz) {
   struct RateDef { float sps; uint8_t dr; uint8_t mode; uint8_t reg2; };
   static const RateDef kRates[] = {
@@ -1124,7 +998,6 @@ static AdsChanCfg makeAdsChanCfg(uint8_t reg0, float gain, float requestedHz) {
     {1200.0f, 5, 2, ADS_REG2_EXTREF_BASE},
     {2000.0f, 6, 2, ADS_REG2_EXTREF_BASE},
   };
-
   const RateDef* best = &kRates[0];
   float bestDiff = fabsf(requestedHz - kRates[0].sps);
   for (size_t i = 1; i < sizeof(kRates)/sizeof(kRates[0]); ++i) {
@@ -1134,7 +1007,6 @@ static AdsChanCfg makeAdsChanCfg(uint8_t reg0, float gain, float requestedHz) {
       bestDiff = diff;
     }
   }
-
   AdsChanCfg cfg{};
   cfg.reg0 = reg0;
   cfg.reg1 = adsBuildReg1(best->dr, best->mode);
@@ -1144,12 +1016,10 @@ static AdsChanCfg makeAdsChanCfg(uint8_t reg0, float gain, float requestedHz) {
   cfg.timeoutUs = adsTimeoutUsForSps(best->sps);
   return cfg;
 }
-
 static void refreshAdsChannelConfigs() {
   g_adsDmsCfg = makeAdsChanCfg(REG0_DMS, GAIN_DMS, cfg.dmsHz);
   g_adsAin2Cfg = makeAdsChanCfg(REG0_AIN2, GAIN_AIN2, cfg.ain2Hz);
 }
-
 static void invalidateDms() {
   // Keep the last raw ADC code so exported BIN/CSV does not create artificial
   // drops to zero when a single ADS read times out or is temporarily invalid.
@@ -1160,7 +1030,6 @@ static void invalidateDms() {
   g_dmsFailStreak = 0;
   g_dmsLastOkUs = 0;
 }
-
 static void invalidateAin2() {
   // Keep the last raw ADC code for continuity in exported trend data.
   ain2_valid = false;
@@ -1168,7 +1037,6 @@ static void invalidateAin2() {
   g_ain2FailStreak = 0;
   g_ain2LastOkUs = 0;
 }
-
 static void invalidateTemp() {
   temp_valid = false;
   ds_temp_c = NAN;
@@ -1176,7 +1044,6 @@ static void invalidateTemp() {
   g_tempFailStreak = 0;
   g_tempLastOkMs = 0;
 }
-
 static bool applyDownSpikeFilter(int32_t candidate, int32_t& lastRaw, bool& haveLast,
                                  int32_t dropThresholdRaw, float dropRatioMin) {
   if (!haveLast) {
@@ -1184,7 +1051,6 @@ static bool applyDownSpikeFilter(int32_t candidate, int32_t& lastRaw, bool& have
     haveLast = true;
     return true;
   }
-
   const int32_t prev = lastRaw;
   const int32_t drop = prev - candidate;
   if (drop > dropThresholdRaw && candidate < (int32_t)(prev * dropRatioMin)) {
@@ -1192,14 +1058,11 @@ static bool applyDownSpikeFilter(int32_t candidate, int32_t& lastRaw, bool& have
     // in the exported trend data. Keep the previous accepted raw value.
     return false;
   }
-
   lastRaw = candidate;
   return true;
 }
-
 static void prepareTxFrame(uint8_t port);
 static void syncSdLogger(bool forceReopen);
-
 // ============================================================
 // ADS low-level
 // ============================================================
@@ -1210,7 +1073,6 @@ static void adsCommand(uint8_t cmd) {
   adsCS(false);
   adsBusDone();
 }
-
 static void adsWriteRegs4(uint8_t r0, uint8_t r1, uint8_t r2, uint8_t r3) {
   if (!adsBusPrepare()) return;
   adsCS(true);
@@ -1227,12 +1089,10 @@ static void adsWriteRegs4(uint8_t r0, uint8_t r1, uint8_t r2, uint8_t r3) {
   g_adsCurReg3 = r3;
   g_adsConfigSettled = false;
 }
-
 static void adsApplyConfig(const AdsChanCfg& c) {
   if (g_adsCurReg0 == c.reg0 && g_adsCurReg1 == c.reg1 && g_adsCurReg2 == c.reg2 && g_adsCurReg3 == ADS_REG3) return;
   adsWriteRegs4(c.reg0, c.reg1, c.reg2, ADS_REG3);
 }
-
 static int32_t adsReadRaw_RDATA() {
   if (!adsBusPrepare()) return ADS_FAIL;
   adsCS(true);
@@ -1242,12 +1102,10 @@ static int32_t adsReadRaw_RDATA() {
   uint8_t b0 = adsXfer(0xFF);
   adsCS(false);
   adsBusDone();
-
   int32_t raw = ((int32_t)b2 << 16) | ((int32_t)b1 << 8) | b0;
   if (raw & 0x800000) raw |= 0xFF000000;
   return raw;
 }
-
 static bool adsWaitDrdyLow(uint32_t timeout_us) {
   uint32_t start = micros();
   uint32_t spins = 0;
@@ -1261,7 +1119,6 @@ static bool adsWaitDrdyLow(uint32_t timeout_us) {
   }
   return true;
 }
-
 static int32_t readSingleShot_DRDY(uint32_t timeoutUs) {
   for (int attempt = 0; attempt <= RETRY_MAX; ++attempt) {
     adsCommand(ADS1220::CMD_START);
@@ -1273,7 +1130,6 @@ static int32_t readSingleShot_DRDY(uint32_t timeoutUs) {
   }
   return ADS_FAIL;
 }
-
 static bool readChannelRaw(const AdsChanCfg& chan, float& out_mV, int32_t* rawOut) {
   adsApplyConfig(chan);
   if (!g_adsConfigSettled) {
@@ -1292,56 +1148,43 @@ static bool readChannelRaw(const AdsChanCfg& chan, float& out_mV, int32_t* rawOu
   out_mV = rawTo_mV_gain(raw, chan.gain);
   return true;
 }
-
 static bool readDmsFast(float& out_mV, int32_t* rawOut = nullptr) {
   return readChannelRaw(g_adsDmsCfg, out_mV, rawOut);
 }
-
 static void adsInit() {
   refreshAdsChannelConfigs();
   pinMode(PIN_SD_CS, OUTPUT);
   digitalWrite(PIN_SD_CS, HIGH);
-
   SPI.begin(PIN_SPI_SCK, PIN_SPI_MISO, PIN_SPI_MOSI, PIN_ADS_CS);
-
   pinMode(PIN_ADS_CS, OUTPUT);
   digitalWrite(PIN_ADS_CS, HIGH);
   pinMode(PIN_ADS_DRDY, INPUT);
-
   pinMode(PIN_MOSFET, OUTPUT);
   digitalWrite(PIN_MOSFET, LOW);
-
   adsCommand(ADS1220::CMD_RESET);
   delay(5);
   adsWriteRegs4(g_adsDmsCfg.reg0, g_adsDmsCfg.reg1, g_adsDmsCfg.reg2, ADS_REG3);
 }
-
 static void restoreDmsRunMode() {
   adsApplyConfig(g_adsDmsCfg);
 }
-
 static bool runSelfTest() {
   Serial.println("# ===== SELFTEST START =====");
-
   if (!cfg.dmsEnabled) {
     Serial.println("# SELFTEST skipped: DMS disabled");
     selfTestOk = false;
     selfTestDelta_mV = NAN;
     return false;
   }
-
   adsApplyConfig(g_adsDmsCfg);
   digitalWrite(PIN_MOSFET, LOW);
-
   float base5[5];
   float on5[5];
-
   auto avg5 = [](const float a[5]) -> float {
     double s = 0.0;
     for (int i = 0; i < 5; ++i) s += a[i];
     return (float)(s / 5.0);
   };
-
   auto collectSamples = [](float* dst, int count) -> bool {
     const int maxAttempts = count * 4;
     int ok = 0;
@@ -1353,14 +1196,11 @@ static bool runSelfTest() {
     }
     return ok == count;
   };
-
   bool haveBase = collectSamples(base5, 5);
-
   digitalWrite(PIN_MOSFET, HIGH);
   delay(50);
   bool haveOn = collectSamples(on5, 5);
   digitalWrite(PIN_MOSFET, LOW);
-
   if (!haveBase || !haveOn) {
     Serial.println("# SELFTEST failed: ADS timeout / no valid samples");
     selfTestOk = false;
@@ -1368,39 +1208,32 @@ static bool runSelfTest() {
     restoreDmsRunMode();
     return false;
   }
-
   float bAvg = avg5(base5);
   float mAvg = avg5(on5);
   selfTestDelta_mV = mAvg - bAvg;
   selfTestOk = (fabs(fabs(selfTestDelta_mV) - EXPECTED_MV) <= TOLERANCE_MV);
-
   Serial.print("# SELFTEST delta=");
   Serial.print(selfTestDelta_mV, 6);
   Serial.print(" mV  result=");
   Serial.println(selfTestOk ? "OK" : "FAIL");
-
   restoreDmsRunMode();
   return selfTestOk;
 }
-
 // ============================================================
 // Sensor runtime
 // ============================================================
 static void dsInit() {
   dsSensor.begin();
   dsSensor.setWaitForConversion(false);
-
   uint8_t devCount = dsSensor.getDeviceCount();
   for (uint8_t i = 0; i < devCount; ++i) {
     DeviceAddress addr;
     if (dsSensor.getAddress(addr, i)) dsSensor.setResolution(addr, 9);
   }
-
   ds_pending = false;
   ds_request_ms = 0;
   last_ds_request_loop_ms = 0;
 }
-
 static bool readTempBlocking(float& outTempC) {
   dsSensor.requestTemperatures();
   delay(120);
@@ -1409,23 +1242,19 @@ static bool readTempBlocking(float& outTempC) {
   outTempC = tmp;
   return true;
 }
-
 static void sensorLoopAp() {
   static uint32_t dmsCount = 0;
   static uint32_t ain2Count = 0;
   static uint32_t tempCount = 0;
   static uint32_t totalCount = 0;
   static uint32_t lastFrameReportMs = 0;
-
   uint32_t now = millis();
   uint32_t nowUs = micros();
   bool radioQuiet = g_loraEnabled && ((int32_t)(now - g_radioQuietUntilMs) < 0);
   bool sampleChanged = false;
-
   if (!cfg.dmsEnabled) invalidateDms();
   if (!cfg.ain2Enabled) invalidateAin2();
   if (!cfg.tempEnabled) invalidateTemp();
-
   // ---------------- DMS + AIN2 ----------------
   if (!radioQuiet) {
     if (cfg.dmsEnabled) {
@@ -1453,7 +1282,6 @@ static void sensorLoopAp() {
         last_dms_read_us += dmsPeriodUs; if ((uint32_t)(nowUs - last_dms_read_us) > dmsPeriodUs) last_dms_read_us = nowUs;
       }
     }
-
     if (cfg.ain2Enabled) {
       uint32_t ain2PeriodUs = hzToPeriodUsClamped(cfg.ain2Hz, 500, 600000000UL);
       if ((uint32_t)(nowUs - last_ain2_read_us) >= ain2PeriodUs) {
@@ -1477,12 +1305,10 @@ static void sensorLoopAp() {
             invalidateAin2();
           }
         }
-
         last_ain2_read_us += ain2PeriodUs; if ((uint32_t)(nowUs - last_ain2_read_us) > ain2PeriodUs) last_ain2_read_us = nowUs;
       }
     }
   }
-
   // ---------------- Temperature ----------------
   if (cfg.tempEnabled) {
     if (!ds_pending && ((uint32_t)(now - last_ds_request_loop_ms) >= 1000UL)) {
@@ -1491,7 +1317,6 @@ static void sensorLoopAp() {
       ds_request_ms = now;
       last_ds_request_loop_ms = now;
     }
-
     if (ds_pending && ((uint32_t)(now - ds_request_ms) >= 120UL)) {
       float tmp = dsSensor.getTempCByIndex(0);
       if (tmp != DEVICE_DISCONNECTED_C) {
@@ -1512,7 +1337,6 @@ static void sensorLoopAp() {
       ds_pending = false;
     }
   }
-
   // ---------------- FPS/stat ----------------
   if ((uint32_t)(now - lastFrameReportMs) >= 1000UL) {
     dmsFramesPerSecond = dmsCount;
@@ -1520,46 +1344,37 @@ static void sensorLoopAp() {
     tempFramesPerSecond = tempCount;
     totalFramesPerSecond = totalCount;
     framesPerSecond = dmsFramesPerSecond;
-
     dmsCount = 0;
     ain2Count = 0;
     tempCount = 0;
     totalCount = 0;
     lastFrameReportMs = now;
   }
-
   if (sampleChanged) {
     g_lastSampleSeq++;
     captureLogSample(now);
   }
 }
-
-
 static void sensorTask(void* /*arg*/) {
   // Give Wi-Fi / system tasks time to settle after boot.
   vTaskDelay(pdMS_TO_TICKS(50));
   g_sensorTaskRunning = true;
   uint32_t nextWakeUs = micros();
   uint32_t lastYieldMs = millis();
-
   for (;;) {
     if (g_mode != RunMode::CONFIG) {
       vTaskDelay(pdMS_TO_TICKS(20));
       continue;
     }
-
     sensorLoopAp();
-
     // Adaptive wake-up: for high-rate channels stay tight, for slower rates yield more.
     float maxHz = 0.0f;
     if (cfg.dmsEnabled && cfg.dmsHz > maxHz) maxHz = cfg.dmsHz;
     if (cfg.ain2Enabled && cfg.ain2Hz > maxHz) maxHz = cfg.ain2Hz;
     uint32_t sleepUs = (maxHz >= 500.0f) ? 100U : (maxHz >= 200.0f ? 250U : 1000U);
-
     nextWakeUs += sleepUs;
     uint32_t nowUs = micros();
     int32_t remain = (int32_t)(nextWakeUs - nowUs);
-
     if (remain <= 0) {
       nextWakeUs = nowUs;
       taskYIELD();
@@ -1575,7 +1390,6 @@ static void sensorTask(void* /*arg*/) {
     }
   }
 }
-
 static void captureFieldSnapshot() {
   if (cfg.dmsEnabled) {
     int32_t rawDms = lastDmsRaw;
@@ -1591,7 +1405,6 @@ static void captureFieldSnapshot() {
   } else {
     invalidateDms();
   }
-
   if (cfg.ain2Enabled) {
     float tmpAin2 = NAN;
     int32_t rawAin2 = lastAin2Raw;
@@ -1607,7 +1420,6 @@ static void captureFieldSnapshot() {
   } else {
     invalidateAin2();
   }
-
   if (cfg.tempEnabled) {
     float tmpC = NAN;
     if (readTempBlocking(tmpC)) {
@@ -1619,14 +1431,12 @@ static void captureFieldSnapshot() {
   } else {
     invalidateTemp();
   }
-
   dmsFramesPerSecond = 0;
   ain2FramesPerSecond = 0;
   tempFramesPerSecond = 0;
   totalFramesPerSecond = 0;
   framesPerSecond = 0;
 }
-
 static void resetLogBuffer() {
   portENTER_CRITICAL(&g_logBufMux);
   g_logBufHead = 0;
@@ -1636,7 +1446,6 @@ static void resetLogBuffer() {
   g_logDropped = 0;
   portEXIT_CRITICAL(&g_logBufMux);
 }
-
 static bool pushLogSample(const LogSample& s) {
   bool ok = true;
   portENTER_CRITICAL(&g_logBufMux);
@@ -1652,7 +1461,6 @@ static bool pushLogSample(const LogSample& s) {
   portEXIT_CRITICAL(&g_logBufMux);
   return ok;
 }
-
 static bool popLogSample(LogSample& s) {
   bool ok = false;
   portENTER_CRITICAL(&g_logBufMux);
@@ -1665,13 +1473,11 @@ static bool popLogSample(LogSample& s) {
   portEXIT_CRITICAL(&g_logBufMux);
   return ok;
 }
-
 static void captureLogSample(uint32_t t_ms) {
   if (g_mode != RunMode::CONFIG) return;
   if (!cfg.sdLogEnabled) return;
   if (g_logPeriodMs > 0 && (uint32_t)(t_ms - g_lastQueuedLogMs) < g_logPeriodMs) return;
   g_lastQueuedLogMs = t_ms;
-
   LogSample s{};
   s.t_ms = t_ms;
   s.t_us = micros();
@@ -1692,13 +1498,11 @@ static void captureLogSample(uint32_t t_ms) {
   s.selftest_ok = selfTestOk ? 1U : 0U;
   pushLogSample(s);
 }
-
 // ============================================================
 // SD logging
 // ============================================================
 static uint32_t g_lastSdMountTryMs = 0;
 static uint32_t g_sdMountRetryMs = 3000;
-
 static inline bool sdSpiBegin() {
   if (!spiBusLock(pdMS_TO_TICKS(2))) return false;
   pinMode(PIN_SD_CS, OUTPUT);
@@ -1708,7 +1512,6 @@ static inline bool sdSpiBegin() {
   delayMicroseconds(5);
   return true;
 }
-
 static inline void sdSpiEnd() {
   digitalWrite(PIN_SD_CS, HIGH);
   delayMicroseconds(5);
@@ -1716,21 +1519,17 @@ static inline void sdSpiEnd() {
   restoreAdsBusAfterSd();
   spiBusUnlock();
 }
-
 static bool sdMountIfNeeded() {
   if (g_sdMounted) return true;
   if (g_mode != RunMode::CONFIG) return false;
-
   const uint32_t now = millis();
   if ((uint32_t)(now - g_lastSdMountTryMs) < g_sdMountRetryMs) {
     return false;
   }
   g_lastSdMountTryMs = now;
-
   g_sdMountTried = true;
   g_sdBusy = true;
   g_sdStatus = "mounting";
-
   bool ok = false;
   const uint32_t freqs[] = {1000000UL, 400000UL, 250000UL};
   for (size_t i = 0; i < sizeof(freqs) / sizeof(freqs[0]); ++i) {
@@ -1740,23 +1539,18 @@ static bool sdMountIfNeeded() {
     if (ok) break;
     delay(30);
   }
-
   g_sdMounted = ok;
   g_sdStatus = ok ? "mounted" : "mount_failed";
   g_sdBusy = false;
-
   if (!ok) {
     Serial.println("[SD] mount failed");
     return false;
   }
-
   Serial.println("[SD] mounted");
   return true;
 }
-
 static void closeLogFile() {
   g_sdBusy = true;
-
   if (g_logFile) {
     if (!sdSpiBegin()) { g_sdBusy = false; return; }
     g_logFile.flush();
@@ -1765,7 +1559,6 @@ static void closeLogFile() {
   } else {
     restoreAdsBusAfterSd();
   }
-
   g_sdMounted = false;
   g_sdBusy = false;
   g_logFileName = "";
@@ -1773,10 +1566,8 @@ static void closeLogFile() {
   g_lastLoggedSampleSeq = 0;
   resetLogBuffer();
 }
-
 static bool openNextLogFile() {
   if (!sdMountIfNeeded()) return false;
-
   if (g_logFile) {
     g_sdBusy = true;
     if (!sdSpiBegin()) { g_sdBusy = false; return false; }
@@ -1784,22 +1575,17 @@ static bool openNextLogFile() {
     g_logFile.close();
     sdSpiEnd();
     g_sdBusy = false;
-
     g_logFileName = "";
     g_logLineCount = 0;
     g_lastLoggedSampleSeq = 0;
   }
-
   char path[64];
   for (uint32_t seq = g_logFileSeq + 1; seq < 1000000UL; ++seq) {
     snprintf(path, sizeof(path), "/%s_%03lu.bin", cfg.logBaseName, (unsigned long)seq);
-
     g_sdBusy = true;
     if (!sdSpiBegin()) { g_sdBusy = false; return false; }
-
     Serial.print("[SD] probe file: ");
     Serial.println(path);
-
     bool exists = SD.exists(path);
     if (!exists) {
       g_logFile = SD.open(path, FILE_WRITE);
@@ -1811,11 +1597,9 @@ static bool openNextLogFile() {
         Serial.println(path);
         return false;
       }
-
       g_logFileSeq = seq;
       g_logFileName = String(path);
       g_logLineCount = 0;
-
       g_udbfStartNs = 0;
       g_udbfHeaderWritten = false;
       g_udbfRecordIndex = 0;
@@ -1831,44 +1615,35 @@ static bool openNextLogFile() {
       g_logFile.flush();
       g_logLastFlushMs = millis();
       g_logLastDrainMs = millis();
-
       sdSpiEnd();
       g_sdBusy = false;
-
       g_sdStatus = "logging";
       Serial.print("[SD] logging to ");
       Serial.println(g_logFileName);
       return true;
     }
-
     sdSpiEnd();
     g_sdBusy = false;
   }
-
   g_sdStatus = "no_filename";
   return false;
 }
-
 static void syncSdLogger(bool forceReopen) {
   if (g_mode != RunMode::CONFIG) {
     closeLogFile();
     g_sdStatus = "field_disabled";
     return;
   }
-
   if (!cfg.sdLogEnabled) {
     closeLogFile();
     g_sdStatus = "disabled";
     return;
   }
-
   if (!sdMountIfNeeded()) return;
-
   if (forceReopen || !g_logFile) {
     (void)openNextLogFile();
   }
 }
-
 static void loggerLoop() {
   if (g_mode != RunMode::CONFIG) return;
   if (!cfg.sdLogEnabled) return;
@@ -1877,18 +1652,14 @@ static void loggerLoop() {
   bufCountSnapshot = g_logBufCount;
   portEXIT_CRITICAL(&g_logBufMux);
   if (bufCountSnapshot == 0) return;
-
   const uint32_t now = millis();
   if (bufCountSnapshot < LOG_BATCH_SIZE && (uint32_t)(now - g_logLastDrainMs) < LOG_FORCE_FLUSH_MS) {
     return;
   }
-
   syncSdLogger(false);
   if (!g_logFile) return;
-
   g_sdBusy = true;
   if (!sdSpiBegin()) { g_sdBusy = false; return; }
-
   if (cfg.logRotateKB > 0 && (uint32_t)g_logFile.size() >= cfg.logRotateKB * 1024UL) {
     sdSpiEnd();
     g_sdBusy = false;
@@ -1896,7 +1667,6 @@ static void loggerLoop() {
     g_sdBusy = true;
     if (!sdSpiBegin()) { g_sdBusy = false; return; }
   }
-
   LogSample s;
   uint16_t writtenSamples = 0;
   while (writtenSamples < LOG_BATCH_SIZE) {
@@ -1904,23 +1674,19 @@ static void loggerLoop() {
     if (!writeBinRecord(g_logFile, s)) break;
     writtenSamples++;
   }
-
   if (writtenSamples > 0) {
     g_logLineCount += writtenSamples;
     g_lastLoggedSampleSeq = g_lastSampleSeq;
     g_lastLogWriteMs = now;
   }
-
   if ((uint32_t)(now - g_logLastFlushMs) >= g_logFlushPeriodMs) {
     g_logFile.flush();
     g_logLastFlushMs = now;
   }
-
   g_logLastDrainMs = now;
   sdSpiEnd();
   g_sdBusy = false;
 }
-
 static void sdTask(void* /*arg*/) {
   vTaskDelay(pdMS_TO_TICKS(200));
   for (;;) {
@@ -1932,8 +1698,6 @@ static void sdTask(void* /*arg*/) {
     }
   }
 }
-
-
 static bool isSafeBinPath(const String& name) {
   if (!name.length()) return false;
   if (name.indexOf("..") >= 0) return false;
@@ -1942,7 +1706,6 @@ static bool isSafeBinPath(const String& name) {
   if (!name.endsWith(".bin")) return false;
   return true;
 }
-
 static bool isSafeFilePath(const String& name) {
   if (!name.length()) return false;
   if (name.indexOf("..") >= 0) return false;
@@ -1953,8 +1716,6 @@ static bool isSafeFilePath(const String& name) {
   return lower.endsWith(".bin") || lower.endsWith(".dat") || lower.endsWith(".csv") ||
          lower.endsWith(".txt") || lower.endsWith(".json") || lower.endsWith(".udbf");
 }
-
-
 static uint32_t crc32Update(uint32_t crc, const uint8_t* data, size_t len) {
   crc = ~crc;
   for (size_t i = 0; i < len; ++i) {
@@ -1965,12 +1726,10 @@ static uint32_t crc32Update(uint32_t crc, const uint8_t* data, size_t len) {
   }
   return ~crc;
 }
-
 static void zipWriteLe16(WiFiClient& client, uint16_t v) {
   uint8_t b[2] = { (uint8_t)(v & 0xFF), (uint8_t)((v >> 8) & 0xFF) };
   client.write(b, sizeof(b));
 }
-
 static void zipWriteLe32(WiFiClient& client, uint32_t v) {
   uint8_t b[4] = {
     (uint8_t)(v & 0xFF),
@@ -1980,7 +1739,6 @@ static void zipWriteLe32(WiFiClient& client, uint32_t v) {
   };
   client.write(b, sizeof(b));
 }
-
 static String zipBaseName(const String& path) {
   String out = path;
   int slash = out.lastIndexOf('/');
@@ -1988,7 +1746,6 @@ static String zipBaseName(const String& path) {
   if (!out.length()) out = "file.bin";
   return out;
 }
-
 static void zipWriteLocalHeader(WiFiClient& client, const String& name, uint32_t crc, uint32_t size) {
   client.write((const uint8_t*)"PK", 4);
   zipWriteLe16(client, 20);
@@ -2003,7 +1760,6 @@ static void zipWriteLocalHeader(WiFiClient& client, const String& name, uint32_t
   zipWriteLe16(client, 0);
   client.write((const uint8_t*)name.c_str(), name.length());
 }
-
 static void zipWriteCentralHeader(WiFiClient& client, const String& name, uint32_t crc, uint32_t size, uint32_t localOffset) {
   client.write((const uint8_t*)"PK", 4);
   zipWriteLe16(client, 20);
@@ -2024,7 +1780,6 @@ static void zipWriteCentralHeader(WiFiClient& client, const String& name, uint32
   zipWriteLe32(client, localOffset);
   client.write((const uint8_t*)name.c_str(), name.length());
 }
-
 static void zipWriteEndOfCentralDir(WiFiClient& client, uint16_t entryCount, uint32_t centralSize, uint32_t centralOffset) {
   client.write((const uint8_t*)"PK", 4);
   zipWriteLe16(client, 0);
@@ -2035,14 +1790,12 @@ static void zipWriteEndOfCentralDir(WiFiClient& client, uint16_t entryCount, uin
   zipWriteLe32(client, centralOffset);
   zipWriteLe16(client, 0);
 }
-
 static String csvBaseNameFromBin(const String& path) {
   String out = zipBaseName(path);
   if (out.endsWith(".bin")) out = out.substring(0, out.length() - 4) + ".csv";
   else out += ".csv";
   return out;
 }
-
 static void handleApiSdConvertBinCsv() {
   if (g_mode != RunMode::CONFIG) {
     sendJsonError(403, "convert_available_in_config_only");
@@ -2052,17 +1805,14 @@ static void handleApiSdConvertBinCsv() {
     sendJsonError(503, "sd_not_mounted");
     return;
   }
-
   String name = server.hasArg("name") ? server.arg("name") : "";
   name.trim();
   if (!isSafeBinPath(name)) {
     sendJsonError(400, "invalid_bin_name");
     return;
   }
-
   String outPath = csvBaseNameFromBin(name);
   if (!outPath.startsWith("/")) outPath = String("/") + outPath;
-
   if (g_logFile && g_logFileName == name) {
     g_sdBusy = true;
     if (!sdSpiBegin()) { g_sdBusy = false; return; }
@@ -2070,10 +1820,8 @@ static void handleApiSdConvertBinCsv() {
     sdSpiEnd();
     g_sdBusy = false;
   }
-
   g_sdBusy = true;
   if (!sdSpiBegin()) { g_sdBusy = false; return; }
-
   File f = SD.open(name.c_str(), FILE_READ);
   if (!f) {
     sdSpiEnd();
@@ -2081,16 +1829,37 @@ static void handleApiSdConvertBinCsv() {
     sendJsonError(404, "bin_not_found");
     return;
   }
-
   BinLogHeader h{};
-  if (f.read((uint8_t*)&h, sizeof(h)) != (int)sizeof(h) || strncmp(h.magic, "MKPBIN1", 7) != 0 || h.recordSize != sizeof(BinLogRecord)) {
+  if (f.read((uint8_t*)&h, sizeof(h)) != (int)sizeof(h)) {
     f.close();
     sdSpiEnd();
     g_sdBusy = false;
     sendJsonError(400, "invalid_bin_format");
     return;
   }
-
+  const bool isV1 = (strncmp(h.magic, "MKPBIN1", 7) == 0);
+  const bool isV2 = (strncmp(h.magic, "MKPBIN2", 7) == 0);
+  if (!isV1 && !isV2) {
+    f.close();
+    sdSpiEnd();
+    g_sdBusy = false;
+    sendJsonError(400, "invalid_bin_format");
+    return;
+  }
+  const bool dmsEnabled = isV2 ? ((h.flags & BIN_FLAG_DMS_ENABLED) != 0) : true;
+  const bool ain2Enabled = isV2 ? ((h.flags & BIN_FLAG_AIN2_ENABLED) != 0) : true;
+  const bool tempEnabled = isV2 ? ((h.flags & BIN_FLAG_TEMP_ENABLED) != 0) : true;
+  const bool ain2VoltMode = isV2 ? ((h.flags & BIN_FLAG_AIN2_MODE_VOLT) != 0) : (cfg.ain2Mode == AIN2_MODE_VOLT);
+  const uint16_t expectedRecordSize = isV2
+    ? (uint16_t)(sizeof(uint32_t) + (dmsEnabled ? sizeof(int32_t) : 0) + (ain2Enabled ? sizeof(int32_t) : 0) + (tempEnabled ? sizeof(int16_t) : 0))
+    : (uint16_t)sizeof(BinLogRecordV1);
+  if (h.recordSize != expectedRecordSize) {
+    f.close();
+    sdSpiEnd();
+    g_sdBusy = false;
+    sendJsonError(400, "unsupported_bin_layout");
+    return;
+  }
   if (SD.exists(outPath.c_str())) SD.remove(outPath.c_str());
   File out = SD.open(outPath.c_str(), FILE_WRITE);
   if (!out) {
@@ -2100,48 +1869,73 @@ static void handleApiSdConvertBinCsv() {
     sendJsonError(500, "csv_create_failed");
     return;
   }
-
-  out.print("dt_us_real,dt_us_adaptive,dms_raw,ain2_raw,temp_c_x100,vbat_mV,dms_valid,ain2_valid,temp_valid,selftest_ok\r\n");
-
-  uint32_t nominalStepUs = 1000000UL / nominalLogHz();
-  if (nominalStepUs == 0) nominalStepUs = 1U;
-  uint32_t prevRealDtUs = 0U;
-  uint64_t adaptiveAccumUs = 0U;
-  uint32_t adaptiveCount = 0U;
-  uint64_t adaptiveLogicalUs = 0U;
-
-  BinLogRecord r{};
-  char line[192];
+  String header = "TimeCounter";
+  if (dmsEnabled) header += ",DMS_RAW,DMS_MV,DMS_MV_V,DMS,DMS_uM_M";
+  if (ain2Enabled) header += ain2VoltMode ? ",AIN2_RAW,AIN2_V" : ",AIN2_RAW,AIN2_mm";
+  if (tempEnabled) header += ",TEMP_C";
+  header += "\r\n";
+  out.print(header);
   uint32_t rows = 0;
-  while (f.read((uint8_t*)&r, sizeof(r)) == (int)sizeof(r)) {
-    int n = snprintf(line, sizeof(line), "%lu,%ld,%ld,%d,%u,%u,%u,%u,%u\r\n",
-      (unsigned long)r.dt_us,
-      (long)r.dms_raw,
-      (long)r.ain2_raw,
-      (int)((int16_t)r.temp_c_x100),
-      (unsigned)r.vbat_mV,
-      (r.flags & 0x01) ? 1U : 0U,
-      (r.flags & 0x02) ? 1U : 0U,
-      (r.flags & 0x04) ? 1U : 0U,
-      (r.flags & 0x08) ? 1U : 0U);
-    if (n > 0) {
-      out.write((const uint8_t*)line, (size_t)n);
-      ++rows;
+  while (f.available() >= h.recordSize) {
+    uint32_t timeCounterUs = 0;
+    int32_t dmsRaw = 0;
+    int32_t ain2Raw = 0;
+    int16_t tempC100 = 0;
+    bool rowOk = true;
+    if (f.read((uint8_t*)&timeCounterUs, sizeof(timeCounterUs)) != (int)sizeof(timeCounterUs)) break;
+    if (isV1) {
+      BinLogRecordV1 r{};
+      r.dt_us = timeCounterUs;
+      if (f.read(((uint8_t*)&r) + sizeof(uint32_t), sizeof(BinLogRecordV1) - sizeof(uint32_t)) != (int)(sizeof(BinLogRecordV1) - sizeof(uint32_t))) break;
+      dmsRaw = r.dms_raw;
+      ain2Raw = r.ain2_raw;
+      tempC100 = r.temp_c_x100;
+    } else {
+      if (dmsEnabled && f.read((uint8_t*)&dmsRaw, sizeof(dmsRaw)) != (int)sizeof(dmsRaw)) { rowOk = false; }
+      if (rowOk && ain2Enabled && f.read((uint8_t*)&ain2Raw, sizeof(ain2Raw)) != (int)sizeof(ain2Raw)) { rowOk = false; }
+      if (rowOk && tempEnabled && f.read((uint8_t*)&tempC100, sizeof(tempC100)) != (int)sizeof(tempC100)) { rowOk = false; }
+      if (!rowOk) break;
     }
+    String row = String(timeCounterUs);
+    if (dmsEnabled) {
+      const float dmsMv = rawTo_mV_gain(dmsRaw, GAIN_DMS);
+      const float dmsMvPerV = dmsTo_mV_per_V(dmsMv);
+      row += "," + String(dmsRaw);
+      row += "," + String(dmsMv, 4);
+      row += "," + String(dmsMvPerV, 4);
+      row += ",";        // DMS engineering value placeholder
+      row += ",";        // DMS_uM_M placeholder until gauge factor / bridge type is configured
+    }
+    if (ain2Enabled) {
+      row += "," + String(ain2Raw);
+      const float ain2MvLocal = rawTo_mV_gain(ain2Raw, GAIN_AIN2);
+      if (ain2VoltMode) {
+        const float adcV = ain2MvLocal / 1000.0f;
+        const float fullscale = (cfg.ain2AdcFullscaleV > 0.001f) ? cfg.ain2AdcFullscaleV : 1.0f;
+        const float inputScale = (cfg.ain2InputFullscaleV > 0.0f) ? cfg.ain2InputFullscaleV : fullscale;
+        const float v = clampf(adcV / fullscale, 0.0f, 1.0f) * inputScale;
+        row += "," + String(v, 4);
+      } else {
+        const float mm = clampf((ain2MvLocal / 3300.0f), 0.0f, 1.0f) * cfg.ain2LengthMm;
+        row += "," + String(mm, 4);
+      }
+    }
+    if (tempEnabled) {
+      row += "," + String(((float)tempC100) / 100.0f, 2);
+    }
+    row += "\n";
+    out.print(row);
+    ++rows;
     delay(0);
   }
-
   out.flush();
   out.close();
   f.close();
   sdSpiEnd();
   g_sdBusy = false;
-
   String resp = String("{\"ok\":true,\"saved\":\"") + outPath + "\",\"rows\":" + String(rows) + "}";
   server.send(200, "application/json", resp);
 }
-
-
 static void handleApiSdArchive() {
   if (g_mode != RunMode::CONFIG) {
     sendJsonError(403, "archive_available_in_config_only");
@@ -2151,7 +1945,6 @@ static void handleApiSdArchive() {
     sendJsonError(503, "sd_not_mounted");
     return;
   }
-
   static constexpr int MAX_SEL = 24;
   struct ZipMeta {
     String path;
@@ -2161,7 +1954,6 @@ static void handleApiSdArchive() {
     uint32_t offset;
     bool valid;
   } meta[MAX_SEL];
-
   int selCount = 0;
   for (int i = 0; i < server.args() && selCount < MAX_SEL; ++i) {
     if (server.argName(i) == "name") {
@@ -2185,7 +1977,6 @@ static void handleApiSdArchive() {
     sendJsonError(400, "no_file_selected");
     return;
   }
-
   bool currentSelected = false;
   for (int i = 0; i < selCount; ++i) if (meta[i].path == g_logFileName) { currentSelected = true; break; }
   if (currentSelected && g_logFile) {
@@ -2195,7 +1986,6 @@ static void handleApiSdArchive() {
     sdSpiEnd();
     g_sdBusy = false;
   }
-
   if (selCount == 1) {
     String name = meta[0].path;
     g_sdBusy = true;
@@ -2218,12 +2008,10 @@ static void handleApiSdArchive() {
     g_sdBusy = false;
     return;
   }
-
   uint32_t localRegionSize = 0;
   uint32_t centralSize = 0;
   int validCount = 0;
   static uint8_t ioBuf[1024];
-
   g_sdBusy = true;
   if (!sdSpiBegin()) { g_sdBusy = false; return; }
   for (int i = 0; i < selCount; ++i) {
@@ -2249,21 +2037,17 @@ static void handleApiSdArchive() {
   }
   sdSpiEnd();
   g_sdBusy = false;
-
   if (validCount <= 0) {
     sendJsonError(404, "file_not_found");
     return;
   }
-
   uint32_t totalLen = localRegionSize + centralSize + 22U;
   server.setContentLength(totalLen);
   server.sendHeader("Content-Type", "application/zip");
   server.sendHeader("Content-Disposition", "attachment; filename=\"data.zip\"");
   server.sendHeader("Cache-Control", "no-store");
   server.send(200, "application/zip", "");
-
   WiFiClient client = server.client();
-
   g_sdBusy = true;
   if (!sdSpiBegin()) { g_sdBusy = false; return; }
   for (int i = 0; i < selCount; ++i) {
@@ -2280,7 +2064,6 @@ static void handleApiSdArchive() {
     f.close();
     delay(0);
   }
-
   uint32_t centralOffset = localRegionSize;
   for (int i = 0; i < selCount; ++i) {
     if (!meta[i].valid) continue;
@@ -2291,7 +2074,6 @@ static void handleApiSdArchive() {
   sdSpiEnd();
   g_sdBusy = false;
 }
-
 static void handleApiSdDownload() {
   if (g_mode != RunMode::CONFIG) {
     sendJsonError(403, "download_available_in_config_only");
@@ -2305,14 +2087,12 @@ static void handleApiSdDownload() {
     sendJsonError(503, "sd_not_mounted");
     return;
   }
-
   String name = server.hasArg("name") ? server.arg("name") : g_logFileName;
   name.trim();
   if (!isSafeBinPath(name)) {
     sendJsonError(400, "invalid_file_name");
     return;
   }
-
   if (g_logFile && g_logFileName == name) {
     g_sdBusy = true;
     if (!sdSpiBegin()) { g_sdBusy = false; return; }
@@ -2320,7 +2100,6 @@ static void handleApiSdDownload() {
     sdSpiEnd();
     g_sdBusy = false;
   }
-
   g_sdBusy = true;
   if (!sdSpiBegin()) { g_sdBusy = false; return; }
   File f = SD.open(name.c_str(), FILE_READ);
@@ -2330,7 +2109,6 @@ static void handleApiSdDownload() {
     sendJsonError(404, "file_not_found");
     return;
   }
-
   String downloadName = name;
   int slash = downloadName.lastIndexOf('/');
   if (slash >= 0) downloadName = downloadName.substring(slash + 1);
@@ -2342,7 +2120,6 @@ static void handleApiSdDownload() {
   sdSpiEnd();
   g_sdBusy = false;
 }
-
 static void handleApiSdDelete() {
   if (g_mode != RunMode::CONFIG) {
     sendJsonError(403, "delete_available_in_config_only");
@@ -2356,20 +2133,17 @@ static void handleApiSdDelete() {
     sendJsonError(400, "missing_body");
     return;
   }
-
   DynamicJsonDocument req(3072);
   DeserializationError err = deserializeJson(req, server.arg("plain"));
   if (err || !req["names"].is<JsonArray>()) {
     sendJsonError(400, "invalid_delete_payload");
     return;
   }
-
   JsonArray names = req["names"].as<JsonArray>();
   DynamicJsonDocument resp(3072);
   resp["ok"] = true;
   JsonArray deleted = resp.createNestedArray("deleted");
   JsonArray skipped = resp.createNestedArray("skipped");
-
   bool needRefreshCurrent = false;
   g_sdBusy = true;
   if (!sdSpiBegin()) { g_sdBusy = false; return; }
@@ -2394,14 +2168,11 @@ static void handleApiSdDelete() {
   }
   sdSpiEnd();
   g_sdBusy = false;
-
   if (needRefreshCurrent) syncSdLogger(false);
-
   String out;
   serializeJson(resp, out);
   server.send(200, "application/json", out);
 }
-
 static void handleApiSdList() {
   if (g_mode != RunMode::CONFIG) {
     sendJsonError(403, "list_available_in_config_only");
@@ -2411,12 +2182,10 @@ static void handleApiSdList() {
     sendJsonError(503, "sd_not_mounted");
     return;
   }
-
   DynamicJsonDocument doc(4096);
   doc["ok"] = true;
   doc["current"] = g_logFileName;
   JsonArray files = doc.createNestedArray("files");
-
   g_sdBusy = true;
   if (!sdSpiBegin()) { g_sdBusy = false; return; }
   File root = SD.open("/");
@@ -2439,24 +2208,20 @@ static void handleApiSdList() {
   }
   sdSpiEnd();
   g_sdBusy = false;
-
   String out;
   serializeJson(doc, out);
   server.send(200, "application/json", out);
 }
-
 static void sendJsonError(int code, const char* error) {
   String out = String("{\"ok\":false,\"error\":\"") + error + "\"}";
   server.send(code, "application/json", out);
 }
-
 // ============================================================
 // JSON / Web
 // ============================================================
 static String modeToString() {
   return (g_mode == RunMode::CONFIG) ? "CONFIG" : "FIELD";
 }
-
 static void appendPerf(JsonObject obj) {
   PerfEstimate p = makePerfEstimate();
   obj["dms_target_hz"] = p.dmsTargetHz;
@@ -2468,7 +2233,6 @@ static void appendPerf(JsonObject obj) {
   obj["ain2_est_hz"] = p.ain2EstimatedHz;
   obj["total_est_hz"] = p.totalEstimatedHz;
 }
-
 static void appendConfig(JsonObject obj) {
   obj["devEui"] = cfg.devEui;
   obj["appEui"] = cfg.appEui;
@@ -2476,32 +2240,25 @@ static void appendConfig(JsonObject obj) {
   obj["minutes"] = cfg.intervalMin;
   obj["adr"] = cfg.adr;
   obj["dr"] = cfg.dr;
-
   obj["dms_enabled"] = cfg.dmsEnabled ? 1 : 0;
   obj["dms_hz"] = cfg.dmsHz;
-
   obj["ain2_enabled"] = cfg.ain2Enabled ? 1 : 0;
   obj["ain2_hz"] = cfg.ain2Hz;
   obj["ain2_mode"] = ain2ModeName();
   obj["ain2_length_mm"] = cfg.ain2LengthMm;
   obj["ain2_adc_fullscale_v"] = cfg.ain2AdcFullscaleV;
   obj["ain2_input_fullscale_v"] = cfg.ain2InputFullscaleV;
-
   obj["temp_enabled"] = cfg.tempEnabled ? 1 : 0;
   obj["temp_hz"] = TEMP_FIXED_HZ;
-
   obj["sd_log_enabled"] = cfg.sdLogEnabled ? 1 : 0;
   obj["sd_base"] = cfg.logBaseName;
   obj["sd_rotate_kb"] = cfg.logRotateKB;
-
   JsonObject perfObj = obj["perf"].to<JsonObject>();
   appendPerf(perfObj);
 }
-
 static void appendLive(JsonObject obj) {
   obj["selftest_ok"] = selfTestOk ? 1 : 0;
   obj["selftest_delta_mV"] = selfTestDelta_mV;
-
   obj["dms_enabled"] = cfg.dmsEnabled ? 1 : 0;
   obj["dms_valid"] = dms_valid ? 1 : 0;
   obj["dms_raw"] = lastDmsRaw;
@@ -2509,7 +2266,6 @@ static void appendLive(JsonObject obj) {
   obj["dms_mV_per_V"] = dms_valid ? dms_mV_per_V : 0.0f;
   obj["dms_rate_hz_actual"] = dmsFramesPerSecond;
   obj["dms_age_ms"] = g_dmsLastOkUs ? (uint32_t)((micros() - g_dmsLastOkUs) / 1000UL) : 0U;
-
   obj["ain2_enabled"] = cfg.ain2Enabled ? 1 : 0;
   obj["ain2_valid"] = ain2_valid ? 1 : 0;
   obj["ain2_raw"] = lastAin2Raw;
@@ -2519,19 +2275,15 @@ static void appendLive(JsonObject obj) {
   obj["ain2_unit"] = ain2DerivedUnit();
   obj["ain2_rate_hz_actual"] = ain2FramesPerSecond;
   obj["ain2_age_ms"] = g_ain2LastOkUs ? (uint32_t)((micros() - g_ain2LastOkUs) / 1000UL) : 0U;
-
   obj["temp_enabled"] = cfg.tempEnabled ? 1 : 0;
   obj["temp_valid"] = temp_valid ? 1 : 0;
   obj["temp_C"] = temp_valid ? ds_temp_c : 0.0f;
   obj["temp_rate_hz_actual"] = tempFramesPerSecond;
   obj["temp_age_ms"] = g_tempLastOkMs ? (uint32_t)(millis() - g_tempLastOkMs) : 0U;
-
   obj["frames_s"] = framesPerSecond;
   obj["total_rate_hz_actual"] = totalFramesPerSecond;
-
   JsonObject perfObj = obj["perf"].to<JsonObject>();
   appendPerf(perfObj);
-
   obj["sd_mounted"] = g_sdMounted ? 1 : 0;
   obj["sd_status"] = g_sdStatus;
   obj["sd_file"] = g_logFileName;
@@ -2540,13 +2292,11 @@ static void appendLive(JsonObject obj) {
   obj["sd_buffered_max"] = g_logBufMax;
   obj["sd_dropped"] = g_logDropped;
 }
-
 static void appendController(JsonObject obj) {
   char mac48[13];
   char chipEui[17];
   chipMac48Hex(mac48);
   chipDevEuiHex(chipEui);
-
   obj["fw"] = FW_VERSION;
   obj["build_date"] = __DATE__;
   obj["build_time"] = __TIME__;
@@ -2565,7 +2315,6 @@ static void appendController(JsonObject obj) {
   obj["sd_status"] = g_sdStatus;
   obj["sd_file"] = g_logFileName;
 }
-
 static void handleApiLive() {
   StaticJsonDocument<1024> doc;
   doc["mode"] = modeToString();
@@ -2574,7 +2323,6 @@ static void handleApiLive() {
   serializeJson(doc, out);
   server.send(200, "application/json", out);
 }
-
 static void handleApiState() {
   StaticJsonDocument<2304> doc;
   doc["fw"] = FW_VERSION;
@@ -2593,7 +2341,6 @@ static void handleApiState() {
   serializeJson(doc, out);
   server.send(200, "application/json", out);
 }
-
 static void handleApiConfigGet() {
   StaticJsonDocument<1024> doc;
   appendConfig(doc.to<JsonObject>());
@@ -2601,32 +2348,26 @@ static void handleApiConfigGet() {
   serializeJson(doc, out);
   server.send(200, "application/json", out);
 }
-
 static void handleApiConfigPost() {
   if (!server.hasArg("plain")) {
     server.send(400, "application/json", "{\"ok\":false,\"error\":\"missing body\"}");
     return;
   }
-
   StaticJsonDocument<1536> doc;
   DeserializationError err = deserializeJson(doc, server.arg("plain"));
   if (err) {
     server.send(400, "application/json", "{\"ok\":false,\"error\":\"json\"}");
     return;
   }
-
   Cfg next = cfg;
-
   if (!doc["devEui"].isNull()) copyUpperNoSpace(next.devEui, sizeof(next.devEui), doc["devEui"].as<const char*>());
   if (!doc["appEui"].isNull()) copyUpperNoSpace(next.appEui, sizeof(next.appEui), doc["appEui"].as<const char*>());
   if (!doc["appKey"].isNull()) copyUpperNoSpace(next.appKey, sizeof(next.appKey), doc["appKey"].as<const char*>());
   if (!doc["minutes"].isNull()) next.intervalMin = doc["minutes"].as<uint16_t>();
   if (!doc["adr"].isNull()) next.adr = doc["adr"].as<bool>();
   if (!doc["dr"].isNull()) next.dr = doc["dr"].as<uint8_t>();
-
   if (!doc["dms_enabled"].isNull()) next.dmsEnabled = doc["dms_enabled"].as<int>() != 0;
   if (!doc["dms_hz"].isNull()) next.dmsHz = doc["dms_hz"].as<float>();
-
   if (!doc["ain2_enabled"].isNull()) next.ain2Enabled = doc["ain2_enabled"].as<int>() != 0;
   if (!doc["ain2_hz"].isNull()) next.ain2Hz = doc["ain2_hz"].as<float>();
   if (!doc["ain2_mode"].isNull()) {
@@ -2636,16 +2377,13 @@ static void handleApiConfigPost() {
   if (!doc["ain2_length_mm"].isNull()) next.ain2LengthMm = doc["ain2_length_mm"].as<float>();
   if (!doc["ain2_adc_fullscale_v"].isNull()) next.ain2AdcFullscaleV = doc["ain2_adc_fullscale_v"].as<float>();
   if (!doc["ain2_input_fullscale_v"].isNull()) next.ain2InputFullscaleV = doc["ain2_input_fullscale_v"].as<float>();
-
   if (!doc["temp_enabled"].isNull()) next.tempEnabled = doc["temp_enabled"].as<int>() != 0;
-
   if (!doc["sd_log_enabled"].isNull()) next.sdLogEnabled = doc["sd_log_enabled"].as<int>() != 0;
   if (!doc["sd_base"].isNull()) {
     const char* base = doc["sd_base"].as<const char*>();
     if (base) strlcpy(next.logBaseName, base, sizeof(next.logBaseName));
   }
   if (!doc["sd_rotate_kb"].isNull()) next.logRotateKB = doc["sd_rotate_kb"].as<uint32_t>();
-
   normalizeCfg(next);
   String error;
   if (!validateCfg(next, &error)) {
@@ -2653,9 +2391,7 @@ static void handleApiConfigPost() {
     server.send(400, "application/json", out);
     return;
   }
-
   bool reopenSd = (strcmp(next.logBaseName, cfg.logBaseName) != 0) || (next.sdLogEnabled != cfg.sdLogEnabled) || (next.logRotateKB != cfg.logRotateKB);
-
   cfg = next;
   saveCfg();
   applyLoraConfig();
@@ -2663,7 +2399,6 @@ static void handleApiConfigPost() {
   if (!cfg.ain2Enabled) invalidateAin2();
   if (!cfg.tempEnabled) invalidateTemp();
   if (g_mode == RunMode::CONFIG) syncSdLogger(reopenSd);
-
   StaticJsonDocument<1152> resp;
   resp["ok"] = true;
   appendConfig(resp["cfg"].to<JsonObject>());
@@ -2671,13 +2406,11 @@ static void handleApiConfigPost() {
   serializeJson(resp, out);
   server.send(200, "application/json", out);
 }
-
 static void handleApiReset() {
   server.send(200, "application/json", "{\"ok\":true}");
   delay(200);
   ESP.restart();
 }
-
 static void handleApiDevEuiGet() {
   StaticJsonDocument<384> doc;
   char mac48[13];
@@ -2692,20 +2425,17 @@ static void handleApiDevEuiGet() {
   serializeJson(doc, out);
   server.send(200, "application/json", out);
 }
-
 static void handleApiDevEuiPost() {
   if (!server.hasArg("plain")) {
     server.send(400, "application/json", "{\"ok\":false,\"error\":\"missing body\"}");
     return;
   }
-
   StaticJsonDocument<256> doc;
   DeserializationError err = deserializeJson(doc, server.arg("plain"));
   if (err) {
     server.send(400, "application/json", "{\"ok\":false,\"error\":\"json\"}");
     return;
   }
-
   Cfg next = cfg;
   if (!doc["use"].isNull()) {
     const char* use = doc["use"].as<const char*>();
@@ -2716,7 +2446,6 @@ static void handleApiDevEuiPost() {
     }
   }
   if (!doc["devEui"].isNull()) copyUpperNoSpace(next.devEui, sizeof(next.devEui), doc["devEui"].as<const char*>());
-
   normalizeCfg(next);
   String error;
   if (!validateCfg(next, &error)) {
@@ -2724,13 +2453,11 @@ static void handleApiDevEuiPost() {
     server.send(400, "application/json", out);
     return;
   }
-
   cfg = next;
   saveCfg();
   applyLoraConfig();
   handleApiDevEuiGet();
 }
-
 static bool serveFile(const char* path, const char* mime) {
   if (!LittleFS.exists(path)) return false;
   File f = LittleFS.open(path, "r");
@@ -2739,7 +2466,6 @@ static bool serveFile(const char* path, const char* mime) {
   f.close();
   return true;
 }
-
 static void handleRoot() {
   if (serveFile("/index.html", "text/html")) return;
   server.send(200, "text/html",
@@ -2747,17 +2473,14 @@ static void handleRoot() {
               "<p><a href=\"/api/state\">/api/state</a></p>"
               "</body></html>");
 }
-
 static void startApAndWeb() {
   if (!LittleFS.begin(true)) {
     Serial.println("[FS] LittleFS mount failed");
   }
-
   g_apSsid = String("LoRaSense-") + String(&cfg.devEui[8]);
   WiFi.mode(WIFI_AP);
   WiFi.softAP(g_apSsid.c_str());
   g_apIp = WiFi.softAPIP();
-
   server.on("/", HTTP_GET, handleRoot);
   server.on("/index.html", HTTP_GET, handleRoot);
   server.on("/i18n.json", HTTP_GET, []() {
@@ -2779,15 +2502,12 @@ static void startApAndWeb() {
   server.on("/api/sd/convert_bin_csv", HTTP_GET, handleApiSdConvertBinCsv);
   server.on("/api/sd/delete", HTTP_POST, handleApiSdDelete);
   server.begin();
-
   syncSdLogger(true);
-
   Serial.print("[AP] SSID=");
   Serial.print(g_apSsid);
   Serial.print(" IP=");
   Serial.println(g_apIp);
 }
-
 // ============================================================
 // LoRa
 // ============================================================
@@ -2804,10 +2524,8 @@ static void prepareTxFrame(uint8_t port) {
   doc["selftest_ok"] = selfTestOk ? 1 : 0;
   appDataSize = (uint8_t)serializeJson(doc, appData, LORAWAN_APP_DATA_MAX_SIZE);
 }
-
 static void loraLoop() {
   if (!g_loraEnabled) return;
-
   switch (deviceState) {
     case DEVICE_STATE_INIT:
       Serial.println("[LORA] INIT");
@@ -2818,13 +2536,11 @@ static void loraLoop() {
       g_loraInitDone = true;
       deviceState = DEVICE_STATE_JOIN;
       break;
-
     case DEVICE_STATE_JOIN:
       Serial.println("[LORA] JOIN");
       g_radioQuietUntilMs = millis() + 7000UL;
       LoRaWAN.join();
       break;
-
     case DEVICE_STATE_SEND:
       Serial.println("[LORA] SEND");
       captureFieldSnapshot();
@@ -2833,50 +2549,40 @@ static void loraLoop() {
       LoRaWAN.send();
       deviceState = DEVICE_STATE_CYCLE;
       break;
-
     case DEVICE_STATE_CYCLE:
       Serial.println("[LORA] CYCLE");
       LoRaWAN.cycle(appTxDutyCycle);
       deviceState = DEVICE_STATE_SLEEP;
       break;
-
     case DEVICE_STATE_SLEEP:
       LoRaWAN.sleep(loraWanClass);
       break;
-
     default:
       deviceState = DEVICE_STATE_INIT;
       break;
   }
 }
-
 // ============================================================
 // Setup / loop
 // ============================================================
 void setup() {
   Serial.begin(115200);
   delay(300);
-
   g_spiBusMutex = xSemaphoreCreateMutex();
-
   loadCfg();
   applyLoraConfig();
-
   g_mode = isApModeRequested() ? RunMode::CONFIG : RunMode::FIELD;
-
   if (g_mode == RunMode::CONFIG) {
     startApAndWeb();
     g_loraEnabled = false;
     g_sdStatus = cfg.sdLogEnabled ? g_sdStatus : "disabled";
   }
-
   adsInit();
   dsInit();
   runSelfTest();
   if (cfg.dmsEnabled) restoreDmsRunMode();
   last_dms_read_us = micros();
   last_ain2_read_us = micros();
-
   Serial.print("FW ");
   Serial.print(FW_VERSION);
   Serial.print(" build ");
@@ -2894,10 +2600,8 @@ void setup() {
   Serial.print("LoRa interval: ");
   Serial.print(appTxDutyCycle);
   Serial.println(" ms");
-
   Serial.println("[ADS] software SPI on fixed PCB pins; LoRa SPI isolated");
   dumpLoraBuffers("buffers before Mcu.begin");
-
   if (g_mode == RunMode::FIELD) {
     WiFi.persistent(false);
     WiFi.disconnect(true, true);
@@ -2911,7 +2615,6 @@ void setup() {
     xTaskCreatePinnedToCore(sdTask, "sdTask", 8192, nullptr, 1, &g_sdTaskHandle, 1);
   }
 }
-
 void loop() {
   if (g_mode == RunMode::CONFIG) {
     server.handleClient();
