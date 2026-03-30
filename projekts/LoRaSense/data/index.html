@@ -122,7 +122,7 @@ button{cursor:pointer}
 
 
 .tabs-shell{max-width:1160px;margin:0 auto;display:flex;flex-direction:column;gap:18px;width:100%}
-.tabs-bar{display:grid;grid-template-columns:repeat(2,minmax(280px,320px));gap:14px;justify-content:center;align-content:center;max-width:660px;margin:0 auto}
+.tabs-bar{display:grid;grid-template-columns:repeat(3,minmax(220px,1fr));gap:14px;justify-content:center;align-content:center;max-width:980px;margin:0 auto}
 .tab-btn{position:relative;display:flex;align-items:center;justify-content:center;height:52px;width:100%;padding:0 22px;border-radius:16px;background:var(--btn);font-weight:800;color:var(--muted);text-align:center;transition:background .2s ease,color .2s ease,transform .2s ease,border-color .2s ease,box-shadow .2s ease}
 .tab-btn:hover{background:var(--btn-h);color:var(--fg);transform:translateY(-1px)}
 .tab-btn.active{background:linear-gradient(180deg,rgba(84,184,230,.22),rgba(84,184,230,.12));border-color:rgba(84,184,230,.45);color:var(--fg);box-shadow:0 8px 22px rgba(84,184,230,.14)}
@@ -148,7 +148,7 @@ button{cursor:pointer}
 <img alt="MKP" src="/logo.svg"/>
 <div class="title-wrap">
 <div class="title" id="i_title">MKP LoRaSense File Node</div>
-<div class="sub" id="sub_title">AP live measurement / BIN logging / FIELD LoRa snapshot</div>
+<div class="sub" id="sub_title">AP live measurement / BIN logging / PC stream / FIELD LoRa snapshot</div>
 </div>
 </a>
 <div class="header-tools">
@@ -158,7 +158,7 @@ button{cursor:pointer}
 </div>
 </header>
 <main class="main">
-<div class="tabs-shell"><div aria-label="Main sections" class="tabs-bar" role="tablist"><button aria-controls="tabPanel-measure" aria-selected="true" class="tab-btn active" data-tab="measure" id="tabBtn-measure" role="tab" type="button">Measurements &amp; settings</button><button aria-controls="tabPanel-system" aria-selected="false" class="tab-btn" data-tab="system" id="tabBtn-system" role="tab" type="button">LoRa &amp; controller</button></div><div class="tab-panels"><section aria-labelledby="tabBtn-measure" class="tab-panel active" data-tab="measure" id="tabPanel-measure" role="tabpanel"><div class="tabs-inner-grid"><div class="tabs-stack"><section class="card">
+<div class="tabs-shell"><div aria-label="Main sections" class="tabs-bar" role="tablist"><button aria-controls="tabPanel-measure" aria-selected="true" class="tab-btn active" data-tab="measure" id="tabBtn-measure" role="tab" type="button">Measurements &amp; settings</button><button aria-controls="tabPanel-system" aria-selected="false" class="tab-btn" data-tab="system" id="tabBtn-system" role="tab" type="button">LoRa &amp; controller</button><button aria-controls="tabPanel-stream" aria-selected="false" class="tab-btn" data-tab="stream" id="tabBtn-stream" role="tab" type="button">PC Stream</button></div><div class="tab-panels"><section aria-labelledby="tabBtn-measure" class="tab-panel active" data-tab="measure" id="tabPanel-measure" role="tabpanel"><div class="tabs-inner-grid"><div class="tabs-stack"><section class="card">
 <h3 id="h_measurements">Measurements</h3>
 <div class="kv">
 <div class="k" id="lab_time">Time</div><div class="v" id="time">--:--:--</div>
@@ -314,10 +314,32 @@ button{cursor:pointer}
 <option value="5">DR5 (SF7)</option>
 </select>
 </div>
-<div class="summary" id="lora_note" style="margin-top:12px">Saved in AP mode. FIELD mode takes one fresh sensor snapshot immediately before each LoRa send and then returns to LoRaWAN sleep. AP mode stores BIN logs on SD and converts them to CSV with real-time timestamps.</div>
+<div class="summary" id="lora_note" style="margin-top:12px">Saved in AP mode. FIELD mode takes one fresh sensor snapshot immediately before each LoRa send and then returns to LoRaWAN sleep. AP mode stores BIN logs on SD and converts them to CSV with real-time timestamps. PC Stream mode disables SD logging and sends compact binary frames directly to a desktop receiver.</div>
 <div class="status mono" id="chipInfo" style="margin-top:12px"></div>
 <div class="status" id="loraMsg" style="margin-top:8px"></div>
 <button class="btn btn-block" id="saveLoRaBtn" type="button">Save LoRa settings</button>
+</section></div></div></section><section aria-labelledby="tabBtn-stream" class="tab-panel" data-tab="stream" id="tabPanel-stream" role="tabpanel"><div class="tabs-inner-grid system-grid"><div class="tabs-stack"><section class="card">
+<h3>PC Stream mode</h3>
+<div class="summary">This mode disables SD logging and keeps the controller focused on acquisition plus direct transfer to a PC over the AP. Use it to reach the highest stable measurement speed with the least interference on the shared SPI bus.</div>
+<div class="hr"></div>
+<div class="kv">
+<div class="k">Mode</div><div class="v" id="streamModeState">-</div>
+<div class="k">Status</div><div class="v" id="streamStatus">-</div>
+<div class="k">AP SSID</div><div class="v mono" id="streamSsid">-</div>
+<div class="k">IP</div><div class="v mono" id="streamIp">-</div>
+<div class="k">TCP port</div><div class="v mono" id="streamPort">-</div>
+<div class="k">Client</div><div class="v" id="streamClient">-</div>
+</div>
+<div class="hr"></div>
+<div class="btn-pair">
+<button class="btn" id="enableStreamBtn" type="button">Enable stream mode</button>
+<button class="btn" id="disableStreamBtn" type="button">Disable stream mode</button>
+</div>
+<div class="status" id="streamMsg"></div>
+</section></div><div class="tabs-stack"><section class="card">
+<h3>Desktop app</h3>
+<div style="display:flex;justify-content:center;align-items:center;min-height:240px;border:1px dashed var(--line);border-radius:18px;background:rgba(84,184,230,.05);font-weight:800;font-size:18px;text-align:center;padding:20px">QR placeholder<br/>Desktop receiver download</div>
+<div class="note" style="margin-top:12px">Planned workflow: connect the PC to the controller AP, start the desktop receiver, then enable PC Stream mode here. The controller will push compact binary frames directly to the computer. Visualization, saving, filtering and analysis move to the PC side.</div>
 </section></div></div></section></div></div>
 </main>
 <div class="hidden" id="sdModal" style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;padding:18px;">
@@ -413,7 +435,7 @@ function applyLang(){
   document.documentElement.lang = currentLang;
   $('langBtn').textContent = currentLang.toUpperCase();
   setText('i_title', tr('title','MKP LoRaSense File Node'));
-  setText('sub_title', tr('subtitle','AP live measurement / BIN logging / FIELD LoRa snapshot'));
+  setText('sub_title', tr('subtitle','AP live measurement / BIN logging / PC stream / FIELD LoRa snapshot'));
   setText('lab_fw', tr('firmware','Firmware'));
   setText('h_measurements', tr('measurements','Measurements'));
   setText('lab_time', tr('time','Time'));
@@ -455,7 +477,7 @@ function applyLang(){
   setText('lab_appkey', tr('appkey','AppKey'));
   setText('lab_interval', tr('interval','Send interval, min'));
   setText('lab_drate', tr('drate','Data rate'));
-  setText('lora_note', tr('lora_note','Saved in AP mode. FIELD mode takes one fresh sensor snapshot immediately before each LoRa send and then returns to LoRaWAN sleep. AP mode stores BIN logs on SD and converts them to CSV with real-time timestamps.'));
+  setText('lora_note', tr('lora_note','Saved in AP mode. FIELD mode takes one fresh sensor snapshot immediately before each LoRa send and then returns to LoRaWAN sleep. AP mode stores BIN logs on SD and converts them to CSV with real-time timestamps. PC Stream mode disables SD logging and sends compact binary frames directly to a desktop receiver.'));
   setText('saveLoRaBtn', tr('save_lora','Save LoRa settings'));
 
   setText('h_measure_cfg', tr('measure_cfg','Measurement settings'));
@@ -622,6 +644,14 @@ function updateMeta(s){
   setText('sdfile', s.sd_file || c.sd_file || '-');
   setText('chipmac', c.chip_mac48 || s.chip_mac48 || '-');
   setText('chipeui', c.chip_eui64 || s.chip_eui64 || '-');
+
+  var streamEnabled = !!(c.stream_mode_enabled || (s.cfg && s.cfg.stream_mode_enabled) || s.stream_mode_enabled);
+  setText('streamModeState', streamEnabled ? 'Enabled' : 'Disabled');
+  setText('streamStatus', c.stream_status || s.stream_status || '-');
+  setText('streamSsid', c.ap_ssid || s.ap_ssid || '-');
+  setText('streamIp', ipVal || '-');
+  setText('streamPort', String(c.stream_port || s.stream_port || 3333));
+  setText('streamClient', (c.stream_client_connected || s.stream_client_connected) ? 'Connected' : 'Waiting');
 
   updateStatusText(modeVal || 'CONFIG');
 }
@@ -901,6 +931,14 @@ async function saveMeas(){
   setMsg('measMsg', tr('meas_saved','Measurement settings saved to controller.'));
 }
 
+
+async function saveStreamMode(enabled){
+  var r = await api('/api/stream', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ enabled: enabled ? 1 : 0 }) });
+  setMsg('streamMsg', enabled ? 'PC Stream mode enabled.' : 'PC Stream mode disabled.');
+  try { await loadStateOnce(); } catch (e) {}
+  return r;
+}
+
 $('saveLoRaBtn').addEventListener('click', async function(){
   try { await saveLoRa(); }
   catch (e) { setMsg('loraMsg', tr('save_error','Save error') + ': ' + e.message); }
@@ -978,6 +1016,14 @@ $('ain2Mode').addEventListener('change', updateAin2Mode);
 $('themeBtn').addEventListener('click', function(){
   setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
 });
+if ($('enableStreamBtn')) $('enableStreamBtn').addEventListener('click', async function(){
+  try { await saveStreamMode(true); }
+  catch (e) { setMsg('streamMsg', 'Save error: ' + e.message); }
+});
+if ($('disableStreamBtn')) $('disableStreamBtn').addEventListener('click', async function(){
+  try { await saveStreamMode(false); }
+  catch (e) { setMsg('streamMsg', 'Save error: ' + e.message); }
+});
 $('langBtn').addEventListener('click', function(){
   var idx = LANGS.indexOf(currentLang);
   currentLang = LANGS[(idx + 1) % LANGS.length];
@@ -1004,7 +1050,7 @@ function initTabs(){
   btns.forEach(function(btn){
     btn.addEventListener('click', function(){ activate(btn.dataset.tab); });
   });
-  activate('measure');
+  activate((location.hash || '#measure').replace('#','') || 'measure');
 }
 
 async function boot(){

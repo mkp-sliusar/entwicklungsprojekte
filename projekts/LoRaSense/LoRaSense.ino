@@ -59,6 +59,14 @@ static bool g_loraInitDone = false;
 static uint32_t g_radioQuietUntilMs = 0;
 static IPAddress g_apIp(0, 0, 0, 0);
 static String g_apSsid;
+static WiFiServer g_streamServer(3333);
+static WiFiClient g_streamClient;
+static TaskHandle_t g_streamTaskHandle = nullptr;
+static bool g_streamServerStarted = false;
+static volatile uint32_t g_lastStreamedSampleSeq = 0;
+static String g_streamStatus = "idle";
+static uint32_t g_streamClientCount = 0;
+static constexpr uint16_t STREAM_TCP_PORT = 3333;
 // ---------------- ADS1220 ----------------
 namespace ADS1220 {
   static constexpr uint8_t CMD_RESET = 0x06;
@@ -97,6 +105,7 @@ struct Cfg {
   float ain2InputFullscaleV;
   bool tempEnabled;
   bool sdLogEnabled;
+  bool streamModeEnabled;
   char logBaseName[LOG_BASENAME_LEN + 1];
   uint32_t logRotateKB;
 };
@@ -116,6 +125,7 @@ static Cfg cfg = {
   3.123f,
   10.0f,
   true,
+  false,
   false,
   "lorasense",
   1024
@@ -232,6 +242,26 @@ struct BinLogRecordV1 {
   uint8_t flags;        // bit0 dms_valid, bit1 ain2_valid, bit2 temp_valid, bit3 selftest_ok
   uint8_t reserved;
 };
+
+#pragma pack(push,1)
+struct StreamPacketV1 {
+  char magic[4];        // MKPS
+  uint16_t version;     // 1
+  uint16_t bytes;       // sizeof(StreamPacketV1)
+  uint32_t seq;
+  uint32_t t_ms;
+  uint32_t t_us;
+  uint16_t flags;       // bit0 dms_on bit1 dms_valid bit2 ain2_on bit3 ain2_valid bit4 temp_on bit5 temp_valid bit6 ain2_volt
+  int32_t dms_raw;
+  float dms_mV;
+  float dms_mV_per_V;
+  int32_t ain2_raw;
+  float ain2_mV;
+  float ain2_value;
+  int16_t temp_c_x100;
+  uint16_t reserved;
+};
+#pragma pack(pop)
 #pragma pack(pop)
 static constexpr uint16_t BIN_FLAG_DMS_ENABLED       = 0x0001;
 static constexpr uint16_t BIN_FLAG_AIN2_ENABLED      = 0x0002;
@@ -594,6 +624,17 @@ static uint16_t g_logBufCount = 0;
 static uint16_t g_logBufMax = 0;
 static uint32_t g_logDropped = 0;
 static uint32_t g_logLastDrainMs = 0;
+
+static constexpr uint16_t STREAM_BUF_SIZE = 1024;
+static constexpr uint16_t STREAM_BATCH_SIZE = 16;
+static StreamPacketV1 g_streamBuf[STREAM_BUF_SIZE];
+static uint16_t g_streamBufHead = 0;
+static uint16_t g_streamBufTail = 0;
+static uint16_t g_streamBufCount = 0;
+static uint16_t g_streamBufMax = 0;
+static uint32_t g_streamDropped = 0;
+static uint32_t g_streamProduced = 0;
+static uint32_t g_streamSent = 0;
 // ---------------- LoRaWAN globals required by Heltec ----------------
 uint8_t devEui[8]   = { 0 };
 uint8_t appEui[8]   = { 0 };
@@ -626,6 +667,7 @@ static volatile bool g_sensorTaskRunning = false;
 static SPISettings g_adsSpiSettings(4000000, MSBFIRST, SPI_MODE1);
 static SemaphoreHandle_t g_spiBusMutex = nullptr;
 static portMUX_TYPE g_logBufMux = portMUX_INITIALIZER_UNLOCKED;
+static portMUX_TYPE g_streamBufMux = portMUX_INITIALIZER_UNLOCKED;
 static char g_sdWriteBuf[4096];
 // ============================================================
 // Helpers
@@ -840,6 +882,7 @@ static void normalizeCfg(Cfg& c) {
   if (!(c.ain2InputFullscaleV > 0.05f)) c.ain2InputFullscaleV = 10.0f;
   if (c.logRotateKB < 64) c.logRotateKB = 64;
   if (c.logRotateKB > 1024UL * 1024UL) c.logRotateKB = 1024UL * 1024UL;
+  if (c.streamModeEnabled) c.sdLogEnabled = false;
 }
 static bool validateCfg(const Cfg& c, String* errOut = nullptr) {
   if (!isExactHex(c.devEui, DEV_EUI_HEX_LEN)) {
@@ -893,6 +936,7 @@ static void loadCfg() {
   cfg.ain2InputFullscaleV = prefs.getFloat("a2infs", defaults.ain2InputFullscaleV);
   cfg.tempEnabled = prefs.getBool("tmpon", defaults.tempEnabled);
   cfg.sdLogEnabled = prefs.getBool("sdon", defaults.sdLogEnabled);
+  cfg.streamModeEnabled = prefs.getBool("streamon", defaults.streamModeEnabled);
   String base = prefs.getString("sdbase", defaults.logBaseName);
   cfg.logRotateKB = prefs.getUInt("sdkb", defaults.logRotateKB);
   prefs.end();
@@ -932,6 +976,7 @@ static void saveCfg() {
   prefs.putFloat("a2infs", cfg.ain2InputFullscaleV);
   prefs.putBool("tmpon", cfg.tempEnabled);
   prefs.putBool("sdon", cfg.sdLogEnabled);
+  prefs.putBool("streamon", cfg.streamModeEnabled);
   prefs.putString("sdbase", cfg.logBaseName);
   prefs.putUInt("sdkb", cfg.logRotateKB);
   prefs.end();
@@ -1352,6 +1397,7 @@ static void sensorLoopAp() {
   }
   if (sampleChanged) {
     g_lastSampleSeq++;
+    captureStreamSample(g_lastSampleSeq, now, nowUs);
     captureLogSample(now);
   }
 }
@@ -1472,6 +1518,45 @@ static bool popLogSample(LogSample& s) {
   }
   portEXIT_CRITICAL(&g_logBufMux);
   return ok;
+}
+
+static void resetStreamBuffer() {
+  portENTER_CRITICAL(&g_streamBufMux);
+  g_streamBufHead = 0;
+  g_streamBufTail = 0;
+  g_streamBufCount = 0;
+  g_streamBufMax = 0;
+  g_streamDropped = 0;
+  g_streamProduced = 0;
+  g_streamSent = 0;
+  portEXIT_CRITICAL(&g_streamBufMux);
+}
+static bool pushStreamPacket(const StreamPacketV1& s) {
+  bool ok = true;
+  portENTER_CRITICAL(&g_streamBufMux);
+  g_streamProduced++;
+  if (g_streamBufCount >= STREAM_BUF_SIZE) {
+    g_streamDropped++;
+    ok = false;
+  } else {
+    g_streamBuf[g_streamBufHead] = s;
+    g_streamBufHead = (uint16_t)((g_streamBufHead + 1U) % STREAM_BUF_SIZE);
+    g_streamBufCount++;
+    if (g_streamBufCount > g_streamBufMax) g_streamBufMax = g_streamBufCount;
+  }
+  portEXIT_CRITICAL(&g_streamBufMux);
+  return ok;
+}
+static uint16_t popStreamBatch(StreamPacketV1* out, uint16_t maxCount) {
+  uint16_t n = 0;
+  portENTER_CRITICAL(&g_streamBufMux);
+  while (g_streamBufCount != 0 && n < maxCount) {
+    out[n++] = g_streamBuf[g_streamBufTail];
+    g_streamBufTail = (uint16_t)((g_streamBufTail + 1U) % STREAM_BUF_SIZE);
+    g_streamBufCount--;
+  }
+  portEXIT_CRITICAL(&g_streamBufMux);
+  return n;
 }
 static void captureLogSample(uint32_t t_ms) {
   if (g_mode != RunMode::CONFIG) return;
@@ -1797,6 +1882,10 @@ static String csvBaseNameFromBin(const String& path) {
   return out;
 }
 static void handleApiSdConvertBinCsv() {
+  if (cfg.streamModeEnabled) {
+    sendJsonError(409, "stream_mode_active");
+    return;
+  }
   if (g_mode != RunMode::CONFIG) {
     sendJsonError(403, "convert_available_in_config_only");
     return;
@@ -1937,6 +2026,10 @@ static void handleApiSdConvertBinCsv() {
   server.send(200, "application/json", resp);
 }
 static void handleApiSdArchive() {
+  if (cfg.streamModeEnabled) {
+    sendJsonError(409, "stream_mode_active");
+    return;
+  }
   if (g_mode != RunMode::CONFIG) {
     sendJsonError(403, "archive_available_in_config_only");
     return;
@@ -2075,6 +2168,10 @@ static void handleApiSdArchive() {
   g_sdBusy = false;
 }
 static void handleApiSdDownload() {
+  if (cfg.streamModeEnabled) {
+    sendJsonError(409, "stream_mode_active");
+    return;
+  }
   if (g_mode != RunMode::CONFIG) {
     sendJsonError(403, "download_available_in_config_only");
     return;
@@ -2121,6 +2218,10 @@ static void handleApiSdDownload() {
   g_sdBusy = false;
 }
 static void handleApiSdDelete() {
+  if (cfg.streamModeEnabled) {
+    sendJsonError(409, "stream_mode_active");
+    return;
+  }
   if (g_mode != RunMode::CONFIG) {
     sendJsonError(403, "delete_available_in_config_only");
     return;
@@ -2174,6 +2275,10 @@ static void handleApiSdDelete() {
   server.send(200, "application/json", out);
 }
 static void handleApiSdList() {
+  if (cfg.streamModeEnabled) {
+    sendJsonError(409, "stream_mode_active");
+    return;
+  }
   if (g_mode != RunMode::CONFIG) {
     sendJsonError(403, "list_available_in_config_only");
     return;
@@ -2222,6 +2327,94 @@ static void sendJsonError(int code, const char* error) {
 static String modeToString() {
   return (g_mode == RunMode::CONFIG) ? "CONFIG" : "FIELD";
 }
+
+static uint16_t streamFlagsNow() {
+  uint16_t flags = 0;
+  if (cfg.dmsEnabled) flags |= 1u << 0;
+  if (dms_valid)      flags |= 1u << 1;
+  if (cfg.ain2Enabled) flags |= 1u << 2;
+  if (ain2_valid)      flags |= 1u << 3;
+  if (cfg.tempEnabled) flags |= 1u << 4;
+  if (temp_valid)      flags |= 1u << 5;
+  if (cfg.ain2Mode == AIN2_MODE_VOLT) flags |= 1u << 6;
+  return flags;
+}
+static StreamPacketV1 makeStreamPacket(uint32_t seq, uint32_t t_ms, uint32_t t_us) {
+  StreamPacketV1 p{};
+  memcpy(p.magic, "MKPS", 4);
+  p.version = 1;
+  p.bytes = (uint16_t)sizeof(StreamPacketV1);
+  p.seq = seq;
+  p.t_ms = t_ms;
+  p.t_us = t_us;
+  p.flags = streamFlagsNow();
+  p.dms_raw = lastDmsRaw;
+  p.dms_mV = dms_valid ? dms_mV : NAN;
+  p.dms_mV_per_V = dms_valid ? dms_mV_per_V : NAN;
+  p.ain2_raw = lastAin2Raw;
+  p.ain2_mV = ain2_valid ? ain2_mV : NAN;
+  p.ain2_value = ain2_valid ? ain2DerivedValue() : NAN;
+  p.temp_c_x100 = temp_valid ? (int16_t)lroundf(ds_temp_c * 100.0f) : INT16_MIN;
+  p.reserved = 0;
+  return p;
+}
+static void captureStreamSample(uint32_t seq, uint32_t t_ms, uint32_t t_us) {
+  if (g_mode != RunMode::CONFIG) return;
+  if (!cfg.streamModeEnabled) return;
+  StreamPacketV1 pkt = makeStreamPacket(seq, t_ms, t_us);
+  pushStreamPacket(pkt);
+}
+static void closeStreamClient() {
+  if (g_streamClient) {
+    g_streamClient.stop();
+  }
+}
+static void streamTask(void* /*arg*/) {
+  vTaskDelay(pdMS_TO_TICKS(250));
+  StreamPacketV1 batch[STREAM_BATCH_SIZE];
+  for (;;) {
+    if (g_mode != RunMode::CONFIG || !cfg.streamModeEnabled) {
+      if (g_streamClient) closeStreamClient();
+      g_streamStatus = cfg.streamModeEnabled ? "waiting_client" : "disabled";
+      vTaskDelay(pdMS_TO_TICKS(50));
+      continue;
+    }
+    if (!g_streamClient || !g_streamClient.connected()) {
+      if (g_streamClient) closeStreamClient();
+      WiFiClient candidate = g_streamServer.available();
+      if (candidate) {
+        candidate.setNoDelay(true);
+        g_streamClient = candidate;
+        g_streamClientCount++;
+        g_streamStatus = "streaming";
+      } else {
+        g_streamStatus = "waiting_client";
+        vTaskDelay(pdMS_TO_TICKS(5));
+        continue;
+      }
+    }
+
+    uint16_t n = popStreamBatch(batch, STREAM_BATCH_SIZE);
+    if (n == 0) {
+      vTaskDelay(pdMS_TO_TICKS(1));
+      continue;
+    }
+
+    const size_t want = (size_t)n * sizeof(StreamPacketV1);
+    const size_t sent = g_streamClient.write((const uint8_t*)batch, want);
+    if (sent != want) {
+      closeStreamClient();
+      g_streamStatus = "client_disconnected";
+      vTaskDelay(pdMS_TO_TICKS(5));
+      continue;
+    }
+
+    g_lastStreamedSampleSeq = batch[n - 1].seq;
+    g_streamSent += n;
+    g_streamStatus = "streaming";
+    taskYIELD();
+  }
+}
 static void appendPerf(JsonObject obj) {
   PerfEstimate p = makePerfEstimate();
   obj["dms_target_hz"] = p.dmsTargetHz;
@@ -2251,6 +2444,7 @@ static void appendConfig(JsonObject obj) {
   obj["temp_enabled"] = cfg.tempEnabled ? 1 : 0;
   obj["temp_hz"] = TEMP_FIXED_HZ;
   obj["sd_log_enabled"] = cfg.sdLogEnabled ? 1 : 0;
+  obj["stream_mode_enabled"] = cfg.streamModeEnabled ? 1 : 0;
   obj["sd_base"] = cfg.logBaseName;
   obj["sd_rotate_kb"] = cfg.logRotateKB;
   JsonObject perfObj = obj["perf"].to<JsonObject>();
@@ -2287,6 +2481,9 @@ static void appendLive(JsonObject obj) {
   obj["sd_mounted"] = g_sdMounted ? 1 : 0;
   obj["sd_status"] = g_sdStatus;
   obj["sd_file"] = g_logFileName;
+  obj["stream_mode_enabled"] = cfg.streamModeEnabled ? 1 : 0;
+  obj["stream_status"] = g_streamStatus;
+  obj["stream_port"] = STREAM_TCP_PORT;
   obj["sd_lines"] = g_logLineCount;
   obj["sd_buffered"] = g_logBufCount;
   obj["sd_buffered_max"] = g_logBufMax;
@@ -2314,8 +2511,22 @@ static void appendController(JsonObject obj) {
   obj["ap_ssid"] = (g_mode == RunMode::CONFIG) ? g_apSsid : String("-");
   obj["sd_status"] = g_sdStatus;
   obj["sd_file"] = g_logFileName;
+  obj["stream_mode_enabled"] = cfg.streamModeEnabled ? 1 : 0;
+  obj["stream_status"] = g_streamStatus;
+  obj["stream_port"] = STREAM_TCP_PORT;
+  obj["stream_client_connected"] = (g_streamClient && g_streamClient.connected()) ? 1 : 0;
+  obj["stream_clients_total"] = g_streamClientCount;
+  obj["stream_produced"] = g_streamProduced;
+  obj["stream_sent"] = g_streamSent;
+  obj["stream_dropped"] = g_streamDropped;
+  obj["stream_buffered"] = g_streamBufCount;
+  obj["stream_buffered_max"] = g_streamBufMax;
 }
 static void handleApiLive() {
+  if (cfg.streamModeEnabled) {
+    sendJsonError(409, "stream_mode_active");
+    return;
+  }
   StaticJsonDocument<1024> doc;
   doc["mode"] = modeToString();
   appendLive(doc.to<JsonObject>());
@@ -2324,6 +2535,22 @@ static void handleApiLive() {
   server.send(200, "application/json", out);
 }
 static void handleApiState() {
+  if (cfg.streamModeEnabled) {
+    StaticJsonDocument<1024> doc;
+    doc["fw"] = FW_VERSION;
+    doc["build_date"] = __DATE__;
+    doc["build_time"] = __TIME__;
+    doc["mode"] = modeToString();
+    doc["ip"] = (g_mode == RunMode::CONFIG) ? g_apIp.toString() : String("-");
+    doc["uptime_s"] = millis() / 1000UL;
+    doc["heap_free"] = ESP.getFreeHeap();
+    appendConfig(doc["cfg"].to<JsonObject>());
+    appendController(doc["controller"].to<JsonObject>());
+    String out;
+    serializeJson(doc, out);
+    server.send(200, "application/json", out);
+    return;
+  }
   StaticJsonDocument<2304> doc;
   doc["fw"] = FW_VERSION;
   doc["build_date"] = __DATE__;
@@ -2379,6 +2606,7 @@ static void handleApiConfigPost() {
   if (!doc["ain2_input_fullscale_v"].isNull()) next.ain2InputFullscaleV = doc["ain2_input_fullscale_v"].as<float>();
   if (!doc["temp_enabled"].isNull()) next.tempEnabled = doc["temp_enabled"].as<int>() != 0;
   if (!doc["sd_log_enabled"].isNull()) next.sdLogEnabled = doc["sd_log_enabled"].as<int>() != 0;
+  if (!doc["stream_mode_enabled"].isNull()) next.streamModeEnabled = doc["stream_mode_enabled"].as<int>() != 0;
   if (!doc["sd_base"].isNull()) {
     const char* base = doc["sd_base"].as<const char*>();
     if (base) strlcpy(next.logBaseName, base, sizeof(next.logBaseName));
@@ -2391,7 +2619,7 @@ static void handleApiConfigPost() {
     server.send(400, "application/json", out);
     return;
   }
-  bool reopenSd = (strcmp(next.logBaseName, cfg.logBaseName) != 0) || (next.sdLogEnabled != cfg.sdLogEnabled) || (next.logRotateKB != cfg.logRotateKB);
+  bool reopenSd = (strcmp(next.logBaseName, cfg.logBaseName) != 0) || (next.sdLogEnabled != cfg.sdLogEnabled) || (next.logRotateKB != cfg.logRotateKB) || (next.streamModeEnabled != cfg.streamModeEnabled);
   cfg = next;
   saveCfg();
   applyLoraConfig();
@@ -2458,6 +2686,51 @@ static void handleApiDevEuiPost() {
   applyLoraConfig();
   handleApiDevEuiGet();
 }
+
+static void handleApiStreamGet() {
+  StaticJsonDocument<512> doc;
+  doc["ok"] = true;
+  doc["enabled"] = cfg.streamModeEnabled ? 1 : 0;
+  doc["status"] = g_streamStatus;
+  doc["port"] = STREAM_TCP_PORT;
+  doc["ssid"] = g_apSsid;
+  doc["ip"] = g_apIp.toString();
+  doc["client_connected"] = (g_streamClient && g_streamClient.connected()) ? 1 : 0;
+  doc["clients_total"] = g_streamClientCount;
+  doc["streamed_seq"] = g_lastStreamedSampleSeq;
+  String out;
+  serializeJson(doc, out);
+  server.send(200, "application/json", out);
+}
+static void handleApiStreamPost() {
+  if (!server.hasArg("plain")) {
+    sendJsonError(400, "missing body");
+    return;
+  }
+  StaticJsonDocument<256> doc;
+  DeserializationError err = deserializeJson(doc, server.arg("plain"));
+  if (err) {
+    sendJsonError(400, "json");
+    return;
+  }
+  Cfg next = cfg;
+  if (!doc["enabled"].isNull()) next.streamModeEnabled = doc["enabled"].as<int>() != 0;
+  normalizeCfg(next);
+  bool streamChanged = (next.streamModeEnabled != cfg.streamModeEnabled);
+  cfg = next;
+  saveCfg();
+  syncSdLogger(true);
+  if (streamChanged || cfg.streamModeEnabled) {
+    resetStreamBuffer();
+  }
+  if (!cfg.streamModeEnabled) {
+    closeStreamClient();
+    g_streamStatus = "disabled";
+  } else {
+    g_streamStatus = "waiting_client";
+  }
+  handleApiStreamGet();
+}
 static bool serveFile(const char* path, const char* mime) {
   if (!LittleFS.exists(path)) return false;
   File f = LittleFS.open(path, "r");
@@ -2496,12 +2769,19 @@ static void startApAndWeb() {
   server.on("/api/reset", HTTP_POST, handleApiReset);
   server.on("/api/deveui", HTTP_GET, handleApiDevEuiGet);
   server.on("/api/deveui", HTTP_POST, handleApiDevEuiPost);
+  server.on("/api/stream", HTTP_GET, handleApiStreamGet);
+  server.on("/api/stream", HTTP_POST, handleApiStreamPost);
   server.on("/api/sd/list", HTTP_GET, handleApiSdList);
   server.on("/api/sd/download", HTTP_GET, handleApiSdDownload);
   server.on("/api/sd/archive", HTTP_GET, handleApiSdArchive);
   server.on("/api/sd/convert_bin_csv", HTTP_GET, handleApiSdConvertBinCsv);
   server.on("/api/sd/delete", HTTP_POST, handleApiSdDelete);
   server.begin();
+  g_streamServer.begin();
+  g_streamServer.setNoDelay(true);
+  g_streamServerStarted = true;
+  resetStreamBuffer();
+  g_streamStatus = cfg.streamModeEnabled ? "waiting_client" : "disabled";
   syncSdLogger(true);
   Serial.print("[AP] SSID=");
   Serial.print(g_apSsid);
@@ -2613,12 +2893,13 @@ void setup() {
   } else {
     xTaskCreatePinnedToCore(sensorTask, "sensorTask", 8192, nullptr, 1, &g_sensorTaskHandle, 1);
     xTaskCreatePinnedToCore(sdTask, "sdTask", 8192, nullptr, 1, &g_sdTaskHandle, 1);
+    xTaskCreatePinnedToCore(streamTask, "streamTask", 6144, nullptr, 1, &g_streamTaskHandle, 0);
   }
 }
 void loop() {
   if (g_mode == RunMode::CONFIG) {
     server.handleClient();
-    delay(1);
+    delay(cfg.streamModeEnabled ? 5 : 1);
   } else {
     loraLoop();
     delay(2);
