@@ -1333,9 +1333,8 @@ static void sensorLoopAp() {
         float tmpAin2 = NAN;
         int32_t rawAin2 = lastAin2Raw;
         if (readChannelRaw(g_adsAin2Cfg, tmpAin2, &rawAin2)) {
-          if (!applyDownSpikeFilter(rawAin2, lastAin2Raw, lastAin2RawSeen, 80, 0.75f)) {
-            tmpAin2 = rawTo_mV_gain(lastAin2Raw, g_adsAin2Cfg.gain);
-          }
+          lastAin2Raw = rawAin2;
+          lastAin2RawSeen = true;
           ain2_mV = tmpAin2;
           ain2_valid = true;
           g_ain2FailStreak = 0;
@@ -1455,9 +1454,8 @@ static void captureFieldSnapshot() {
     float tmpAin2 = NAN;
     int32_t rawAin2 = lastAin2Raw;
     if (readChannelRaw(g_adsAin2Cfg, tmpAin2, &rawAin2)) {
-      if (!applyDownSpikeFilter(rawAin2, lastAin2Raw, lastAin2RawSeen, 80, 0.75f)) {
-        tmpAin2 = rawTo_mV_gain(lastAin2Raw, g_adsAin2Cfg.gain);
-      }
+      lastAin2Raw = rawAin2;
+      lastAin2RawSeen = true;
       ain2_mV = tmpAin2;
       ain2_valid = true;
     } else {
