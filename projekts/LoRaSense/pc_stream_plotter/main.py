@@ -485,19 +485,14 @@ class App(QtWidgets.QMainWindow):
         left.addStretch(1)
 
         right = QtWidgets.QVBoxLayout()
-        right.setSpacing(4)
+        right.setSpacing(6)
         body.addLayout(right, 1)
 
-        right.addLayout(self._build_plot_toolbar())
-
         splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical)
-        self.plot1 = pg.PlotWidget()
-        self.plot2 = pg.PlotWidget()
-        for plot in (self.plot1, self.plot2):
-            plot.setBackground("#111111")
-            plot.showGrid(x=True, y=True, alpha=0.25)
-        splitter.addWidget(self.plot1)
-        splitter.addWidget(self.plot2)
+        self.plot1_panel = self._build_plot_panel("Graph 1", "dms_display", 1)
+        self.plot2_panel = self._build_plot_panel("Graph 2", "ain2_display", 2)
+        splitter.addWidget(self.plot1_panel)
+        splitter.addWidget(self.plot2_panel)
         splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 1)
         right.addWidget(splitter, 1)
@@ -631,37 +626,42 @@ class App(QtWidgets.QMainWindow):
         layout.addWidget(meta_label)
         return card
 
-    def _build_plot_toolbar(self) -> QtWidgets.QGridLayout:
-        select = QtWidgets.QGridLayout()
-        select.setContentsMargins(0, 0, 0, 0)
-        select.setHorizontalSpacing(8)
-        select.setVerticalSpacing(2)
+    def _build_plot_panel(self, title: str, default_field: str, index: int) -> QtWidgets.QWidget:
+        panel = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(panel)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
 
-        self.combo1 = QtWidgets.QComboBox()
-        self.combo2 = QtWidgets.QComboBox()
-        for combo in (self.combo1, self.combo2):
-            combo.addItems(PLOT_FIELDS)
-            combo.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToContents)
-            combo.setMaximumWidth(190)
+        header = QtWidgets.QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.setSpacing(6)
 
-        self.combo1.setCurrentText("dms_display")
-        self.combo2.setCurrentText("ain2_display")
-        self.combo1.currentIndexChanged.connect(self.refresh_plots)
-        self.combo2.currentIndexChanged.connect(self.refresh_plots)
+        title_label = QtWidgets.QLabel(title)
+        title_label.setStyleSheet("font-weight:600;")
+        header.addWidget(title_label)
 
-        graph1_label = QtWidgets.QLabel("Graph 1")
-        graph2_label = QtWidgets.QLabel("Graph 2")
-        graph1_label.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignBottom)
-        graph2_label.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignBottom)
+        combo = QtWidgets.QComboBox()
+        combo.addItems(PLOT_FIELDS)
+        combo.setCurrentText(default_field)
+        combo.setMaximumWidth(190)
+        combo.currentIndexChanged.connect(self.refresh_plots)
+        header.addWidget(combo)
 
-        select.addWidget(graph1_label, 0, 0)
-        select.addWidget(graph2_label, 0, 1)
-        select.addWidget(self.combo1, 1, 0)
-        select.addWidget(self.combo2, 1, 1)
-        select.setColumnStretch(0, 0)
-        select.setColumnStretch(1, 0)
-        select.setColumnStretch(2, 1)
-        return select
+        header.addStretch(1)
+        layout.addLayout(header)
+
+        plot = pg.PlotWidget()
+        plot.setBackground("#111111")
+        plot.showGrid(x=True, y=True, alpha=0.25)
+        layout.addWidget(plot, 1)
+
+        if index == 1:
+            self.combo1 = combo
+            self.plot1 = plot
+        else:
+            self.combo2 = combo
+            self.plot2 = plot
+        return panel
 
     def _update_sensor_buttons(self) -> None:
         self.dms_meta.setText(
@@ -944,6 +944,8 @@ class App(QtWidgets.QMainWindow):
 
         if xs:
             plot.plot(xs, ys, pen=pg.mkPen(width=1.8))
+            plot.enableAutoRange(axis=pg.ViewBox.XYAxes, enable=True)
+            plot.autoRange()
 
     def closeEvent(self, event: QtGui.QCloseEvent | QtCore.QEvent) -> None:  # type: ignore[name-defined]
         self._save_local_settings()
