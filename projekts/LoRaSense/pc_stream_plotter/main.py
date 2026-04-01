@@ -262,28 +262,33 @@ class Ain2SettingsDialog(QtWidgets.QDialog):
         if settings.weg_length_mm in WEG_LENGTH_OPTIONS_MM:
             self.weg_combo.setCurrentText(f"{int(settings.weg_length_mm)} mm")
         form.addRow("Wegsensor length", self.weg_combo)
+        self.weg_label = form.labelForField(self.weg_combo)
 
         self.display_combo = QtWidgets.QComboBox()
         self.display_combo.addItems(["volts", "scaled"])
         self.display_combo.setCurrentText(settings.volt_display)
         form.addRow("10 V display", self.display_combo)
+        self.display_label = form.labelForField(self.display_combo)
 
         self.unit_combo = QtWidgets.QComboBox()
         self.unit_combo.addItems(UNIT_OPTIONS)
         self.unit_combo.setCurrentText(settings.scaling_unit)
         form.addRow("Scaled unit", self.unit_combo)
+        self.unit_label = form.labelForField(self.unit_combo)
 
         self.scale_min = QtWidgets.QDoubleSpinBox()
         self.scale_min.setDecimals(3)
         self.scale_min.setRange(-1_000_000.0, 1_000_000.0)
         self.scale_min.setValue(settings.scale_min)
         form.addRow("Scale minimum", self.scale_min)
+        self.scale_min_label = form.labelForField(self.scale_min)
 
         self.scale_max = QtWidgets.QDoubleSpinBox()
         self.scale_max.setDecimals(3)
         self.scale_max.setRange(-1_000_000.0, 1_000_000.0)
         self.scale_max.setValue(settings.scale_max)
         form.addRow("Scale maximum", self.scale_max)
+        self.scale_max_label = form.labelForField(self.scale_max)
 
         self.mode_combo.currentTextChanged.connect(self._update_visibility)
         self.display_combo.currentTextChanged.connect(self._update_visibility)
@@ -302,14 +307,20 @@ class Ain2SettingsDialog(QtWidgets.QDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
+    def _set_row_visible(self, label: QtWidgets.QWidget | None, field: QtWidgets.QWidget, visible: bool) -> None:
+        if label is not None:
+            label.setVisible(visible)
+        field.setVisible(visible)
+
     def _update_visibility(self) -> None:
         is_weg = self.mode_combo.currentText() == "weg"
         is_scaled = self.display_combo.currentText() == "scaled"
-        self.weg_combo.setEnabled(is_weg)
-        self.display_combo.setEnabled(not is_weg)
-        self.unit_combo.setEnabled((not is_weg) and is_scaled)
-        self.scale_min.setEnabled((not is_weg) and is_scaled)
-        self.scale_max.setEnabled((not is_weg) and is_scaled)
+
+        self._set_row_visible(self.weg_label, self.weg_combo, is_weg)
+        self._set_row_visible(self.display_label, self.display_combo, not is_weg)
+        self._set_row_visible(self.unit_label, self.unit_combo, (not is_weg) and is_scaled)
+        self._set_row_visible(self.scale_min_label, self.scale_min, (not is_weg) and is_scaled)
+        self._set_row_visible(self.scale_max_label, self.scale_max, (not is_weg) and is_scaled)
 
     def _validate_and_accept(self) -> None:
         if self.mode_combo.currentText() == "10v" and self.display_combo.currentText() == "scaled":
@@ -474,7 +485,7 @@ class App(QtWidgets.QMainWindow):
         left.addStretch(1)
 
         right = QtWidgets.QVBoxLayout()
-        right.setSpacing(10)
+        right.setSpacing(4)
         body.addLayout(right, 1)
 
         right.addLayout(self._build_plot_toolbar())
@@ -622,18 +633,34 @@ class App(QtWidgets.QMainWindow):
 
     def _build_plot_toolbar(self) -> QtWidgets.QGridLayout:
         select = QtWidgets.QGridLayout()
+        select.setContentsMargins(0, 0, 0, 0)
+        select.setHorizontalSpacing(8)
+        select.setVerticalSpacing(2)
+
         self.combo1 = QtWidgets.QComboBox()
         self.combo2 = QtWidgets.QComboBox()
-        self.combo1.addItems(PLOT_FIELDS)
-        self.combo2.addItems(PLOT_FIELDS)
+        for combo in (self.combo1, self.combo2):
+            combo.addItems(PLOT_FIELDS)
+            combo.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToContents)
+            combo.setMaximumWidth(190)
+
         self.combo1.setCurrentText("dms_display")
         self.combo2.setCurrentText("ain2_display")
         self.combo1.currentIndexChanged.connect(self.refresh_plots)
         self.combo2.currentIndexChanged.connect(self.refresh_plots)
-        select.addWidget(QtWidgets.QLabel("Graph 1"), 0, 0)
-        select.addWidget(self.combo1, 0, 1)
-        select.addWidget(QtWidgets.QLabel("Graph 2"), 0, 2)
-        select.addWidget(self.combo2, 0, 3)
+
+        graph1_label = QtWidgets.QLabel("Graph 1")
+        graph2_label = QtWidgets.QLabel("Graph 2")
+        graph1_label.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignBottom)
+        graph2_label.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignBottom)
+
+        select.addWidget(graph1_label, 0, 0)
+        select.addWidget(graph2_label, 0, 1)
+        select.addWidget(self.combo1, 1, 0)
+        select.addWidget(self.combo2, 1, 1)
+        select.setColumnStretch(0, 0)
+        select.setColumnStretch(1, 0)
+        select.setColumnStretch(2, 1)
         return select
 
     def _update_sensor_buttons(self) -> None:
