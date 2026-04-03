@@ -34,7 +34,7 @@ static constexpr int PIN_ADS_DRDY = 4;
 static constexpr int PIN_MOSFET   = 5;
 static constexpr int PIN_DS18B20  = 6;
 static constexpr int PIN_AP_MODE  = 46;  // jumper to GND => CONFIG / AP mode
-static constexpr const char* FW_VERSION = "1.8.0-apfield-sd-hispeed-task";
+static constexpr const char* FW_VERSION = "1.8.0";
 static constexpr const char* BOARD_NAME = "Heltec WiFi LoRa 32 V3";
 static constexpr uint8_t AIN2_MODE_POT  = 0;
 static constexpr uint8_t AIN2_MODE_VOLT = 1;
