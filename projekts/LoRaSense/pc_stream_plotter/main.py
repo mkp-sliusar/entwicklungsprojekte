@@ -7,6 +7,8 @@ import socket
 import struct
 import threading
 import time
+from datetime import datetime
+from pathlib import Path
 from collections import deque
 from dataclasses import dataclass
 from typing import Any
@@ -30,6 +32,10 @@ UNIT_OPTIONS = ["V", "mm", "um", "C", "%", "bar", "mA", "kN"]
 PLOT_FIELDS = ["dms_display", "ain2_display", "temp_c"]
 
 
+def _safe_plot_field(value: Any, fallback: str) -> str:
+    return value if value in PLOT_FIELDS else fallback
+
+
 def _short(text: Any, max_len: int = 14) -> str:
     value = "-" if text is None else str(text).strip()
     if not value:
@@ -41,9 +47,43 @@ def _short(text: Any, max_len: int = 14) -> str:
 class Sample:
     seq: int
     t_pc: float
+    t_ctrl: float
+    flags: int
+    dms_raw: int
+    dms_mV: float
     dms_mV_per_V: float
+    ain2_raw: int
+    ain2_mV: float
     ain2_value: float
     temp_c: float
+
+    @property
+    def dms_on(self) -> bool:
+        return bool(self.flags & (1 << 0))
+
+    @property
+    def dms_valid(self) -> bool:
+        return bool(self.flags & (1 << 1))
+
+    @property
+    def ain2_on(self) -> bool:
+        return bool(self.flags & (1 << 2))
+
+    @property
+    def ain2_valid(self) -> bool:
+        return bool(self.flags & (1 << 3))
+
+    @property
+    def temp_on(self) -> bool:
+        return bool(self.flags & (1 << 4))
+
+    @property
+    def temp_valid(self) -> bool:
+        return bool(self.flags & (1 << 5))
+
+    @property
+    def ain2_mode_volt(self) -> bool:
+        return bool(self.flags & (1 << 6))
 
 
 @dataclass
@@ -68,6 +108,20 @@ class Ain2Settings:
 @dataclass
 class TempSettings:
     enabled: bool = True
+
+
+@dataclass
+class CsvLoggerSettings:
+    time_format: str = "gantner_timecounter"
+    include_seq: bool = True
+    include_dms_display: bool = True
+    include_dms_mvv: bool = False
+    include_dms_mv: bool = False
+    include_dms_raw: bool = False
+    include_ain2_display: bool = True
+    include_ain2_mv: bool = False
+    include_ain2_raw: bool = False
+    include_temp_display: bool = True
 
 
 class StreamReceiver:
@@ -129,17 +183,45 @@ class StreamReceiver:
                             break
 
                     raw = bytes(buf[:PACKET_SIZE])
-                    del buf[:PACKET_SIZE]
                     unpacked = PACKET_STRUCT.unpack(raw)
-                    temp_raw = unpacked[13]
-                    temp_c = temp_raw / 100.0 if temp_raw != -32768 else float("nan")
+                    version = unpacked[1]
+                    packet_bytes = unpacked[2]
+                    if version != 1 or packet_bytes != PACKET_SIZE:
+                        del buf[0]
+                        continue
+                    del buf[:PACKET_SIZE]
+
+                    flags = int(unpacked[6])
+                    temp_raw = int(unpacked[13])
+                    temp_c = temp_raw / 100.0 if (flags & (1 << 5)) and temp_raw != -32768 else float("nan")
+                    dms_raw = int(unpacked[7])
+                    dms_mV = float(unpacked[8])
+                    dms_mV_per_V = float(unpacked[9])
+                    ain2_raw = int(unpacked[10])
+                    ain2_mV = float(unpacked[11])
+                    ain2_value = float(unpacked[12])
+                    if not (flags & (1 << 1)):
+                        dms_mV = float("nan")
+                        dms_mV_per_V = float("nan")
+                    if not (flags & (1 << 3)):
+                        ain2_mV = float("nan")
+                        ain2_value = float("nan")
+                    t_ms = int(unpacked[4])
+                    t_us = int(unpacked[5])
+                    t_ctrl = t_ms / 1000.0 + t_us / 1_000_000.0
 
                     self.samples.append(
                         Sample(
-                            seq=unpacked[3],
+                            seq=int(unpacked[3]),
                             t_pc=time.time(),
-                            dms_mV_per_V=unpacked[9],
-                            ain2_value=unpacked[12],
+                            t_ctrl=t_ctrl,
+                            flags=flags,
+                            dms_raw=dms_raw,
+                            dms_mV=dms_mV,
+                            dms_mV_per_V=dms_mV_per_V,
+                            ain2_raw=ain2_raw,
+                            ain2_mV=ain2_mV,
+                            ain2_value=ain2_value,
                             temp_c=temp_c,
                         )
                     )
@@ -160,18 +242,20 @@ class CsvLogger:
         self.writer: csv.writer | None = None
         self.path = ""
         self.rows = 0
+        self.headers: list[str] = []
 
-    def start(self, path: str) -> None:
+    def start(self, path: str, headers: list[str]) -> None:
         self.stop()
         self.file = open(path, "w", newline="", encoding="utf-8")
         self.writer = csv.writer(self.file)
-        self.writer.writerow(["pc_time_s", "seq", "dms_mV_per_V", "ain2_value", "temp_C"])
+        self.headers = list(headers)
+        self.writer.writerow(self.headers)
         self.path = path
         self.rows = 0
 
-    def write(self, sample: Sample) -> None:
+    def write_row(self, row: list[Any]) -> None:
         if self.writer:
-            self.writer.writerow([f"{sample.t_pc:.6f}", sample.seq, sample.dms_mV_per_V, sample.ain2_value, sample.temp_c])
+            self.writer.writerow(row)
             self.rows += 1
             if self.rows % 25 == 0 and self.file:
                 self.file.flush()
@@ -187,6 +271,24 @@ class CsvLogger:
         self.writer = None
         self.path = ""
         self.rows = 0
+        self.headers = []
+
+
+class DecimalLineEdit(QtWidgets.QLineEdit):
+    def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
+        super().__init__(parent)
+        rx = QtCore.QRegularExpression(r"^\d*(?:[\.,]\d*)?$")
+        self.setValidator(QtGui.QRegularExpressionValidator(rx, self))
+
+    def set_float_value(self, value: float, decimals: int = 4) -> None:
+        text = f"{value:.{decimals}f}".rstrip("0").rstrip(".")
+        self.setText(text if text else "0")
+
+    def float_value(self) -> float:
+        text = self.text().strip().replace(",", ".")
+        if not text:
+            return 0.0
+        return float(text)
 
 
 class FlexibleDoubleSpinBox(QtWidgets.QDoubleSpinBox):
@@ -259,12 +361,9 @@ class DmsSettingsDialog(QtWidgets.QDialog):
         self.freq_combo.setCurrentText(settings.frequency_hz)
         form.addRow("Frequency, Hz", self.freq_combo)
 
-        self.k_factor = FlexibleDoubleSpinBox()
-        self.k_factor.setDecimals(4)
-        self.k_factor.setRange(0.0, 100.0)
-        self.k_factor.setSingleStep(0.1)
-        self.k_factor.setSpecialValueText("not set")
-        self.k_factor.setValue(max(0.0, settings.k_factor))
+        self.k_factor = DecimalLineEdit()
+        self.k_factor.setPlaceholderText("not set")
+        self.k_factor.set_float_value(max(0.0, settings.k_factor), 4)
         form.addRow("K-factor", self.k_factor)
 
         note = QtWidgets.QLabel(
@@ -283,7 +382,7 @@ class DmsSettingsDialog(QtWidgets.QDialog):
         return DmsSettings(
             enabled=self.enable_box.isChecked(),
             frequency_hz=self.freq_combo.currentText(),
-            k_factor=float(self.k_factor.value()),
+            k_factor=float(self.k_factor.float_value()),
         )
 
 
@@ -398,6 +497,110 @@ class Ain2SettingsDialog(QtWidgets.QDialog):
         )
 
 
+class CsvLoggerSettingsDialog(QtWidgets.QDialog):
+    def __init__(self, parent: QtWidgets.QWidget, settings: CsvLoggerSettings, available: dict[str, bool]) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("CSV logger settings")
+        self.setModal(True)
+        self.resize(520, 520)
+        self.available = available
+
+        layout = QtWidgets.QVBoxLayout(self)
+
+        general_box = QtWidgets.QGroupBox("Time and general")
+        general_form = QtWidgets.QFormLayout(general_box)
+        self.time_format = QtWidgets.QComboBox()
+        self.time_format.addItem("Gantner TimeCounter", "gantner_timecounter")
+        self.time_format.addItem("ISO 8601", "iso8601")
+        self.time_format.addItem("Unix", "unix")
+        idx = self.time_format.findData(settings.time_format)
+        if idx >= 0:
+            self.time_format.setCurrentIndex(idx)
+        general_form.addRow("Time format", self.time_format)
+        self.include_seq = QtWidgets.QCheckBox("Sequence")
+        self.include_seq.setChecked(settings.include_seq)
+        general_form.addRow(self.include_seq)
+        layout.addWidget(general_box)
+
+        self.dms_box = QtWidgets.QGroupBox("DMS")
+        dms_layout = QtWidgets.QVBoxLayout(self.dms_box)
+        self.cb_dms_display = QtWidgets.QCheckBox("Displayed value")
+        self.cb_dms_display.setChecked(settings.include_dms_display)
+        self.cb_dms_mvv = QtWidgets.QCheckBox("mV/V")
+        self.cb_dms_mvv.setChecked(settings.include_dms_mvv)
+        self.cb_dms_mv = QtWidgets.QCheckBox("mV")
+        self.cb_dms_mv.setChecked(settings.include_dms_mv)
+        self.cb_dms_raw = QtWidgets.QCheckBox("Raw")
+        self.cb_dms_raw.setChecked(settings.include_dms_raw)
+        for cb in (self.cb_dms_display, self.cb_dms_mvv, self.cb_dms_mv, self.cb_dms_raw):
+            dms_layout.addWidget(cb)
+        layout.addWidget(self.dms_box)
+
+        self.ain2_box = QtWidgets.QGroupBox("Channel 2")
+        ain2_layout = QtWidgets.QVBoxLayout(self.ain2_box)
+        self.cb_ain2_display = QtWidgets.QCheckBox("Displayed value")
+        self.cb_ain2_display.setChecked(settings.include_ain2_display)
+        self.cb_ain2_mv = QtWidgets.QCheckBox("mV")
+        self.cb_ain2_mv.setChecked(settings.include_ain2_mv)
+        self.cb_ain2_raw = QtWidgets.QCheckBox("Raw")
+        self.cb_ain2_raw.setChecked(settings.include_ain2_raw)
+        for cb in (self.cb_ain2_display, self.cb_ain2_mv, self.cb_ain2_raw):
+            ain2_layout.addWidget(cb)
+        layout.addWidget(self.ain2_box)
+
+        self.temp_box = QtWidgets.QGroupBox("Temperature")
+        temp_layout = QtWidgets.QVBoxLayout(self.temp_box)
+        self.cb_temp_display = QtWidgets.QCheckBox("Temperature value")
+        self.cb_temp_display.setChecked(settings.include_temp_display)
+        temp_layout.addWidget(self.cb_temp_display)
+        layout.addWidget(self.temp_box)
+
+        note = QtWidgets.QLabel(
+            "Only valid controller signals are offered.\n"
+            "Default time format = Gantner TimeCounter."
+        )
+        note.setStyleSheet("color:#666;")
+        note.setWordWrap(True)
+        layout.addWidget(note)
+
+        buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Save | QtWidgets.QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        self._apply_availability()
+
+    def _apply_availability(self) -> None:
+        dms_on = self.available.get("dms", False)
+        ain2_on = self.available.get("ain2", False)
+        temp_on = self.available.get("temp", False)
+        self.dms_box.setVisible(dms_on)
+        self.ain2_box.setVisible(ain2_on)
+        self.temp_box.setVisible(temp_on)
+        if not dms_on:
+            for cb in (self.cb_dms_display, self.cb_dms_mvv, self.cb_dms_mv, self.cb_dms_raw):
+                cb.setChecked(False)
+        if not ain2_on:
+            for cb in (self.cb_ain2_display, self.cb_ain2_mv, self.cb_ain2_raw):
+                cb.setChecked(False)
+        if not temp_on:
+            self.cb_temp_display.setChecked(False)
+
+    def value(self) -> CsvLoggerSettings:
+        return CsvLoggerSettings(
+            time_format=str(self.time_format.currentData()),
+            include_seq=self.include_seq.isChecked(),
+            include_dms_display=self.cb_dms_display.isChecked(),
+            include_dms_mvv=self.cb_dms_mvv.isChecked(),
+            include_dms_mv=self.cb_dms_mv.isChecked(),
+            include_dms_raw=self.cb_dms_raw.isChecked(),
+            include_ain2_display=self.cb_ain2_display.isChecked(),
+            include_ain2_mv=self.cb_ain2_mv.isChecked(),
+            include_ain2_raw=self.cb_ain2_raw.isChecked(),
+            include_temp_display=self.cb_temp_display.isChecked(),
+        )
+
+
 class NetworkSettingsDialog(QtWidgets.QDialog):
     def __init__(self, parent: QtWidgets.QWidget, host: str, port: int, window_s: float) -> None:
         super().__init__(parent)
@@ -462,6 +665,9 @@ class App(QtWidgets.QMainWindow):
         self.host = self.settings_store.value("network/host", "192.168.4.1", str)
         self.port = int(self.settings_store.value("network/port", 3333))
         self.window_s = float(self.settings_store.value("network/window_s", 20.0))
+        self.plot1_field = _safe_plot_field(self.settings_store.value("ui/plot1_field", "dms_display", str), "dms_display")
+        self.plot2_field = _safe_plot_field(self.settings_store.value("ui/plot2_field", "ain2_display", str), "ain2_display")
+        self.last_csv_dir = self.settings_store.value("csv/last_dir", "", str)
 
         self.receiver = StreamReceiver()
         self.logger = CsvLogger()
@@ -471,9 +677,14 @@ class App(QtWidgets.QMainWindow):
         self.dms_settings = self._load_dms_settings()
         self.ain2_settings = self._load_ain2_settings()
         self.temp_settings = self._load_temp_settings()
+        self.csv_settings = self._load_csv_settings()
+        self.csv_specs: list[tuple[str, Any]] = []
         self.remote_state: dict[str, Any] = {}
 
         self._build_ui()
+        geometry = self.settings_store.value("ui/geometry")
+        if isinstance(geometry, QtCore.QByteArray) and not geometry.isEmpty():
+            self.restoreGeometry(geometry)
         self._update_sensor_buttons()
         self.stream_mode.setText("Offline")
         self.stream_target.setText(f"{self.host}:{self.port}")
@@ -506,6 +717,20 @@ class App(QtWidgets.QMainWindow):
             enabled=self.settings_store.value("temp/enabled", True, bool),
         )
 
+    def _load_csv_settings(self) -> CsvLoggerSettings:
+        return CsvLoggerSettings(
+            time_format=self.settings_store.value("csv/time_format", "gantner_timecounter", str),
+            include_seq=self.settings_store.value("csv/include_seq", True, bool),
+            include_dms_display=self.settings_store.value("csv/include_dms_display", True, bool),
+            include_dms_mvv=self.settings_store.value("csv/include_dms_mvv", False, bool),
+            include_dms_mv=self.settings_store.value("csv/include_dms_mv", False, bool),
+            include_dms_raw=self.settings_store.value("csv/include_dms_raw", False, bool),
+            include_ain2_display=self.settings_store.value("csv/include_ain2_display", True, bool),
+            include_ain2_mv=self.settings_store.value("csv/include_ain2_mv", False, bool),
+            include_ain2_raw=self.settings_store.value("csv/include_ain2_raw", False, bool),
+            include_temp_display=self.settings_store.value("csv/include_temp_display", True, bool),
+        )
+
     def _save_local_settings(self) -> None:
         self.settings_store.setValue("network/host", self.host)
         self.settings_store.setValue("network/port", str(self.port))
@@ -522,6 +747,20 @@ class App(QtWidgets.QMainWindow):
         self.settings_store.setValue("ain2/scale_min", self.ain2_settings.scale_min)
         self.settings_store.setValue("ain2/scale_max", self.ain2_settings.scale_max)
         self.settings_store.setValue("temp/enabled", self.temp_settings.enabled)
+        self.settings_store.setValue("csv/time_format", self.csv_settings.time_format)
+        self.settings_store.setValue("csv/include_seq", self.csv_settings.include_seq)
+        self.settings_store.setValue("csv/include_dms_display", self.csv_settings.include_dms_display)
+        self.settings_store.setValue("csv/include_dms_mvv", self.csv_settings.include_dms_mvv)
+        self.settings_store.setValue("csv/include_dms_mv", self.csv_settings.include_dms_mv)
+        self.settings_store.setValue("csv/include_dms_raw", self.csv_settings.include_dms_raw)
+        self.settings_store.setValue("csv/include_ain2_display", self.csv_settings.include_ain2_display)
+        self.settings_store.setValue("csv/include_ain2_mv", self.csv_settings.include_ain2_mv)
+        self.settings_store.setValue("csv/include_ain2_raw", self.csv_settings.include_ain2_raw)
+        self.settings_store.setValue("csv/include_temp_display", self.csv_settings.include_temp_display)
+        self.settings_store.setValue("csv/last_dir", self.last_csv_dir)
+        self.settings_store.setValue("ui/plot1_field", getattr(self, "plot1_field", "dms_display"))
+        self.settings_store.setValue("ui/plot2_field", getattr(self, "plot2_field", "ain2_display"))
+        self.settings_store.setValue("ui/geometry", self.saveGeometry())
         self.settings_store.sync()
 
     def _build_ui(self) -> None:
@@ -573,6 +812,8 @@ class App(QtWidgets.QMainWindow):
         self.btn_network.setFixedWidth(42)
         self.btn_csv_start = QtWidgets.QPushButton("Start CSV")
         self.btn_csv_stop = QtWidgets.QPushButton("Stop CSV")
+        self.btn_csv_settings = QtWidgets.QPushButton("⚙")
+        self.btn_csv_settings.setFixedWidth(42)
 
         button_height = 30
         button_width = 110
@@ -584,6 +825,7 @@ class App(QtWidgets.QMainWindow):
         self.btn_network.clicked.connect(self.open_network_settings)
         self.btn_csv_start.clicked.connect(self.start_csv)
         self.btn_csv_stop.clicked.connect(self.stop_csv)
+        self.btn_csv_settings.clicked.connect(self.open_csv_settings)
 
         row = QtWidgets.QHBoxLayout()
         row.setSpacing(8)
@@ -592,6 +834,7 @@ class App(QtWidgets.QMainWindow):
         row.addWidget(self.btn_network)
         row.addWidget(self.btn_csv_start)
         row.addWidget(self.btn_csv_stop)
+        row.addWidget(self.btn_csv_settings)
         row.addStretch(1)
 
         top.addLayout(row, 0, 0, 1, 4)
@@ -704,8 +947,10 @@ class App(QtWidgets.QMainWindow):
 
         combo = QtWidgets.QComboBox()
         combo.addItems(PLOT_FIELDS)
-        combo.setCurrentText(default_field)
+        stored_field = self.plot1_field if index == 1 else self.plot2_field
+        combo.setCurrentText(_safe_plot_field(stored_field, default_field))
         combo.setMaximumWidth(190)
+        combo.currentTextChanged.connect(self._on_plot_selection_changed)
         combo.currentIndexChanged.connect(self.refresh_plots)
         header.addWidget(combo)
 
@@ -724,6 +969,11 @@ class App(QtWidgets.QMainWindow):
             self.combo2 = combo
             self.plot2 = plot
         return panel
+
+    def _on_plot_selection_changed(self) -> None:
+        self.plot1_field = self.combo1.currentText() if hasattr(self, "combo1") else "dms_display"
+        self.plot2_field = self.combo2.currentText() if hasattr(self, "combo2") else "ain2_display"
+        self._save_local_settings()
 
     def _update_sensor_buttons(self) -> None:
         self.dms_meta.setText(
@@ -768,6 +1018,12 @@ class App(QtWidgets.QMainWindow):
             self.refresh_plots()
             self.push_config_to_device(show_success=True)
 
+    def open_csv_settings(self) -> None:
+        dlg = CsvLoggerSettingsDialog(self, self.csv_settings, self._csv_available_sources())
+        if dlg.exec() == QtWidgets.QDialog.Accepted:
+            self.csv_settings = self._coerce_csv_settings(dlg.value())
+            self._save_local_settings()
+
     def open_network_settings(self) -> None:
         dlg = NetworkSettingsDialog(self, self.host, self.port, self.window_s)
         if dlg.exec() == QtWidgets.QDialog.Accepted:
@@ -779,30 +1035,172 @@ class App(QtWidgets.QMainWindow):
             self._save_local_settings()
             self.refresh_plots()
 
+    def _csv_available_sources(self) -> dict[str, bool]:
+        return {
+            "dms": bool(self.dms_settings.enabled),
+            "ain2": bool(self.ain2_settings.enabled),
+            "temp": bool(self.temp_settings.enabled),
+        }
+
+    def _coerce_csv_settings(self, settings: CsvLoggerSettings) -> CsvLoggerSettings:
+        available = self._csv_available_sources()
+        if not available["dms"]:
+            settings.include_dms_display = False
+            settings.include_dms_mvv = False
+            settings.include_dms_mv = False
+            settings.include_dms_raw = False
+        if not available["ain2"]:
+            settings.include_ain2_display = False
+            settings.include_ain2_mv = False
+            settings.include_ain2_raw = False
+        if not available["temp"]:
+            settings.include_temp_display = False
+        return settings
+
+    @staticmethod
+    def _header_from_unit(prefix: str, unit: str) -> str:
+        safe = unit.replace("/", "_per_").replace(" ", "_").replace("%", "pct")
+        return f"{prefix}_{safe}"
+
+    @staticmethod
+    def _format_time_for_csv(ts: float, fmt: str) -> str | float:
+        if fmt == "unix":
+            return round(ts, 6)
+        dt_local = datetime.fromtimestamp(ts)
+        if fmt == "iso8601":
+            return dt_local.isoformat(timespec="milliseconds")
+        base = datetime(1899, 12, 30)
+        delta = dt_local - base
+        return round(delta.total_seconds() / 86400.0, 12)
+
+    def _make_csv_specs(self) -> list[tuple[str, Any]]:
+        settings = self._coerce_csv_settings(CsvLoggerSettings(**self.csv_settings.__dict__))
+        specs: list[tuple[str, Any]] = []
+        time_format = settings.time_format
+        time_header = {
+            "gantner_timecounter": "time_gantner_timecounter",
+            "iso8601": "time_iso8601",
+            "unix": "time_unix",
+        }.get(time_format, "time_gantner_timecounter")
+        specs.append((time_header, lambda s, tf=time_format: self._format_time_for_csv(s.t_ctrl if s.t_ctrl > 0 else s.t_pc, tf)))
+        if settings.include_seq:
+            specs.append(("seq", lambda s: s.seq))
+
+        if self.dms_settings.enabled:
+            if settings.include_dms_display:
+                unit = "um_per_m" if self.dms_settings.k_factor > 0 else "mV_per_V"
+                specs.append((self._header_from_unit("dms_display", unit), lambda s: self.compute_dms_display(s)[0]))
+            if settings.include_dms_mvv:
+                specs.append(("dms_mV_per_V", lambda s: s.dms_mV_per_V))
+            if settings.include_dms_mv:
+                specs.append(("dms_mV", lambda s: s.dms_mV))
+            if settings.include_dms_raw:
+                specs.append(("dms_raw", lambda s: s.dms_raw))
+
+        if self.ain2_settings.enabled:
+            if settings.include_ain2_display:
+                display_unit = "mm"
+                if self.ain2_settings.mode != "weg":
+                    display_unit = self.ain2_settings.scaling_unit if self.ain2_settings.volt_display == "scaled" else "V"
+                specs.append((self._header_from_unit("ain2_display", display_unit), lambda s: self.compute_ain2_display(s)[0]))
+            if settings.include_ain2_mv:
+                specs.append(("ain2_mV", lambda s: s.ain2_mV))
+            if settings.include_ain2_raw:
+                specs.append(("ain2_raw", lambda s: s.ain2_raw))
+
+        if self.temp_settings.enabled and settings.include_temp_display:
+            specs.append(("temp_C", lambda s: s.temp_c))
+        return specs
+
+    def _build_csv_row(self, sample: Sample) -> list[Any]:
+        return [getter(sample) for _, getter in self.csv_specs]
+
+    def _wait_for_receiver_status(self, expected: str, timeout_s: float = 3.0) -> bool:
+        deadline = time.time() + timeout_s
+        while time.time() < deadline:
+            QtWidgets.QApplication.processEvents()
+            if self.receiver.status == expected:
+                return True
+            if self.receiver.status.startswith("error") or self.receiver.status in {"server_closed", "disconnected"}:
+                return False
+            time.sleep(0.05)
+        return self.receiver.status == expected
+
+    def _set_controller_stream_mode(self, enabled: bool) -> None:
+        response = requests.post(
+            f"http://{self.host}/api/stream",
+            json={"enabled": int(enabled)},
+            timeout=HTTP_TIMEOUT_S,
+        )
+        response.raise_for_status()
+
     def connect_stream(self) -> None:
         self._save_local_settings()
-        self.receiver.connect(self.host, self.port)
-        self.stream_mode.setText("TCP stream")
+        self.stream_mode.setText("Connecting socket...")
         self.stream_target.setText(f"{self.host}:{self.port}")
+        self.receiver.connect(self.host, self.port)
+        if not self._wait_for_receiver_status("connected", timeout_s=3.0):
+            self.receiver.stop()
+            self.stream_mode.setText("Offline")
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Connect failed",
+                f"Socket connection failed.\n\nStatus: {self.receiver.status}",
+            )
+            return
+
+        try:
+            self.stream_mode.setText("Enabling PC stream...")
+            self._set_controller_stream_mode(True)
+            self.read_config()
+            self.stream_mode.setText("PC stream")
+            self.stream_target.setText(f"{self.host}:{self.port}")
+        except Exception as exc:
+            self.receiver.stop()
+            self.stream_mode.setText("Offline")
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Stream enable failed",
+                f"Socket connected, but enabling PC stream on controller failed.\n\n{exc}",
+            )
 
     def disconnect_stream(self) -> None:
+        warning_text: str | None = None
+        if self.receiver.status == "connected":
+            try:
+                self.stream_mode.setText("Disabling PC stream...")
+                self._set_controller_stream_mode(False)
+            except Exception as exc:
+                warning_text = f"Controller PC stream disable failed before socket close.\n\n{exc}"
         self.receiver.stop()
         self.stream_mode.setText("Offline")
+        if warning_text:
+            QtWidgets.QMessageBox.warning(self, "Disconnect warning", warning_text)
 
     def start_csv(self) -> None:
+        self.csv_settings = self._coerce_csv_settings(self.csv_settings)
+        self.csv_specs = self._make_csv_specs()
+        if not self.csv_specs:
+            QtWidgets.QMessageBox.warning(self, "CSV logger", "No valid CSV fields are selected.")
+            return
+        default_name = f"lorasense_stream_{time.strftime('%Y%m%d_%H%M%S')}.csv"
+        suggested_path = default_name if not self.last_csv_dir else str(Path(self.last_csv_dir) / default_name)
         path, _ = QtWidgets.QFileDialog.getSaveFileName(
             self,
             "Save CSV",
-            f"lorasense_stream_{time.strftime('%Y%m%d_%H%M%S')}.csv",
+            suggested_path,
             "CSV files (*.csv)",
         )
         if path:
-            self.logger.start(path)
+            self.last_csv_dir = str(Path(path).expanduser().resolve().parent)
+            self.logger.start(path, [header for header, _ in self.csv_specs])
             self.csv_label.setText(path)
             self.last_logged_seq = None
+            self._save_local_settings()
 
     def stop_csv(self) -> None:
         self.logger.stop()
+        self.csv_specs = []
         self.csv_label.setText("-")
         self.last_logged_seq = None
 
@@ -839,6 +1237,7 @@ class App(QtWidgets.QMainWindow):
         self.ain2_settings.scale_min = float(cfg.get("ain2_scale_min", self.ain2_settings.scale_min))
         self.ain2_settings.scale_max = float(cfg.get("ain2_scale_max", self.ain2_settings.scale_max))
         self.temp_settings.enabled = bool(cfg.get("temp_enabled", self.temp_settings.enabled))
+        self.csv_settings = self._coerce_csv_settings(self.csv_settings)
 
     def push_config_to_device(self, *, show_success: bool = False) -> None:
         payload: dict[str, Any] = {
@@ -919,7 +1318,7 @@ class App(QtWidgets.QMainWindow):
 
             if self.logger.file:
                 for sample in self._new_samples_since(samples, self.last_logged_seq):
-                    self.logger.write(sample)
+                    self.logger.write_row(self._build_csv_row(sample))
                     self.last_logged_seq = sample.seq
         else:
             self.seq_label.setText("-")
@@ -949,17 +1348,22 @@ class App(QtWidgets.QMainWindow):
         ain2_value, ain2_unit = self.compute_ain2_display(sample)
         self.dms_value.setText(self._fmt_value(dms_value, dms_unit))
         self.ain2_value.setText(self._fmt_value(ain2_value, ain2_unit))
-        if self.temp_settings.enabled:
+        if self.temp_settings.enabled and sample.temp_on:
             self.temp_value.setText(self._fmt_value(sample.temp_c, "C"))
         else:
             self.temp_value.setText("off")
 
     def compute_dms_display(self, sample: Sample) -> tuple[float, str]:
+        if not sample.dms_on or not sample.dms_valid or math.isnan(sample.dms_mV_per_V):
+            return float("nan"), ("um/m" if self.dms_settings.k_factor > 0 else "mV/V")
         if self.dms_settings.k_factor > 0:
             return (sample.dms_mV_per_V / self.dms_settings.k_factor) * 1000.0, "um/m"
         return sample.dms_mV_per_V, "mV/V"
 
     def compute_ain2_display(self, sample: Sample) -> tuple[float, str]:
+        unit = "mm" if self.ain2_settings.mode == "weg" else (self.ain2_settings.scaling_unit if self.ain2_settings.volt_display == "scaled" else "V")
+        if not sample.ain2_on or not sample.ain2_valid or math.isnan(sample.ain2_value):
+            return float("nan"), unit
         if self.ain2_settings.mode == "weg":
             return sample.ain2_value, "mm"
         if self.ain2_settings.volt_display == "scaled":
@@ -970,7 +1374,7 @@ class App(QtWidgets.QMainWindow):
 
     def _fmt_value(self, value: float, unit: str) -> str:
         if isinstance(value, float) and math.isnan(value):
-            return f"nan {unit}"
+            return f"-- {unit}"
         if unit in {"mV/V", "V", "mm", "%", "bar", "kN", "C"}:
             return f"{value:.4f} {unit}"
         return f"{value:.2f} {unit}"
@@ -1007,11 +1411,12 @@ class App(QtWidgets.QMainWindow):
         plot.setLabel("bottom", "Time relative to latest sample, s")
         plot.setLabel("left", label_unit)
 
-        t0 = samples[-1].t_pc
+        time_key = (lambda s: s.t_ctrl) if len(samples) >= 2 and samples[-1].t_ctrl > samples[0].t_ctrl else (lambda s: s.t_pc)
+        t0 = time_key(samples[-1])
         xs: list[float] = []
         ys: list[float] = []
         for sample in samples:
-            x = sample.t_pc - t0
+            x = time_key(sample) - t0
             if x < -window_s:
                 continue
             y, _ = self._field_value(sample, field)
