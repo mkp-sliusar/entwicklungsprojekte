@@ -65,6 +65,11 @@ class Ain2Settings:
     scale_max: float = 10.0
 
 
+@dataclass
+class TempSettings:
+    enabled: bool = True
+
+
 class StreamReceiver:
     def __init__(self) -> None:
         self.samples: deque[Sample] = deque(maxlen=30000)
@@ -184,6 +189,56 @@ class CsvLogger:
         self.rows = 0
 
 
+class FlexibleDoubleSpinBox(QtWidgets.QDoubleSpinBox):
+    def validate(self, text: str, pos: int) -> tuple[QtGui.QValidator.State, str, int]:
+        normalized = text.replace(",", ".")
+        return super().validate(normalized, pos)
+
+    def valueFromText(self, text: str) -> float:
+        normalized = text.strip().replace(",", ".")
+        if not normalized:
+            return 0.0
+        try:
+            return float(normalized)
+        except ValueError:
+            return super().valueFromText(normalized)
+
+    def textFromValue(self, value: float) -> str:
+        return f"{value:.{self.decimals()}f}".rstrip("0").rstrip(".") if self.decimals() > 0 else str(int(value))
+
+    def fixup(self, text: str) -> str:
+        return text.replace(",", ".")
+
+
+class TempSettingsDialog(QtWidgets.QDialog):
+    def __init__(self, parent: QtWidgets.QWidget, settings: TempSettings) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Temperature settings")
+        self.setModal(True)
+        self.resize(360, 150)
+
+        layout = QtWidgets.QVBoxLayout(self)
+        form = QtWidgets.QFormLayout()
+        layout.addLayout(form)
+
+        self.enable_box = QtWidgets.QCheckBox("Enable temperature sensor")
+        self.enable_box.setChecked(settings.enabled)
+        form.addRow(self.enable_box)
+
+        note = QtWidgets.QLabel("Enable or disable the temperature stream from the controller.")
+        note.setStyleSheet("color:#666;")
+        note.setWordWrap(True)
+        layout.addWidget(note)
+
+        buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Save | QtWidgets.QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def value(self) -> TempSettings:
+        return TempSettings(enabled=self.enable_box.isChecked())
+
+
 class DmsSettingsDialog(QtWidgets.QDialog):
     def __init__(self, parent: QtWidgets.QWidget, settings: DmsSettings) -> None:
         super().__init__(parent)
@@ -204,7 +259,7 @@ class DmsSettingsDialog(QtWidgets.QDialog):
         self.freq_combo.setCurrentText(settings.frequency_hz)
         form.addRow("Frequency, Hz", self.freq_combo)
 
-        self.k_factor = QtWidgets.QDoubleSpinBox()
+        self.k_factor = FlexibleDoubleSpinBox()
         self.k_factor.setDecimals(4)
         self.k_factor.setRange(0.0, 100.0)
         self.k_factor.setSingleStep(0.1)
@@ -415,6 +470,7 @@ class App(QtWidgets.QMainWindow):
         self.rate_times: deque[float] = deque(maxlen=5000)
         self.dms_settings = self._load_dms_settings()
         self.ain2_settings = self._load_ain2_settings()
+        self.temp_settings = self._load_temp_settings()
         self.remote_state: dict[str, Any] = {}
 
         self._build_ui()
@@ -445,6 +501,11 @@ class App(QtWidgets.QMainWindow):
             scale_max=float(self.settings_store.value("ain2/scale_max", 10.0)),
         )
 
+    def _load_temp_settings(self) -> TempSettings:
+        return TempSettings(
+            enabled=self.settings_store.value("temp/enabled", True, bool),
+        )
+
     def _save_local_settings(self) -> None:
         self.settings_store.setValue("network/host", self.host)
         self.settings_store.setValue("network/port", str(self.port))
@@ -460,6 +521,7 @@ class App(QtWidgets.QMainWindow):
         self.settings_store.setValue("ain2/scaling_unit", self.ain2_settings.scaling_unit)
         self.settings_store.setValue("ain2/scale_min", self.ain2_settings.scale_min)
         self.settings_store.setValue("ain2/scale_max", self.ain2_settings.scale_max)
+        self.settings_store.setValue("temp/enabled", self.temp_settings.enabled)
         self.settings_store.sync()
 
     def _build_ui(self) -> None:
@@ -591,7 +653,7 @@ class App(QtWidgets.QMainWindow):
 
         outer.addWidget(self._sensor_row("DMS", self.dms_value, self.dms_meta, self.open_dms_settings, include_button=True))
         outer.addWidget(self._sensor_row("Channel 2", self.ain2_value, self.ain2_meta, self.open_ain2_settings, include_button=True))
-        outer.addWidget(self._sensor_row("Temperature", self.temp_value, self.temp_meta, None, include_button=False))
+        outer.addWidget(self._sensor_row("Temperature", self.temp_value, self.temp_meta, self.open_temp_settings, include_button=True))
         return box
 
     def _sensor_row(
@@ -670,6 +732,7 @@ class App(QtWidgets.QMainWindow):
         )
         ain2_tail = self._ain2_display_unit()
         self.ain2_meta.setText(f"{self.ain2_settings.frequency_hz} Hz | {self.ain2_settings.mode} | {ain2_tail}")
+        self.temp_meta.setText("enabled" if self.temp_settings.enabled else "off")
 
     def _ain2_display_unit(self) -> str:
         if self.ain2_settings.mode == "weg":
@@ -691,6 +754,15 @@ class App(QtWidgets.QMainWindow):
         dlg = Ain2SettingsDialog(self, self.ain2_settings)
         if dlg.exec() == QtWidgets.QDialog.Accepted:
             self.ain2_settings = dlg.value()
+            self._save_local_settings()
+            self._update_sensor_buttons()
+            self.refresh_plots()
+            self.push_config_to_device(show_success=True)
+
+    def open_temp_settings(self) -> None:
+        dlg = TempSettingsDialog(self, self.temp_settings)
+        if dlg.exec() == QtWidgets.QDialog.Accepted:
+            self.temp_settings = dlg.value()
             self._save_local_settings()
             self._update_sensor_buttons()
             self.refresh_plots()
@@ -766,6 +838,7 @@ class App(QtWidgets.QMainWindow):
         self.ain2_settings.scaling_unit = str(cfg.get("ain2_scaling_unit", self.ain2_settings.scaling_unit))
         self.ain2_settings.scale_min = float(cfg.get("ain2_scale_min", self.ain2_settings.scale_min))
         self.ain2_settings.scale_max = float(cfg.get("ain2_scale_max", self.ain2_settings.scale_max))
+        self.temp_settings.enabled = bool(cfg.get("temp_enabled", self.temp_settings.enabled))
 
     def push_config_to_device(self, *, show_success: bool = False) -> None:
         payload: dict[str, Any] = {
@@ -780,7 +853,7 @@ class App(QtWidgets.QMainWindow):
             "ain2_scaling_unit": self.ain2_settings.scaling_unit,
             "ain2_scale_min": float(self.ain2_settings.scale_min),
             "ain2_scale_max": float(self.ain2_settings.scale_max),
-            "temp_enabled": 1,
+            "temp_enabled": int(self.temp_settings.enabled),
         }
         try:
             response = requests.post(f"http://{self.host}/api/config", json=payload, timeout=HTTP_TIMEOUT_S)
@@ -876,11 +949,14 @@ class App(QtWidgets.QMainWindow):
         ain2_value, ain2_unit = self.compute_ain2_display(sample)
         self.dms_value.setText(self._fmt_value(dms_value, dms_unit))
         self.ain2_value.setText(self._fmt_value(ain2_value, ain2_unit))
-        self.temp_value.setText(self._fmt_value(sample.temp_c, "C"))
+        if self.temp_settings.enabled:
+            self.temp_value.setText(self._fmt_value(sample.temp_c, "C"))
+        else:
+            self.temp_value.setText("off")
 
     def compute_dms_display(self, sample: Sample) -> tuple[float, str]:
         if self.dms_settings.k_factor > 0:
-            return (sample.dms_mV_per_V / self.dms_settings.k_factor) * 1_000_000.0, "um/m"
+            return (sample.dms_mV_per_V / self.dms_settings.k_factor) * 1000.0, "um/m"
         return sample.dms_mV_per_V, "mV/V"
 
     def compute_ain2_display(self, sample: Sample) -> tuple[float, str]:
@@ -904,6 +980,8 @@ class App(QtWidgets.QMainWindow):
             return self.compute_dms_display(sample)
         if field == "ain2_display":
             return self.compute_ain2_display(sample)
+        if not self.temp_settings.enabled:
+            return float("nan"), "C"
         return sample.temp_c, "C"
 
     def refresh_plots(self) -> None:
