@@ -34,7 +34,7 @@ static constexpr int PIN_ADS_DRDY = 4;
 static constexpr int PIN_MOSFET   = 5;
 static constexpr int PIN_DS18B20  = 6;
 static constexpr int PIN_AP_MODE  = 46;  // jumper to GND => CONFIG / AP mode
-static constexpr const char* FW_VERSION = "1.8.0-apfield-sd-hispeed-task";
+static constexpr const char* FW_VERSION = "1.8.0";
 static constexpr const char* BOARD_NAME = "Heltec WiFi LoRa 32 V3";
 static constexpr uint8_t AIN2_MODE_POT  = 0;
 static constexpr uint8_t AIN2_MODE_VOLT = 1;
@@ -117,7 +117,7 @@ static Cfg cfg = {
   true,
   5,
   true,
-  200.0f,
+  40.0f,
   true,
   1.0f,
   AIN2_MODE_POT,
@@ -204,7 +204,7 @@ static uint32_t g_lastLoggedSampleSeq = 0;
 static volatile bool g_sdBusy = false;
 static uint32_t g_lastLogWriteMs = 0;
 static uint32_t g_logPeriodMs = 0;   // 0 = log every captured sample (use real sample timestamps)
-static uint32_t g_logFlushPeriodMs = 5000; // flush раз на 5 секунд
+static uint32_t g_logFlushPeriodMs = 10000; // optimized: rarer flush to reduce logging stalls
 struct LogSample {
   uint32_t t_ms;
   uint32_t t_us;
@@ -614,9 +614,9 @@ static float udbfValueFor(const LogSample& s, UdbfSignalKind kind) {
   }
   return 0.0f;
 }
-static constexpr uint16_t LOG_BUF_SIZE = 1024;
-static constexpr uint16_t LOG_BATCH_SIZE = 64;
-static constexpr uint32_t LOG_FORCE_FLUSH_MS = 250;
+static constexpr uint16_t LOG_BUF_SIZE = 512;
+static constexpr uint16_t LOG_BATCH_SIZE = 64; // best result in tests with buffered logging
+static constexpr uint32_t LOG_FORCE_FLUSH_MS = 250; // keep short drain latency without write_every_sample flush cost
 static LogSample g_logBuf[LOG_BUF_SIZE];
 static uint16_t g_logBufHead = 0;
 static uint16_t g_logBufTail = 0;
@@ -625,8 +625,8 @@ static uint16_t g_logBufMax = 0;
 static uint32_t g_logDropped = 0;
 static uint32_t g_logLastDrainMs = 0;
 
-static constexpr uint16_t STREAM_BUF_SIZE = 1024;
-static constexpr uint16_t STREAM_BATCH_SIZE = 16;
+static constexpr uint16_t STREAM_BUF_SIZE = 512;
+static constexpr uint16_t STREAM_BATCH_SIZE = 64;
 static StreamPacketV1 g_streamBuf[STREAM_BUF_SIZE];
 static uint16_t g_streamBufHead = 0;
 static uint16_t g_streamBufTail = 0;
