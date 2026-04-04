@@ -32,6 +32,73 @@ WEG_LENGTH_OPTIONS_MM = [5, 10, 25, 50, 75, 100, 150, 200, 300, 500]
 UNIT_OPTIONS = ["V", "mm", "um", "C", "%", "bar", "mA", "kN"]
 PLOT_FIELDS = ["dms_display", "ain2_display", "temp_c"]
 
+LIGHT_THEME_STYLESHEET = """
+QMainWindow, QWidget {
+    background-color: #eef0f1;
+    color: #111111;
+}
+QGroupBox {
+    border: 1px solid #d0d3d6;
+    border-radius: 10px;
+    margin-top: 8px;
+    padding-top: 8px;
+    background-color: #eef0f1;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 10px;
+    padding: 0 4px;
+    color: #1c1c1c;
+}
+QQFrame[property="card"] {
+    background-color: #d6dbe0;
+    border: 1px solid #c2c6ca;
+    border-radius: 10px;
+    padding: 6px;
+}
+QPushButton, QComboBox, QLineEdit, QDoubleSpinBox, QSpinBox {
+    background-color: #f7f8f9;
+    color: #111111;
+    border: 1px solid #cfd3d7;
+    border-radius: 10px;
+    padding: 4px 8px;
+}
+QPushButton:hover, QComboBox:hover, QLineEdit:hover, QDoubleSpinBox:hover, QSpinBox:hover {
+    background-color: #eceef0;
+}
+QPushButton:pressed {
+    background-color: #dde1e4;
+}
+QLabel {
+    color: #1a1a1a;
+}
+QSplitter::handle {
+    background-color: #d0d3d6;
+}
+"""
+
+
+def _make_light_palette(style: QtWidgets.QStyle) -> QtGui.QPalette:
+    palette = style.standardPalette()
+    palette.setColor(QtGui.QPalette.Window, QtGui.QColor('#f6f7f8'))
+    palette.setColor(QtGui.QPalette.WindowText, QtGui.QColor('#111111'))
+    palette.setColor(QtGui.QPalette.Base, QtGui.QColor('#ffffff'))
+    palette.setColor(QtGui.QPalette.AlternateBase, QtGui.QColor('#eef0f1'))
+    palette.setColor(QtGui.QPalette.ToolTipBase, QtGui.QColor('#ffffff'))
+    palette.setColor(QtGui.QPalette.ToolTipText, QtGui.QColor('#111111'))
+    palette.setColor(QtGui.QPalette.Text, QtGui.QColor('#111111'))
+    palette.setColor(QtGui.QPalette.Button, QtGui.QColor('#f3f4f6'))
+    palette.setColor(QtGui.QPalette.ButtonText, QtGui.QColor('#111111'))
+    palette.setColor(QtGui.QPalette.BrightText, QtGui.QColor('#ffffff'))
+    palette.setColor(QtGui.QPalette.Link, QtGui.QColor('#1f4d7a'))
+    palette.setColor(QtGui.QPalette.Highlight, QtGui.QColor('#cfd8e3'))
+    palette.setColor(QtGui.QPalette.HighlightedText, QtGui.QColor('#111111'))
+    palette.setColor(QtGui.QPalette.Mid, QtGui.QColor('#666666'))
+    palette.setColor(QtGui.QPalette.Midlight, QtGui.QColor('#d8dadc'))
+    palette.setColor(QtGui.QPalette.Dark, QtGui.QColor('#c2c5c8'))
+    palette.setColor(QtGui.QPalette.Shadow, QtGui.QColor('#999999'))
+    return palette
+
 
 def _safe_plot_field(value: Any, fallback: str) -> str:
     return value if value in PLOT_FIELDS else fallback
@@ -321,8 +388,6 @@ class FlexibleDoubleSpinBox(QtWidgets.QDoubleSpinBox):
         return text.replace(",", ".")
 
 
-
-
 class MarqueeLabel(QtWidgets.QWidget):
     def __init__(self, text: str = "-", parent: QtWidgets.QWidget | None = None) -> None:
         super().__init__(parent)
@@ -394,6 +459,7 @@ class MarqueeLabel(QtWidgets.QWidget):
         while start_x < rect.right() + self._text_width:
             painter.drawText(start_x, baseline, self._text)
             start_x += self._text_width
+
 
 class TempSettingsDialog(QtWidgets.QDialog):
     def __init__(self, parent: QtWidgets.QWidget, settings: TempSettings) -> None:
@@ -896,6 +962,12 @@ class App(QtWidgets.QMainWindow):
         self.resize(1400, 900)
 
         self.settings_store = QtCore.QSettings("OpenAI", "LoRaSensePcControl")
+        app_instance = QtWidgets.QApplication.instance()
+        self._default_palette = QtGui.QPalette(app_instance.palette()) if app_instance is not None else QtGui.QPalette()
+        self._default_style_sheet = app_instance.styleSheet() if app_instance is not None else ""
+        self.theme_name = self.settings_store.value("ui/theme", "dark", str)
+        if self.theme_name not in {"dark", "light"}:
+            self.theme_name = "dark"
         self.host = self.settings_store.value("network/host", "192.168.4.1", str)
         self.port = int(self.settings_store.value("network/port", 3333))
         self.window_s = float(self.settings_store.value("network/window_s", 20.0))
@@ -930,6 +1002,8 @@ class App(QtWidgets.QMainWindow):
         self._update_sensor_buttons()
         self.stream_mode.setText("Offline")
         self.stream_target.setText(f"{self.host}:{self.port}")
+
+        self.apply_theme()
 
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self.update_ui)
@@ -1018,6 +1092,7 @@ class App(QtWidgets.QMainWindow):
         self.settings_store.setValue("csv/last_dir", self.last_csv_dir)
         self.settings_store.setValue("ui/plot1_field", getattr(self, "plot1_field", "dms_display"))
         self.settings_store.setValue("ui/plot2_field", getattr(self, "plot2_field", "ain2_display"))
+        self.settings_store.setValue("ui/theme", getattr(self, "theme_name", "dark"))
         self.settings_store.setValue("ui/geometry", self.saveGeometry())
         self.settings_store.sync()
 
@@ -1070,6 +1145,9 @@ class App(QtWidgets.QMainWindow):
         self.btn_csv_stop = QtWidgets.QPushButton("Stop CSV")
         self.btn_csv_settings = QtWidgets.QPushButton("⚙")
         self.btn_csv_settings.setFixedWidth(42)
+        self.btn_theme = QtWidgets.QPushButton("☀")
+        self.btn_theme.setFixedWidth(42)
+        self.btn_theme.clicked.connect(self.toggle_theme)
 
         button_height = 30
         button_width = 110
@@ -1090,6 +1168,7 @@ class App(QtWidgets.QMainWindow):
         row.addWidget(self.btn_csv_stop)
         row.addWidget(self.btn_csv_settings)
         row.addStretch(1)
+        row.addWidget(self.btn_theme)
 
         top.addLayout(row, 0, 0, 1, 4)
         return top
@@ -1155,7 +1234,7 @@ class App(QtWidgets.QMainWindow):
 
         for value_label in (self.stream_mode, self.stream_target, self.ctrl_firmware):
             value_label.setStyleSheet("color:palette(text); font-family:'Courier New', monospace;")
-            
+
         layout.addRow("Connection", self.stream_mode)
         layout.addRow("Target", self.stream_target)
         layout.addRow("Firmware", self.ctrl_firmware)
@@ -1262,6 +1341,69 @@ class App(QtWidgets.QMainWindow):
         self.plot1_field = self.combo1.currentText() if hasattr(self, "combo1") else "dms_display"
         self.plot2_field = self.combo2.currentText() if hasattr(self, "combo2") else "ain2_display"
         self._save_local_settings()
+
+    def toggle_theme(self) -> None:
+        self.theme_name = "light" if self.theme_name == "dark" else "dark"
+        self.apply_theme()
+        self._save_local_settings()
+
+    def apply_theme(self) -> None:
+        app = QtWidgets.QApplication.instance()
+        if app is None:
+            return
+
+        if self.theme_name == "light":
+            app.setPalette(_make_light_palette(app.style()))
+            app.setStyleSheet(LIGHT_THEME_STYLESHEET)
+        else:
+            app.setPalette(QtGui.QPalette(self._default_palette))
+            app.setStyleSheet(self._default_style_sheet)
+
+        self.btn_theme.setText("☀" if self.theme_name == "dark" else "🌙")
+        self._apply_plot_theme()
+        self._apply_status_style(self.receiver.status)
+        self.csv_label.setStyleSheet(
+            "MarqueeLabel {"
+            "border:1px solid #333; border-radius:10px; "
+            "background:transparent; "
+            "color:palette(text);"
+            "}"
+        )
+
+    def _apply_status_style(self, status: str) -> None:
+        status_text = {
+            "connected": "Connected",
+            "connecting": "Connecting",
+            "disconnected": "Offline",
+            "server_closed": "Closed",
+        }.get(status, "Error" if status.startswith("error") else status)
+        self.status_label.setText(status_text)
+        color = STREAM_STATUS_COLORS.get(status, "#7b1f1f" if status.startswith("error") else "#455a64")
+        self.status_label.setStyleSheet(
+            f"padding:4px 10px; border-radius:10px; background:{color}; color:white;"
+        )
+
+    def _apply_plot_theme(self) -> None:
+        light = self.theme_name == "light"
+        background = "#ffffff" if light else "#111111"
+        axis = "#111111" if light else "#9fb3c8"
+        grid = (17, 17, 17, 55) if light else (255, 255, 255, 35)
+        title_color = axis
+
+        for plot in (getattr(self, "plot1", None), getattr(self, "plot2", None)):
+            if plot is None:
+                continue
+            plot.setBackground(background)
+            plot.showGrid(x=True, y=True, alpha=0.25)
+            plot.getAxis("left").setTextPen(axis)
+            plot.getAxis("bottom").setTextPen(axis)
+            plot.getAxis("left").setPen(axis)
+            plot.getAxis("bottom").setPen(axis)
+            plot.getPlotItem().titleLabel.item.setDefaultTextColor(pg.mkColor(title_color))
+            for axis_name in ("left", "bottom"):
+                axis_item = plot.getAxis(axis_name)
+                axis_item.setGrid(55 if light else 35)
+            plot.getPlotItem().getViewBox().setBorder(pg.mkPen(None))
 
     def _extract_selftest_value(self) -> str:
         state = self.remote_state if isinstance(self.remote_state, dict) else {}
@@ -1778,15 +1920,7 @@ class App(QtWidgets.QMainWindow):
     def update_ui(self) -> None:
         state = self.fetch_state()
         status = self.receiver.status
-        status_text = {
-            "connected": "Connected",
-            "connecting": "Connecting",
-            "disconnected": "Offline",
-            "server_closed": "Closed",
-        }.get(status, "Error" if status.startswith("error") else status)
-        self.status_label.setText(status_text)
-        color = STREAM_STATUS_COLORS.get(status, "#7b1f1f" if status.startswith("error") else "#455a64")
-        self.status_label.setStyleSheet(f"padding:4px 10px; border-radius:10px; background:{color}; color:white;")
+        self._apply_status_style(status)
 
         firmware_value = (
                 state.get("firmware")
@@ -2010,7 +2144,8 @@ class App(QtWidgets.QMainWindow):
             ys.append(y)
 
         if xs:
-            plot.plot(xs, ys, pen=pg.mkPen(width=1.8))
+            pen_color = '#1f4d7a' if self.theme_name == 'light' else None
+            plot.plot(xs, ys, pen=pg.mkPen(color=pen_color, width=1.8) if pen_color else pg.mkPen(width=1.8))
             plot.enableAutoRange(axis=pg.ViewBox.XYAxes, enable=True)
             plot.autoRange()
 
