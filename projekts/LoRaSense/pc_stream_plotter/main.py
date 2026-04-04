@@ -510,13 +510,14 @@ class CsvLoggerSettingsDialog(QtWidgets.QDialog):
         general_box = QtWidgets.QGroupBox("Time and general")
         general_form = QtWidgets.QFormLayout(general_box)
         self.time_format = QtWidgets.QComboBox()
-        self.time_format.addItem("Gantner TimeCounter", "gantner_timecounter")
+        self.time_format.addItem("Gantner CSV DateTime", "gantner_timecounter")
         self.time_format.addItem("ISO 8601", "iso8601")
         self.time_format.addItem("Unix", "unix")
         idx = self.time_format.findData(settings.time_format)
         if idx >= 0:
             self.time_format.setCurrentIndex(idx)
         general_form.addRow("Time format", self.time_format)
+        general_form.addRow(QtWidgets.QLabel("Gantner CSV DateTime writes local time as YYYY-MM-DD HH:MM:SS.ffffff for better Test.Viewer compatibility."))
         self.include_seq = QtWidgets.QCheckBox("Sequence")
         self.include_seq.setChecked(settings.include_seq)
         general_form.addRow(self.include_seq)
@@ -680,6 +681,7 @@ class App(QtWidgets.QMainWindow):
         self.csv_settings = self._load_csv_settings()
         self.csv_specs: list[tuple[str, Any]] = []
         self.remote_state: dict[str, Any] = {}
+        self.ctrl_time_anchor: float | None = None
 
         self._build_ui()
         geometry = self.settings_store.value("ui/geometry")
@@ -1066,23 +1068,34 @@ class App(QtWidgets.QMainWindow):
     def _format_time_for_csv(ts: float, fmt: str) -> str | float:
         if fmt == "unix":
             return round(ts, 6)
-        dt_local = datetime.fromtimestamp(ts)
+        local_tz = datetime.now().astimezone().tzinfo
+        dt_local = datetime.fromtimestamp(ts, local_tz) if local_tz is not None else datetime.fromtimestamp(ts)
         if fmt == "iso8601":
             return dt_local.isoformat(timespec="milliseconds")
-        base = datetime(1899, 12, 30)
+        if fmt == "gantner_timecounter":
+            return dt_local.strftime("%Y-%m-%d %H:%M:%S.") + f"{dt_local.microsecond:06d}"
+        base = datetime(1899, 12, 30, tzinfo=local_tz) if local_tz is not None else datetime(1899, 12, 30)
         delta = dt_local - base
         return round(delta.total_seconds() / 86400.0, 12)
+
+    def _absolute_sample_time(self, sample: Sample) -> float:
+        ctrl_t = sample.t_ctrl
+        if math.isfinite(ctrl_t) and ctrl_t > 0:
+            if self.ctrl_time_anchor is None:
+                self.ctrl_time_anchor = sample.t_pc - ctrl_t
+            return self.ctrl_time_anchor + ctrl_t
+        return sample.t_pc
 
     def _make_csv_specs(self) -> list[tuple[str, Any]]:
         settings = self._coerce_csv_settings(CsvLoggerSettings(**self.csv_settings.__dict__))
         specs: list[tuple[str, Any]] = []
         time_format = settings.time_format
         time_header = {
-            "gantner_timecounter": "time_gantner_timecounter",
+            "gantner_timecounter": "time_gantner_datetime",
             "iso8601": "time_iso8601",
             "unix": "time_unix",
         }.get(time_format, "time_gantner_timecounter")
-        specs.append((time_header, lambda s, tf=time_format: self._format_time_for_csv(s.t_ctrl if s.t_ctrl > 0 else s.t_pc, tf)))
+        specs.append((time_header, lambda s, tf=time_format: self._format_time_for_csv(self._absolute_sample_time(s), tf)))
         if settings.include_seq:
             specs.append(("seq", lambda s: s.seq))
 
@@ -1138,6 +1151,7 @@ class App(QtWidgets.QMainWindow):
         self._save_local_settings()
         self.stream_mode.setText("Connecting socket...")
         self.stream_target.setText(f"{self.host}:{self.port}")
+        self.ctrl_time_anchor = None
         self.receiver.connect(self.host, self.port)
         if not self._wait_for_receiver_status("connected", timeout_s=3.0):
             self.receiver.stop()
@@ -1173,6 +1187,7 @@ class App(QtWidgets.QMainWindow):
             except Exception as exc:
                 warning_text = f"Controller PC stream disable failed before socket close.\n\n{exc}"
         self.receiver.stop()
+        self.ctrl_time_anchor = None
         self.stream_mode.setText("Offline")
         if warning_text:
             QtWidgets.QMessageBox.warning(self, "Disconnect warning", warning_text)
