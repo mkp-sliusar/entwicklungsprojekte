@@ -26,7 +26,8 @@ STREAM_STATUS_COLORS = {
     "connecting": "#8d6e00",
     "disconnected": "#424242",
 }
-FREQ_OPTIONS = ["5", "11.25", "20", "22.5", "40", "44", "45", "82.5", "90", "150", "175", "180", "250", "330", "350", "600", "660", "1000", "1200", "2000"]
+FREQ_OPTIONS = ["5", "11.25", "20", "22.5", "40", "44", "45", "82.5", "90", "150", "175", "180", "250", "330", "350",
+                "600", "660", "1000", "1200", "2000"]
 WEG_LENGTH_OPTIONS_MM = [5, 10, 25, 50, 75, 100, 150, 200, 300, 500]
 UNIT_OPTIONS = ["V", "mm", "um", "C", "%", "bar", "mA", "kN"]
 PLOT_FIELDS = ["dms_display", "ain2_display", "temp_c"]
@@ -91,6 +92,10 @@ class DmsSettings:
     enabled: bool = True
     frequency_hz: str = "1000"
     k_factor: float = 0.0
+    tare_enabled: bool = False
+    tare_value: float = 0.0
+    spike_filter_enabled: bool = False
+    spike_filter_strength: int = 4
 
 
 @dataclass
@@ -103,6 +108,10 @@ class Ain2Settings:
     scaling_unit: str = "mm"
     scale_min: float = 0.0
     scale_max: float = 10.0
+    tare_enabled: bool = False
+    tare_value: float = 0.0
+    spike_filter_enabled: bool = False
+    spike_filter_strength: int = 4
 
 
 @dataclass
@@ -342,11 +351,16 @@ class TempSettingsDialog(QtWidgets.QDialog):
 
 
 class DmsSettingsDialog(QtWidgets.QDialog):
-    def __init__(self, parent: QtWidgets.QWidget, settings: DmsSettings) -> None:
+    def __init__(self, parent: QtWidgets.QWidget, settings: DmsSettings, current_value: float,
+                 current_unit: str) -> None:
         super().__init__(parent)
+        self._initial_tare_enabled = settings.tare_enabled
+        self._current_value = current_value
+        self._current_unit = current_unit
+        self._tare_value = settings.tare_value
         self.setWindowTitle("DMS settings")
         self.setModal(True)
-        self.resize(420, 220)
+        self.resize(460, 360)
 
         layout = QtWidgets.QVBoxLayout(self)
         form = QtWidgets.QFormLayout()
@@ -366,9 +380,41 @@ class DmsSettingsDialog(QtWidgets.QDialog):
         self.k_factor.set_float_value(max(0.0, settings.k_factor), 4)
         form.addRow("K-factor", self.k_factor)
 
+        self.tare_box = QtWidgets.QCheckBox("Offset zero (tare current value)")
+        self.tare_box.setChecked(settings.tare_enabled)
+        form.addRow(self.tare_box)
+
+        tare_hint = "--" if math.isnan(current_value) else f"Current: {current_value:.4f} {current_unit}"
+        self.tare_hint = QtWidgets.QLabel(tare_hint)
+        self.tare_hint.setStyleSheet("color:#666;")
+        layout.addWidget(self.tare_hint)
+
+        self.filter_box = QtWidgets.QCheckBox("Spike filter")
+        self.filter_box.setChecked(settings.spike_filter_enabled)
+        form.addRow(self.filter_box)
+
+        filter_row = QtWidgets.QHBoxLayout()
+        self.filter_strength = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.filter_strength.setRange(1, 10)
+        self.filter_strength.setValue(max(1, min(10, int(settings.spike_filter_strength))))
+        self.filter_label = QtWidgets.QLabel(str(self.filter_strength.value()))
+        self.filter_reset = QtWidgets.QToolButton()
+        self.filter_reset.setText("↺")
+        self.filter_reset.setToolTip("Reset to optimal")
+        filter_row.addWidget(self.filter_strength, 1)
+        filter_row.addWidget(self.filter_label)
+        filter_row.addWidget(self.filter_reset)
+        form.addRow("Filter strength", filter_row)
+
+        self.filter_box.toggled.connect(self._update_filter_state)
+        self.filter_strength.valueChanged.connect(lambda v: self.filter_label.setText(str(v)))
+        self.filter_reset.clicked.connect(lambda: self.filter_strength.setValue(4))
+        self._update_filter_state()
+
         note = QtWidgets.QLabel(
             "K-factor = 0  -> display in mV/V\n"
-            "K-factor > 0 -> display in um/m"
+            "K-factor > 0 -> display in um/m\n"
+            "Spike filter removes isolated jumps. 4 is a good default."
         )
         note.setStyleSheet("color:#666;")
         layout.addWidget(note)
@@ -378,20 +424,39 @@ class DmsSettingsDialog(QtWidgets.QDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
+    def _update_filter_state(self) -> None:
+        enabled = self.filter_box.isChecked()
+        self.filter_strength.setEnabled(enabled)
+        self.filter_label.setEnabled(enabled)
+        self.filter_reset.setEnabled(enabled)
+
     def value(self) -> DmsSettings:
+        tare_enabled = self.tare_box.isChecked()
+        tare_value = self._tare_value if self._initial_tare_enabled and tare_enabled else 0.0
+        if tare_enabled and not self._initial_tare_enabled and not math.isnan(self._current_value):
+            tare_value = self._current_value
         return DmsSettings(
             enabled=self.enable_box.isChecked(),
             frequency_hz=self.freq_combo.currentText(),
             k_factor=float(self.k_factor.float_value()),
+            tare_enabled=tare_enabled,
+            tare_value=float(tare_value),
+            spike_filter_enabled=self.filter_box.isChecked(),
+            spike_filter_strength=int(self.filter_strength.value()),
         )
 
 
 class Ain2SettingsDialog(QtWidgets.QDialog):
-    def __init__(self, parent: QtWidgets.QWidget, settings: Ain2Settings) -> None:
+    def __init__(self, parent: QtWidgets.QWidget, settings: Ain2Settings, current_value: float,
+                 current_unit: str) -> None:
         super().__init__(parent)
+        self._initial_tare_enabled = settings.tare_enabled
+        self._current_value = current_value
+        self._current_unit = current_unit
+        self._tare_value = settings.tare_value
         self.setWindowTitle("Channel 2 settings")
         self.setModal(True)
-        self.resize(480, 360)
+        self.resize(480, 420)
 
         layout = QtWidgets.QVBoxLayout(self)
         form = QtWidgets.QFormLayout()
@@ -444,14 +509,46 @@ class Ain2SettingsDialog(QtWidgets.QDialog):
         form.addRow("Scale maximum", self.scale_max)
         self.scale_max_label = form.labelForField(self.scale_max)
 
+        self.tare_box = QtWidgets.QCheckBox("Offset zero (tare current value)")
+        self.tare_box.setChecked(settings.tare_enabled)
+        form.addRow(self.tare_box)
+
+        tare_hint = "--" if math.isnan(current_value) else f"Current: {current_value:.4f} {current_unit}"
+        self.tare_hint = QtWidgets.QLabel(tare_hint)
+        self.tare_hint.setStyleSheet("color:#666;")
+        layout.addWidget(self.tare_hint)
+
+        self.filter_box = QtWidgets.QCheckBox("Spike filter")
+        self.filter_box.setChecked(settings.spike_filter_enabled)
+        form.addRow(self.filter_box)
+
+        filter_row = QtWidgets.QHBoxLayout()
+        self.filter_strength = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.filter_strength.setRange(1, 10)
+        self.filter_strength.setValue(max(1, min(10, int(settings.spike_filter_strength))))
+        self.filter_label = QtWidgets.QLabel(str(self.filter_strength.value()))
+        self.filter_reset = QtWidgets.QToolButton()
+        self.filter_reset.setText("↺")
+        self.filter_reset.setToolTip("Reset to optimal")
+        filter_row.addWidget(self.filter_strength, 1)
+        filter_row.addWidget(self.filter_label)
+        filter_row.addWidget(self.filter_reset)
+        form.addRow("Filter strength", filter_row)
+
         self.mode_combo.currentTextChanged.connect(self._update_visibility)
         self.display_combo.currentTextChanged.connect(self._update_visibility)
+        self.filter_box.toggled.connect(self._update_filter_state)
+        self.filter_strength.valueChanged.connect(lambda v: self.filter_label.setText(str(v)))
+        self.filter_reset.clicked.connect(lambda: self.filter_strength.setValue(4))
+
         self._update_visibility()
+        self._update_filter_state()
 
         note = QtWidgets.QLabel(
             "Wegsensor -> value shown in selected length units (mm).\n"
             "10V + volts -> value shown in V.\n"
-            "10V + scaled -> linear scaling 0..10 V -> selected engineering unit."
+            "10V + scaled -> linear scaling 0..10 V -> selected engineering unit.\n"
+            "Spike filter removes isolated jumps. 4 is a good default."
         )
         note.setStyleSheet("color:#666;")
         layout.addWidget(note)
@@ -476,6 +573,12 @@ class Ain2SettingsDialog(QtWidgets.QDialog):
         self._set_row_visible(self.scale_min_label, self.scale_min, (not is_weg) and is_scaled)
         self._set_row_visible(self.scale_max_label, self.scale_max, (not is_weg) and is_scaled)
 
+    def _update_filter_state(self) -> None:
+        enabled = self.filter_box.isChecked()
+        self.filter_strength.setEnabled(enabled)
+        self.filter_label.setEnabled(enabled)
+        self.filter_reset.setEnabled(enabled)
+
     def _validate_and_accept(self) -> None:
         if self.mode_combo.currentText() == "10v" and self.display_combo.currentText() == "scaled":
             if math.isclose(self.scale_min.value(), self.scale_max.value(), rel_tol=0.0, abs_tol=1e-12):
@@ -485,6 +588,10 @@ class Ain2SettingsDialog(QtWidgets.QDialog):
 
     def value(self) -> Ain2Settings:
         weg_length = float(self.weg_combo.currentText().split()[0])
+        tare_enabled = self.tare_box.isChecked()
+        tare_value = self._tare_value if self._initial_tare_enabled and tare_enabled else 0.0
+        if tare_enabled and not self._initial_tare_enabled and not math.isnan(self._current_value):
+            tare_value = self._current_value
         return Ain2Settings(
             enabled=self.enable_box.isChecked(),
             frequency_hz=self.freq_combo.currentText(),
@@ -494,6 +601,10 @@ class Ain2SettingsDialog(QtWidgets.QDialog):
             scaling_unit=self.unit_combo.currentText(),
             scale_min=float(self.scale_min.value()),
             scale_max=float(self.scale_max.value()),
+            tare_enabled=tare_enabled,
+            tare_value=float(tare_value),
+            spike_filter_enabled=self.filter_box.isChecked(),
+            spike_filter_strength=int(self.filter_strength.value()),
         )
 
 
@@ -517,7 +628,8 @@ class CsvLoggerSettingsDialog(QtWidgets.QDialog):
         if idx >= 0:
             self.time_format.setCurrentIndex(idx)
         general_form.addRow("Time format", self.time_format)
-        general_form.addRow(QtWidgets.QLabel("Gantner CSV DateTime writes local time as YYYY-MM-DD HH:MM:SS.ffffff for better Test.Viewer compatibility."))
+        general_form.addRow(QtWidgets.QLabel(
+            "Gantner CSV DateTime writes local time as YYYY-MM-DD HH:MM:SS.ffffff for better Test.Viewer compatibility."))
         self.include_seq = QtWidgets.QCheckBox("Sequence")
         self.include_seq.setChecked(settings.include_seq)
         general_form.addRow(self.include_seq)
@@ -527,7 +639,7 @@ class CsvLoggerSettingsDialog(QtWidgets.QDialog):
         dms_layout = QtWidgets.QVBoxLayout(self.dms_box)
         self.cb_dms_display = QtWidgets.QCheckBox("Displayed value")
         self.cb_dms_display.setChecked(settings.include_dms_display)
-        self.cb_dms_mvv = QtWidgets.QCheckBox("mV/V")
+        self.cb_dms_mvv = QtWidgets.QCheckBox("Extra mV/V")
         self.cb_dms_mvv.setChecked(settings.include_dms_mvv)
         self.cb_dms_mv = QtWidgets.QCheckBox("mV")
         self.cb_dms_mv.setChecked(settings.include_dms_mv)
@@ -575,9 +687,16 @@ class CsvLoggerSettingsDialog(QtWidgets.QDialog):
         dms_on = self.available.get("dms", False)
         ain2_on = self.available.get("ain2", False)
         temp_on = self.available.get("temp", False)
+        dms_display_is_um = self.available.get("dms_display_is_um", False)
         self.dms_box.setVisible(dms_on)
         self.ain2_box.setVisible(ain2_on)
         self.temp_box.setVisible(temp_on)
+        self.cb_dms_mvv.setEnabled(dms_display_is_um)
+        if dms_display_is_um:
+            self.cb_dms_mvv.setText("Extra mV/V")
+        else:
+            self.cb_dms_mvv.setText("Extra mV/V (not needed while DMS display = mV/V)")
+            self.cb_dms_mvv.setChecked(False)
         if not dms_on:
             for cb in (self.cb_dms_display, self.cb_dms_mvv, self.cb_dms_mv, self.cb_dms_raw):
                 cb.setChecked(False)
@@ -666,8 +785,10 @@ class App(QtWidgets.QMainWindow):
         self.host = self.settings_store.value("network/host", "192.168.4.1", str)
         self.port = int(self.settings_store.value("network/port", 3333))
         self.window_s = float(self.settings_store.value("network/window_s", 20.0))
-        self.plot1_field = _safe_plot_field(self.settings_store.value("ui/plot1_field", "dms_display", str), "dms_display")
-        self.plot2_field = _safe_plot_field(self.settings_store.value("ui/plot2_field", "ain2_display", str), "ain2_display")
+        self.plot1_field = _safe_plot_field(self.settings_store.value("ui/plot1_field", "dms_display", str),
+                                            "dms_display")
+        self.plot2_field = _safe_plot_field(self.settings_store.value("ui/plot2_field", "ain2_display", str),
+                                            "ain2_display")
         self.last_csv_dir = self.settings_store.value("csv/last_dir", "", str)
 
         self.receiver = StreamReceiver()
@@ -682,8 +803,11 @@ class App(QtWidgets.QMainWindow):
         self.csv_specs: list[tuple[str, Any]] = []
         self.remote_state: dict[str, Any] = {}
         self.ctrl_time_anchor: float | None = None
+        self._dms_display_cache: dict[int, tuple[float, str]] = {}
+        self._ain2_display_cache: dict[int, tuple[float, str]] = {}
 
         self._build_ui()
+        self._reset_display_processing()
         geometry = self.settings_store.value("ui/geometry")
         if isinstance(geometry, QtCore.QByteArray) and not geometry.isEmpty():
             self.restoreGeometry(geometry)
@@ -700,6 +824,10 @@ class App(QtWidgets.QMainWindow):
             enabled=self.settings_store.value("dms/enabled", True, bool),
             frequency_hz=self.settings_store.value("dms/frequency_hz", "1000", str),
             k_factor=float(self.settings_store.value("dms/k_factor", 0.0)),
+            tare_enabled=self.settings_store.value("dms/tare_enabled", False, bool),
+            tare_value=float(self.settings_store.value("dms/tare_value", 0.0)),
+            spike_filter_enabled=self.settings_store.value("dms/spike_filter_enabled", False, bool),
+            spike_filter_strength=int(self.settings_store.value("dms/spike_filter_strength", 4)),
         )
 
     def _load_ain2_settings(self) -> Ain2Settings:
@@ -712,6 +840,10 @@ class App(QtWidgets.QMainWindow):
             scaling_unit=self.settings_store.value("ain2/scaling_unit", "mm", str),
             scale_min=float(self.settings_store.value("ain2/scale_min", 0.0)),
             scale_max=float(self.settings_store.value("ain2/scale_max", 10.0)),
+            tare_enabled=self.settings_store.value("ain2/tare_enabled", False, bool),
+            tare_value=float(self.settings_store.value("ain2/tare_value", 0.0)),
+            spike_filter_enabled=self.settings_store.value("ain2/spike_filter_enabled", False, bool),
+            spike_filter_strength=int(self.settings_store.value("ain2/spike_filter_strength", 4)),
         )
 
     def _load_temp_settings(self) -> TempSettings:
@@ -740,6 +872,10 @@ class App(QtWidgets.QMainWindow):
         self.settings_store.setValue("dms/enabled", self.dms_settings.enabled)
         self.settings_store.setValue("dms/frequency_hz", self.dms_settings.frequency_hz)
         self.settings_store.setValue("dms/k_factor", self.dms_settings.k_factor)
+        self.settings_store.setValue("dms/tare_enabled", self.dms_settings.tare_enabled)
+        self.settings_store.setValue("dms/tare_value", self.dms_settings.tare_value)
+        self.settings_store.setValue("dms/spike_filter_enabled", self.dms_settings.spike_filter_enabled)
+        self.settings_store.setValue("dms/spike_filter_strength", self.dms_settings.spike_filter_strength)
         self.settings_store.setValue("ain2/enabled", self.ain2_settings.enabled)
         self.settings_store.setValue("ain2/frequency_hz", self.ain2_settings.frequency_hz)
         self.settings_store.setValue("ain2/mode", self.ain2_settings.mode)
@@ -748,6 +884,10 @@ class App(QtWidgets.QMainWindow):
         self.settings_store.setValue("ain2/scaling_unit", self.ain2_settings.scaling_unit)
         self.settings_store.setValue("ain2/scale_min", self.ain2_settings.scale_min)
         self.settings_store.setValue("ain2/scale_max", self.ain2_settings.scale_max)
+        self.settings_store.setValue("ain2/tare_enabled", self.ain2_settings.tare_enabled)
+        self.settings_store.setValue("ain2/tare_value", self.ain2_settings.tare_value)
+        self.settings_store.setValue("ain2/spike_filter_enabled", self.ain2_settings.spike_filter_enabled)
+        self.settings_store.setValue("ain2/spike_filter_strength", self.ain2_settings.spike_filter_strength)
         self.settings_store.setValue("temp/enabled", self.temp_settings.enabled)
         self.settings_store.setValue("csv/time_format", self.csv_settings.time_format)
         self.settings_store.setValue("csv/include_seq", self.csv_settings.include_seq)
@@ -896,19 +1036,22 @@ class App(QtWidgets.QMainWindow):
         self.ain2_meta = QtWidgets.QLabel("-")
         self.temp_meta = QtWidgets.QLabel("Temperature stream")
 
-        outer.addWidget(self._sensor_row("DMS", self.dms_value, self.dms_meta, self.open_dms_settings, include_button=True))
-        outer.addWidget(self._sensor_row("Channel 2", self.ain2_value, self.ain2_meta, self.open_ain2_settings, include_button=True))
-        outer.addWidget(self._sensor_row("Temperature", self.temp_value, self.temp_meta, self.open_temp_settings, include_button=True))
+        outer.addWidget(
+            self._sensor_row("DMS", self.dms_value, self.dms_meta, self.open_dms_settings, include_button=True))
+        outer.addWidget(self._sensor_row("Channel 2", self.ain2_value, self.ain2_meta, self.open_ain2_settings,
+                                         include_button=True))
+        outer.addWidget(self._sensor_row("Temperature", self.temp_value, self.temp_meta, self.open_temp_settings,
+                                         include_button=True))
         return box
 
     def _sensor_row(
-        self,
-        title: str,
-        value_label: QtWidgets.QLabel,
-        meta_label: QtWidgets.QLabel,
-        callback: Any,
-        *,
-        include_button: bool,
+            self,
+            title: str,
+            value_label: QtWidgets.QLabel,
+            meta_label: QtWidgets.QLabel,
+            callback: Any,
+            *,
+            include_button: bool,
     ) -> QtWidgets.QWidget:
         card = QtWidgets.QFrame()
         card.setFrameShape(QtWidgets.QFrame.StyledPanel)
@@ -994,18 +1137,33 @@ class App(QtWidgets.QMainWindow):
         return "V"
 
     def open_dms_settings(self) -> None:
-        dlg = DmsSettingsDialog(self, self.dms_settings)
+        current_value = float("nan")
+        current_unit = "um/m" if self.dms_settings.k_factor > 0 else "mV/V"
+        samples = list(self.receiver.samples)
+        if samples:
+            current_value, current_unit = self.compute_dms_display(samples[-1])
+        dlg = DmsSettingsDialog(self, self.dms_settings, current_value, current_unit)
         if dlg.exec() == QtWidgets.QDialog.Accepted:
             self.dms_settings = dlg.value()
+            self._reset_display_processing()
+            self._rebuild_display_caches()
             self._save_local_settings()
             self._update_sensor_buttons()
             self.refresh_plots()
             self.push_config_to_device(show_success=True)
 
     def open_ain2_settings(self) -> None:
-        dlg = Ain2SettingsDialog(self, self.ain2_settings)
+        current_value = float("nan")
+        current_unit = "mm" if self.ain2_settings.mode == "weg" else (
+            self.ain2_settings.scaling_unit if self.ain2_settings.volt_display == "scaled" else "V")
+        samples = list(self.receiver.samples)
+        if samples:
+            current_value, current_unit = self.compute_ain2_display(samples[-1])
+        dlg = Ain2SettingsDialog(self, self.ain2_settings, current_value, current_unit)
         if dlg.exec() == QtWidgets.QDialog.Accepted:
             self.ain2_settings = dlg.value()
+            self._reset_display_processing()
+            self._rebuild_display_caches()
             self._save_local_settings()
             self._update_sensor_buttons()
             self.refresh_plots()
@@ -1040,6 +1198,7 @@ class App(QtWidgets.QMainWindow):
     def _csv_available_sources(self) -> dict[str, bool]:
         return {
             "dms": bool(self.dms_settings.enabled),
+            "dms_display_is_um": self.dms_settings.k_factor > 0,
             "ain2": bool(self.ain2_settings.enabled),
             "temp": bool(self.temp_settings.enabled),
         }
@@ -1051,6 +1210,8 @@ class App(QtWidgets.QMainWindow):
             settings.include_dms_mvv = False
             settings.include_dms_mv = False
             settings.include_dms_raw = False
+        elif self.dms_settings.k_factor <= 0:
+            settings.include_dms_mvv = False
         if not available["ain2"]:
             settings.include_ain2_display = False
             settings.include_ain2_mv = False
@@ -1086,6 +1247,9 @@ class App(QtWidgets.QMainWindow):
             return self.ctrl_time_anchor + ctrl_t
         return sample.t_pc
 
+    def _dms_display_uses_um_per_m(self) -> bool:
+        return self.dms_settings.k_factor > 0
+
     def _make_csv_specs(self) -> list[tuple[str, Any]]:
         settings = self._coerce_csv_settings(CsvLoggerSettings(**self.csv_settings.__dict__))
         specs: list[tuple[str, Any]] = []
@@ -1095,15 +1259,17 @@ class App(QtWidgets.QMainWindow):
             "iso8601": "time_iso8601",
             "unix": "time_unix",
         }.get(time_format, "time_gantner_timecounter")
-        specs.append((time_header, lambda s, tf=time_format: self._format_time_for_csv(self._absolute_sample_time(s), tf)))
+        specs.append(
+            (time_header, lambda s, tf=time_format: self._format_time_for_csv(self._absolute_sample_time(s), tf)))
         if settings.include_seq:
             specs.append(("seq", lambda s: s.seq))
 
         if self.dms_settings.enabled:
+            dms_display_is_um = self._dms_display_uses_um_per_m()
             if settings.include_dms_display:
-                unit = "um_per_m" if self.dms_settings.k_factor > 0 else "mV_per_V"
+                unit = "um_per_m" if dms_display_is_um else "mV_per_V"
                 specs.append((self._header_from_unit("dms_display", unit), lambda s: self.compute_dms_display(s)[0]))
-            if settings.include_dms_mvv:
+            if settings.include_dms_mvv and dms_display_is_um:
                 specs.append(("dms_mV_per_V", lambda s: s.dms_mV_per_V))
             if settings.include_dms_mv:
                 specs.append(("dms_mV", lambda s: s.dms_mV))
@@ -1115,7 +1281,8 @@ class App(QtWidgets.QMainWindow):
                 display_unit = "mm"
                 if self.ain2_settings.mode != "weg":
                     display_unit = self.ain2_settings.scaling_unit if self.ain2_settings.volt_display == "scaled" else "V"
-                specs.append((self._header_from_unit("ain2_display", display_unit), lambda s: self.compute_ain2_display(s)[0]))
+                specs.append(
+                    (self._header_from_unit("ain2_display", display_unit), lambda s: self.compute_ain2_display(s)[0]))
             if settings.include_ain2_mv:
                 specs.append(("ain2_mV", lambda s: s.ain2_mV))
             if settings.include_ain2_raw:
@@ -1314,10 +1481,10 @@ class App(QtWidgets.QMainWindow):
 
         board_value = state.get("board") or state.get("api") or state.get("device") or state.get("model")
         firmware_value = (
-            state.get("firmware")
-            or state.get("fw")
-            or state.get("firmware_version")
-            or state.get("version")
+                state.get("firmware")
+                or state.get("fw")
+                or state.get("firmware_version")
+                or state.get("version")
         )
         self.ctrl_firmware.setText(_short(firmware_value))
 
@@ -1329,6 +1496,7 @@ class App(QtWidgets.QMainWindow):
             for sample in new_samples:
                 self.rate_times.append(sample.t_pc)
                 self.last_rate_seq = sample.seq
+                self._cache_processed_sample(sample)
             self._update_sensor_values(last)
 
             if self.logger.file:
@@ -1368,15 +1536,29 @@ class App(QtWidgets.QMainWindow):
         else:
             self.temp_value.setText("off")
 
-    def compute_dms_display(self, sample: Sample) -> tuple[float, str]:
+    def _reset_display_processing(self) -> None:
+        self._dms_display_cache.clear()
+        self._ain2_display_cache.clear()
+        self._dms_filter_state = {"last_raw": float("nan"), "last_filtered": float("nan"), "noise": 0.0,
+                                  "pending_sign": 0}
+        self._ain2_filter_state = {"last_raw": float("nan"), "last_filtered": float("nan"), "noise": 0.0,
+                                   "pending_sign": 0}
+
+    def _rebuild_display_caches(self) -> None:
+        self._reset_display_processing()
+        for sample in list(self.receiver.samples):
+            self._cache_processed_sample(sample)
+
+    def _base_dms_display(self, sample: Sample) -> tuple[float, str]:
         if not sample.dms_on or not sample.dms_valid or math.isnan(sample.dms_mV_per_V):
             return float("nan"), ("um/m" if self.dms_settings.k_factor > 0 else "mV/V")
         if self.dms_settings.k_factor > 0:
             return (sample.dms_mV_per_V / self.dms_settings.k_factor) * 1000.0, "um/m"
         return sample.dms_mV_per_V, "mV/V"
 
-    def compute_ain2_display(self, sample: Sample) -> tuple[float, str]:
-        unit = "mm" if self.ain2_settings.mode == "weg" else (self.ain2_settings.scaling_unit if self.ain2_settings.volt_display == "scaled" else "V")
+    def _base_ain2_display(self, sample: Sample) -> tuple[float, str]:
+        unit = "mm" if self.ain2_settings.mode == "weg" else (
+            self.ain2_settings.scaling_unit if self.ain2_settings.volt_display == "scaled" else "V")
         if not sample.ain2_on or not sample.ain2_valid or math.isnan(sample.ain2_value):
             return float("nan"), unit
         if self.ain2_settings.mode == "weg":
@@ -1386,6 +1568,81 @@ class App(QtWidgets.QMainWindow):
             value = self.ain2_settings.scale_min + (sample.ain2_value / 10.0) * span
             return value, self.ain2_settings.scaling_unit
         return sample.ain2_value, "V"
+
+    def _apply_spike_filter(self, value: float, state: dict[str, Any], enabled: bool, strength: int) -> float:
+        if math.isnan(value):
+            state["pending_sign"] = 0
+            return float("nan")
+        if not enabled:
+            state["last_raw"] = value
+            state["last_filtered"] = value
+            state["pending_sign"] = 0
+            return value
+        last_filtered = state.get("last_filtered", float("nan"))
+        last_raw = state.get("last_raw", float("nan"))
+        if math.isnan(last_filtered) or math.isnan(last_raw):
+            state["last_raw"] = value
+            state["last_filtered"] = value
+            state["noise"] = 0.0
+            state["pending_sign"] = 0
+            return value
+        step = abs(value - last_raw)
+        noise = state.get("noise", 0.0)
+        noise = (noise * 0.85) + (step * 0.15)
+        state["noise"] = noise
+        threshold = max(0.0005, noise * (12.0 - max(1, min(10, strength))) + 0.001)
+        delta = value - last_filtered
+        if abs(delta) <= threshold:
+            state["pending_sign"] = 0
+            filtered = value
+        else:
+            sign = 1 if delta > 0 else -1
+            if state.get("pending_sign", 0) == sign:
+                state["pending_sign"] = 0
+                filtered = value
+            else:
+                state["pending_sign"] = sign
+                filtered = last_filtered
+        state["last_raw"] = value
+        state["last_filtered"] = filtered
+        return filtered
+
+    def _cache_processed_sample(self, sample: Sample) -> None:
+        dms_value, dms_unit = self._base_dms_display(sample)
+        dms_value = self._apply_spike_filter(
+            dms_value,
+            self._dms_filter_state,
+            self.dms_settings.spike_filter_enabled,
+            self.dms_settings.spike_filter_strength,
+        )
+        if not math.isnan(dms_value) and self.dms_settings.tare_enabled:
+            dms_value -= self.dms_settings.tare_value
+        self._dms_display_cache[sample.seq] = (dms_value, dms_unit)
+
+        ain2_value, ain2_unit = self._base_ain2_display(sample)
+        ain2_value = self._apply_spike_filter(
+            ain2_value,
+            self._ain2_filter_state,
+            self.ain2_settings.spike_filter_enabled,
+            self.ain2_settings.spike_filter_strength,
+        )
+        if not math.isnan(ain2_value) and self.ain2_settings.tare_enabled:
+            ain2_value -= self.ain2_settings.tare_value
+        self._ain2_display_cache[sample.seq] = (ain2_value, ain2_unit)
+
+    def compute_dms_display(self, sample: Sample) -> tuple[float, str]:
+        cached = self._dms_display_cache.get(sample.seq)
+        if cached is not None:
+            return cached
+        self._cache_processed_sample(sample)
+        return self._dms_display_cache.get(sample.seq, (float("nan"), "mV/V"))
+
+    def compute_ain2_display(self, sample: Sample) -> tuple[float, str]:
+        cached = self._ain2_display_cache.get(sample.seq)
+        if cached is not None:
+            return cached
+        self._cache_processed_sample(sample)
+        return self._ain2_display_cache.get(sample.seq, (float("nan"), "V"))
 
     def _fmt_value(self, value: float, unit: str) -> str:
         if isinstance(value, float) and math.isnan(value):
@@ -1426,7 +1683,8 @@ class App(QtWidgets.QMainWindow):
         plot.setLabel("bottom", "Time relative to latest sample, s")
         plot.setLabel("left", label_unit)
 
-        time_key = (lambda s: s.t_ctrl) if len(samples) >= 2 and samples[-1].t_ctrl > samples[0].t_ctrl else (lambda s: s.t_pc)
+        time_key = (lambda s: s.t_ctrl) if len(samples) >= 2 and samples[-1].t_ctrl > samples[0].t_ctrl else (
+            lambda s: s.t_pc)
         t0 = time_key(samples[-1])
         xs: list[float] = []
         ys: list[float] = []
