@@ -321,6 +321,80 @@ class FlexibleDoubleSpinBox(QtWidgets.QDoubleSpinBox):
         return text.replace(",", ".")
 
 
+
+
+class MarqueeLabel(QtWidgets.QWidget):
+    def __init__(self, text: str = "-", parent: QtWidgets.QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._text = text
+        self._offset = 0
+        self._step = 1
+        self._gap = 40
+        self._padding = 8
+        self._text_width = 0
+        self._single_width = 0
+        self._timer = QtCore.QTimer(self)
+        self._timer.setInterval(30)
+        self._timer.timeout.connect(self._tick)
+        self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+        self.setMinimumHeight(30)
+        self._update_metrics()
+
+    def setText(self, text: str) -> None:
+        value = text if text and text.strip() else "-"
+        if value == self._text:
+            return
+        self._text = value
+        self._offset = 0
+        self._update_metrics()
+        self.update()
+
+    def text(self) -> str:
+        return self._text
+
+    def _update_metrics(self) -> None:
+        fm = self.fontMetrics()
+        self._single_width = max(1, fm.horizontalAdvance(self._text))
+        self._text_width = self._single_width + self._gap
+        self._update_timer()
+
+    def _update_timer(self) -> None:
+        available = max(1, self.width() - (2 * self._padding))
+        should_scroll = self._single_width > available
+        if should_scroll:
+            if not self._timer.isActive():
+                self._timer.start()
+        else:
+            self._timer.stop()
+            self._offset = 0
+
+    def _tick(self) -> None:
+        if self._text_width <= 0:
+            return
+        self._offset = (self._offset + self._step) % self._text_width
+        self.update()
+
+    def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
+        super().resizeEvent(event)
+        self._update_timer()
+
+    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
+        del event
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.TextAntialiasing, True)
+        rect = self.rect().adjusted(self._padding, 0, -self._padding, 0)
+        painter.setPen(self.palette().color(QtGui.QPalette.Text))
+        fm = painter.fontMetrics()
+        baseline = rect.y() + (rect.height() + fm.ascent() - fm.descent()) // 2
+        available = max(1, rect.width())
+        if self._single_width <= available:
+            painter.drawText(rect, QtCore.Qt.AlignVCenter | QtCore.Qt.AlignLeft, self._text)
+            return
+        start_x = rect.x() - self._offset
+        while start_x < rect.right() + self._text_width:
+            painter.drawText(start_x, baseline, self._text)
+            start_x += self._text_width
+
 class TempSettingsDialog(QtWidgets.QDialog):
     def __init__(self, parent: QtWidgets.QWidget, settings: TempSettings) -> None:
         super().__init__(parent)
@@ -351,9 +425,17 @@ class TempSettingsDialog(QtWidgets.QDialog):
 
 
 class DmsSettingsDialog(QtWidgets.QDialog):
-    def __init__(self, parent: QtWidgets.QWidget, settings: DmsSettings, current_value: float,
-                 current_unit: str) -> None:
+    def __init__(
+            self,
+            parent: QtWidgets.QWidget,
+            settings: DmsSettings,
+            current_value: float,
+            current_unit: str,
+            selftest_value: str = "-",
+            selftest_supported: bool = False,
+    ) -> None:
         super().__init__(parent)
+        self._selftest_supported = selftest_supported
         self._initial_tare_enabled = settings.tare_enabled
         self._current_value = current_value
         self._current_unit = current_unit
@@ -411,10 +493,19 @@ class DmsSettingsDialog(QtWidgets.QDialog):
         self.filter_reset.clicked.connect(lambda: self.filter_strength.setValue(4))
         self._update_filter_state()
 
+        self.selftest_value_label = QtWidgets.QLabel(selftest_value if selftest_value else "-")
+        self.selftest_value_label.setStyleSheet("font-family:'Courier New', monospace;")
+        form.addRow("Selbsttest", self.selftest_value_label)
+
+        if self._selftest_supported:
+            self.selftest_button = QtWidgets.QPushButton("Run Selbsttest")
+            form.addRow("", self.selftest_button)
+
         note = QtWidgets.QLabel(
             "K-factor = 0  -> display in mV/V\n"
             "K-factor > 0 -> display in um/m\n"
-            "Spike filter removes isolated jumps. 4 is a good default."
+            "Spike filter removes isolated jumps. 4 is a good default.\n"
+            "Selbsttest value is read from controller API."
         )
         note.setStyleSheet("color:#666;")
         layout.addWidget(note)
@@ -722,8 +813,16 @@ class CsvLoggerSettingsDialog(QtWidgets.QDialog):
 
 
 class NetworkSettingsDialog(QtWidgets.QDialog):
-    def __init__(self, parent: QtWidgets.QWidget, host: str, port: int, window_s: float) -> None:
+    def __init__(
+            self,
+            parent: QtWidgets.QWidget,
+            host: str,
+            port: int,
+            window_s: float,
+            oled_supported: bool = False,
+    ) -> None:
         super().__init__(parent)
+        self._oled_supported = oled_supported
         self.setWindowTitle("Connection settings")
         self.setModal(True)
         self.resize(380, 210)
@@ -745,7 +844,22 @@ class NetworkSettingsDialog(QtWidgets.QDialog):
         form.addRow("Port", self.port_edit)
         form.addRow("Window, s", self.window_edit)
 
-        note = QtWidgets.QLabel("Use the gear near Connect / Disconnect to edit stream target.")
+        action_box = QtWidgets.QGroupBox("Controller actions")
+        action_layout = QtWidgets.QVBoxLayout(action_box)
+
+        self.restart_button = QtWidgets.QPushButton("Restart controller")
+        action_layout.addWidget(self.restart_button)
+
+        if self._oled_supported:
+            self.oled_button = QtWidgets.QPushButton("Activate OLED")
+            action_layout.addWidget(self.oled_button)
+
+        layout.addWidget(action_box)
+
+        note = QtWidgets.QLabel(
+            "Use these settings for IP, port and time window.\n"
+            "Controller actions are available here as well."
+        )
         note.setWordWrap(True)
         note.setStyleSheet("color:#666;")
         layout.addWidget(note)
@@ -803,6 +917,8 @@ class App(QtWidgets.QMainWindow):
         self.csv_specs: list[tuple[str, Any]] = []
         self.remote_state: dict[str, Any] = {}
         self.ctrl_time_anchor: float | None = None
+        self.pending_info_message = ""
+        self.pending_info_until = 0.0
         self._dms_display_cache: dict[int, tuple[float, str]] = {}
         self._ain2_display_cache: dict[int, tuple[float, str]] = {}
 
@@ -950,8 +1066,6 @@ class App(QtWidgets.QMainWindow):
 
         self.btn_connect = QtWidgets.QPushButton("Connect")
         self.btn_disconnect = QtWidgets.QPushButton("Disconnect")
-        self.btn_network = QtWidgets.QPushButton("⚙")
-        self.btn_network.setFixedWidth(42)
         self.btn_csv_start = QtWidgets.QPushButton("Start CSV")
         self.btn_csv_stop = QtWidgets.QPushButton("Stop CSV")
         self.btn_csv_settings = QtWidgets.QPushButton("⚙")
@@ -964,7 +1078,6 @@ class App(QtWidgets.QMainWindow):
 
         self.btn_connect.clicked.connect(self.connect_stream)
         self.btn_disconnect.clicked.connect(self.disconnect_stream)
-        self.btn_network.clicked.connect(self.open_network_settings)
         self.btn_csv_start.clicked.connect(self.start_csv)
         self.btn_csv_stop.clicked.connect(self.stop_csv)
         self.btn_csv_settings.clicked.connect(self.open_csv_settings)
@@ -973,7 +1086,6 @@ class App(QtWidgets.QMainWindow):
         row.setSpacing(8)
         row.addWidget(self.btn_connect)
         row.addWidget(self.btn_disconnect)
-        row.addWidget(self.btn_network)
         row.addWidget(self.btn_csv_start)
         row.addWidget(self.btn_csv_stop)
         row.addWidget(self.btn_csv_settings)
@@ -985,12 +1097,21 @@ class App(QtWidgets.QMainWindow):
     def _build_status_bar(self) -> QtWidgets.QGridLayout:
         info = QtWidgets.QGridLayout()
         info.setHorizontalSpacing(16)
+        info.setVerticalSpacing(8)
 
         self.status_label = QtWidgets.QLabel("disconnected")
         self.status_label.setStyleSheet("padding:4px 10px; border-radius:10px; background:#424242; color:white;")
         self.seq_label = QtWidgets.QLabel("-")
         self.hz_label = QtWidgets.QLabel("-")
-        self.csv_label = QtWidgets.QLabel("-")
+
+        self.csv_label = MarqueeLabel("-")
+        self.csv_label.setStyleSheet(
+            "MarqueeLabel {"
+            "border:1px solid #333; border-radius:10px; "
+            "background:transparent; "
+            "color:palette(text);"
+            "}"
+        )
 
         info.addWidget(QtWidgets.QLabel("Status:"), 0, 0)
         info.addWidget(self.status_label, 0, 1)
@@ -998,14 +1119,31 @@ class App(QtWidgets.QMainWindow):
         info.addWidget(self.seq_label, 0, 3)
         info.addWidget(QtWidgets.QLabel("Actual Hz:"), 0, 4)
         info.addWidget(self.hz_label, 0, 5)
-        info.addWidget(QtWidgets.QLabel("CSV:"), 0, 6)
+        info.addWidget(QtWidgets.QLabel("Info / CSV:"), 0, 6)
         info.addWidget(self.csv_label, 0, 7)
         info.setColumnStretch(7, 1)
         return info
 
     def _build_stream_card(self) -> QtWidgets.QGroupBox:
         box = QtWidgets.QGroupBox("Controller")
-        layout = QtWidgets.QFormLayout(box)
+        outer = QtWidgets.QVBoxLayout(box)
+        outer.setSpacing(8)
+
+        top = QtWidgets.QHBoxLayout()
+        title = QtWidgets.QLabel("<b>Controller</b>")
+        top.addWidget(title)
+        top.addStretch(1)
+
+        self.btn_controller_settings = QtWidgets.QPushButton("⚙")
+        self.btn_controller_settings.setFixedWidth(40)
+        self.btn_controller_settings.clicked.connect(self.open_network_settings)
+        top.addWidget(self.btn_controller_settings)
+        outer.addLayout(top)
+
+        card = QtWidgets.QFrame()
+        card.setFrameShape(QtWidgets.QFrame.StyledPanel)
+        layout = QtWidgets.QFormLayout(card)
+        layout.setContentsMargins(8, 8, 8, 8)
         layout.setLabelAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
         layout.setFormAlignment(QtCore.Qt.AlignTop)
         layout.setHorizontalSpacing(16)
@@ -1015,9 +1153,14 @@ class App(QtWidgets.QMainWindow):
         self.stream_target = QtWidgets.QLabel("-")
         self.ctrl_firmware = QtWidgets.QLabel("-")
 
+        for value_label in (self.stream_mode, self.stream_target, self.ctrl_firmware):
+            value_label.setStyleSheet("color:palette(text); font-family:'Courier New', monospace;")
+            
         layout.addRow("Connection", self.stream_mode)
         layout.addRow("Target", self.stream_target)
         layout.addRow("Firmware", self.ctrl_firmware)
+
+        outer.addWidget(card)
         return box
 
     def _build_sensor_card(self) -> QtWidgets.QGroupBox:
@@ -1120,6 +1263,56 @@ class App(QtWidgets.QMainWindow):
         self.plot2_field = self.combo2.currentText() if hasattr(self, "combo2") else "ain2_display"
         self._save_local_settings()
 
+    def _extract_selftest_value(self) -> str:
+        state = self.remote_state if isinstance(self.remote_state, dict) else {}
+        candidates = [
+            "selftest",
+            "self_test",
+            "selbsttest",
+            "selftest_value",
+            "self_test_value",
+            "selbsttest_value",
+        ]
+        for key in candidates:
+            if key in state:
+                value = state.get(key)
+                if value is None:
+                    continue
+                if isinstance(value, float):
+                    if math.isnan(value):
+                        continue
+                    return f"{value:.6f}".rstrip("0").rstrip(".")
+                return str(value)
+        return "-"
+
+    def _selftest_api_supported(self) -> bool:
+        state = self.remote_state if isinstance(self.remote_state, dict) else {}
+        candidates = [
+            "selftest_run_supported",
+            "self_test_run_supported",
+            "selbsttest_run_supported",
+            "selftest_supported",
+            "self_test_supported",
+            "selbsttest_supported",
+        ]
+        for key in candidates:
+            if key in state:
+                return bool(state.get(key))
+        return False
+
+    def _oled_api_supported(self) -> bool:
+        state = self.remote_state if isinstance(self.remote_state, dict) else {}
+        candidates = [
+            "oled_activate_supported",
+            "oled_supported",
+            "display_activate_supported",
+            "activate_oled_supported",
+        ]
+        for key in candidates:
+            if key in state:
+                return bool(state.get(key))
+        return False
+
     def _update_sensor_buttons(self) -> None:
         self.dms_meta.setText(
             f"{self.dms_settings.frequency_hz} Hz | "
@@ -1136,13 +1329,55 @@ class App(QtWidgets.QMainWindow):
             return self.ain2_settings.scaling_unit
         return "V"
 
+    def restart_controller(self) -> None:
+        if not self._is_connected():
+            QtWidgets.QMessageBox.information(self, "Controller restart", "Connect to controller first.")
+            return
+        try:
+            response = requests.post(f"http://{self.host}/api/reset", timeout=HTTP_TIMEOUT_S)
+            response.raise_for_status()
+            self._set_info_message("Controller restart requested.")
+        except Exception as exc:
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Controller restart",
+                f"Restart request failed.\n\n{exc}",
+            )
+
+    def activate_controller_oled(self) -> None:
+        if not self._is_connected():
+            QtWidgets.QMessageBox.information(self, "OLED activation", "Connect to controller first.")
+            return
+        try:
+            response = requests.post(f"http://{self.host}/api/oled", timeout=HTTP_TIMEOUT_S)
+            if response.ok:
+                self._set_info_message("OLED activation requested.")
+                return
+            raise requests.HTTPError(f"{response.status_code} {response.reason}")
+        except Exception as exc:
+            QtWidgets.QMessageBox.information(
+                self,
+                "OLED activation",
+                "OLED activation API is not available yet on controller.\n\n"
+                f"{exc}",
+            )
+
     def open_dms_settings(self) -> None:
         current_value = float("nan")
         current_unit = "um/m" if self.dms_settings.k_factor > 0 else "mV/V"
         samples = list(self.receiver.samples)
         if samples:
             current_value, current_unit = self.compute_dms_display(samples[-1])
-        dlg = DmsSettingsDialog(self, self.dms_settings, current_value, current_unit)
+        dlg = DmsSettingsDialog(
+            self,
+            self.dms_settings,
+            current_value,
+            current_unit,
+            selftest_value=self._extract_selftest_value(),
+            selftest_supported=self._selftest_api_supported(),
+        )
+        if hasattr(dlg, "selftest_button"):
+            dlg.selftest_button.clicked.connect(lambda: self.run_dms_selftest(dlg))
         if dlg.exec() == QtWidgets.QDialog.Accepted:
             self.dms_settings = dlg.value()
             self._reset_display_processing()
@@ -1151,6 +1386,30 @@ class App(QtWidgets.QMainWindow):
             self._update_sensor_buttons()
             self.refresh_plots()
             self.push_config_to_device(show_success=True)
+
+    def run_dms_selftest(self, dialog: DmsSettingsDialog | None = None) -> None:
+        if not self._is_connected():
+            QtWidgets.QMessageBox.information(self, "Selbsttest", "Connect to controller first.")
+            return
+        try:
+            response = requests.post(f"http://{self.host}/api/selftest", timeout=HTTP_TIMEOUT_S)
+            if response.ok:
+                data = response.json() if response.content else {}
+                if isinstance(data, dict):
+                    self.remote_state.update(data)
+                value = self._extract_selftest_value()
+                if dialog is not None:
+                    dialog.selftest_value_label.setText(value)
+                self._set_info_message(f"Selbsttest finished: {value}")
+                return
+            raise requests.HTTPError(f"{response.status_code} {response.reason}")
+        except Exception as exc:
+            QtWidgets.QMessageBox.information(
+                self,
+                "Selbsttest",
+                "Manual Selbsttest API is not available yet on controller.\n\n"
+                f"{exc}",
+            )
 
     def open_ain2_settings(self) -> None:
         current_value = float("nan")
@@ -1185,7 +1444,16 @@ class App(QtWidgets.QMainWindow):
             self._save_local_settings()
 
     def open_network_settings(self) -> None:
-        dlg = NetworkSettingsDialog(self, self.host, self.port, self.window_s)
+        dlg = NetworkSettingsDialog(
+            self,
+            self.host,
+            self.port,
+            self.window_s,
+            oled_supported=self._oled_api_supported(),
+        )
+        dlg.restart_button.clicked.connect(self.restart_controller)
+        if hasattr(dlg, "oled_button"):
+            dlg.oled_button.clicked.connect(self.activate_controller_oled)
         if dlg.exec() == QtWidgets.QDialog.Accepted:
             host, port, window_s = dlg.value()
             self.host = host
@@ -1306,6 +1574,29 @@ class App(QtWidgets.QMainWindow):
             time.sleep(0.05)
         return self.receiver.status == expected
 
+    def _is_connected(self) -> bool:
+        return self.receiver.status == "connected"
+
+    def _set_info_message(self, message: str, duration_s: float = 6.0) -> None:
+        self.pending_info_message = message.strip()
+        self.pending_info_until = time.time() + max(0.0, duration_s) if self.pending_info_message else 0.0
+        self._refresh_info_label()
+
+    def _clear_info_message(self) -> None:
+        self.pending_info_message = ""
+        self.pending_info_until = 0.0
+
+    def _refresh_info_label(self) -> None:
+        if self.pending_info_message and self.pending_info_until > 0 and time.time() >= self.pending_info_until:
+            self._clear_info_message()
+
+        parts: list[str] = []
+        if self.logger.path:
+            parts.append(self.logger.path)
+        if self.pending_info_message:
+            parts.append(self.pending_info_message)
+        self.csv_label.setText(" | ".join(parts) if parts else "-")
+
     def _set_controller_stream_mode(self, enabled: bool) -> None:
         response = requests.post(
             f"http://{self.host}/api/stream",
@@ -1315,6 +1606,7 @@ class App(QtWidgets.QMainWindow):
         response.raise_for_status()
 
     def connect_stream(self) -> None:
+        self._clear_info_message()
         self._save_local_settings()
         self.stream_mode.setText("Connecting socket...")
         self.stream_target.setText(f"{self.host}:{self.port}")
@@ -1346,6 +1638,7 @@ class App(QtWidgets.QMainWindow):
             )
 
     def disconnect_stream(self) -> None:
+        self._clear_info_message()
         warning_text: str | None = None
         if self.receiver.status == "connected":
             try:
@@ -1360,6 +1653,7 @@ class App(QtWidgets.QMainWindow):
             QtWidgets.QMessageBox.warning(self, "Disconnect warning", warning_text)
 
     def start_csv(self) -> None:
+        self._clear_info_message()
         self.csv_settings = self._coerce_csv_settings(self.csv_settings)
         self.csv_specs = self._make_csv_specs()
         if not self.csv_specs:
@@ -1376,17 +1670,19 @@ class App(QtWidgets.QMainWindow):
         if path:
             self.last_csv_dir = str(Path(path).expanduser().resolve().parent)
             self.logger.start(path, [header for header, _ in self.csv_specs])
-            self.csv_label.setText(path)
+            self._refresh_info_label()
             self.last_logged_seq = None
             self._save_local_settings()
 
     def stop_csv(self) -> None:
+        self._clear_info_message()
         self.logger.stop()
         self.csv_specs = []
-        self.csv_label.setText("-")
+        self._refresh_info_label()
         self.last_logged_seq = None
 
     def read_config(self) -> None:
+        self._clear_info_message()
         cfg = self.fetch_config()
         if cfg is None:
             return
@@ -1422,6 +1718,10 @@ class App(QtWidgets.QMainWindow):
         self.csv_settings = self._coerce_csv_settings(self.csv_settings)
 
     def push_config_to_device(self, *, show_success: bool = False) -> None:
+        if not self._is_connected():
+            if show_success:
+                self._set_info_message("Settings saved locally. They will be sent after connect.")
+            return
         payload: dict[str, Any] = {
             "dms_enabled": int(self.dms_settings.enabled),
             "dms_hz": int(float(self.dms_settings.frequency_hz)),
@@ -1450,6 +1750,9 @@ class App(QtWidgets.QMainWindow):
             )
 
     def fetch_state(self) -> dict[str, Any]:
+        if not self._is_connected():
+            self.remote_state = {}
+            return self.remote_state
         try:
             response = requests.get(f"http://{self.host}/api/state", timeout=0.8)
             response.raise_for_status()
@@ -1475,11 +1778,16 @@ class App(QtWidgets.QMainWindow):
     def update_ui(self) -> None:
         state = self.fetch_state()
         status = self.receiver.status
-        self.status_label.setText(status)
+        status_text = {
+            "connected": "Connected",
+            "connecting": "Connecting",
+            "disconnected": "Offline",
+            "server_closed": "Closed",
+        }.get(status, "Error" if status.startswith("error") else status)
+        self.status_label.setText(status_text)
         color = STREAM_STATUS_COLORS.get(status, "#7b1f1f" if status.startswith("error") else "#455a64")
         self.status_label.setStyleSheet(f"padding:4px 10px; border-radius:10px; background:{color}; color:white;")
 
-        board_value = state.get("board") or state.get("api") or state.get("device") or state.get("model")
         firmware_value = (
                 state.get("firmware")
                 or state.get("fw")
@@ -1508,8 +1816,11 @@ class App(QtWidgets.QMainWindow):
             self.dms_value.setText("-")
             self.ain2_value.setText("-")
             self.temp_value.setText("-")
+            if not self._is_connected():
+                self.ctrl_firmware.setText("-")
 
         self.hz_label.setText(f"{self.actual_hz():.1f}")
+        self._refresh_info_label()
         self.refresh_plots()
 
     def _new_samples_since(self, samples: list[Sample], last_seq: int | None) -> list[Sample]:
