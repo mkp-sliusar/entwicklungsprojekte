@@ -7,6 +7,8 @@ import socket
 import struct
 import threading
 import time
+import ctypes
+import sys
 from datetime import datetime
 from pathlib import Path
 from collections import deque
@@ -15,7 +17,32 @@ from typing import Any
 
 import pyqtgraph as pg
 import requests
-from PySide6 import QtCore, QtGui, QtWidgets
+from PySide6 import QtCore, QtGui, QtSvg, QtWidgets
+
+
+def _load_app_icon() -> QtGui.QIcon:
+    base = Path(__file__).resolve().parent
+    for name in ("lorasense_icon.ico", "lorasense_icon.png"):
+        candidate = base / name
+        if candidate.exists():
+            icon = QtGui.QIcon(str(candidate))
+            if not icon.isNull():
+                return icon
+    return QtGui.QIcon()
+
+
+def _apply_window_icon(widget: QtWidgets.QWidget) -> None:
+    icon = _load_app_icon()
+    if not icon.isNull():
+        widget.setWindowIcon(icon)
+
+
+def _set_windows_app_id() -> None:
+    if sys.platform.startswith("win"):
+        try:
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("MKP.LoRaSense.PCControl")
+        except Exception:
+            pass
 
 MAGIC = b"MKPS"
 PACKET_SIZE = 50
@@ -30,7 +57,13 @@ FREQ_OPTIONS = ["5", "11.25", "20", "22.5", "40", "44", "45", "82.5", "90", "150
                 "600", "660", "1000", "1200", "2000"]
 WEG_LENGTH_OPTIONS_MM = [5, 10, 25, 50, 75, 100, 150, 200, 300, 500]
 UNIT_OPTIONS = ["V", "mm", "um", "C", "%", "bar", "mA", "kN"]
-PLOT_FIELDS = ["dms_display", "ain2_display", "temp_c"]
+PLOT_CHANNELS = (
+    ("dms_display", "DMS"),
+    ("ain2_display", "Kanal 2"),
+    ("temp_c", "Temperatur"),
+)
+PLOT_FIELDS = [field for field, _ in PLOT_CHANNELS]
+PLOT_FIELD_LABELS = {field: label for field, label in PLOT_CHANNELS}
 
 LIGHT_THEME_STYLESHEET = """
 QMainWindow, QWidget {
@@ -78,6 +111,41 @@ QSplitter::handle {
 """
 
 
+MKP_LOGO_SVG_LIGHT = r"""<svg width="221" height="78" viewBox="0 0 221 78" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Logo_final">
+<path id="Combined-Shape" fill-rule="evenodd" clip-rule="evenodd" d="M143.581 56.5515L122.444 28.5025L143.857 0.0872574L218.45 0.0872574C219.858 0.0872574 221 1.22893 221 2.63726V54.0015C221 55.4099 219.858 56.5515 218.45 56.5515H143.581ZM130.809 56.5515H101.308L116.059 36.9769L130.809 56.5515ZM88.5362 56.5515H55.408L88.6461 12.4431V56.4058L88.5362 56.5515ZM131.085 0.0872574L98.8461 42.8699V0.0872574L131.085 0.0872574ZM42.6362 56.5515H10.358L42.7461 13.5711V56.4058L42.6362 56.5515ZM85.1851 0.0872574L52.9461 42.8699V0.0872574H85.1851ZM40.1351 0.0872574L0 53.3484L0 2.63726C0 1.22893 1.14167 0.0872574 2.55 0.0872574H40.1351Z" fill="#42C0EB"/>
+<path id="MARX-KRONTAL-Partner" fill-rule="evenodd" clip-rule="evenodd" d="M0.303467 77.2076V67.5494C0.303467 67.2275 0.579413 66.9515 0.901351 66.9515H1.03932C1.29994 66.9515 1.4839 67.0895 1.60655 67.2735L5.43914 73.0377L9.27173 67.2735C9.39437 67.0742 9.59366 66.9515 9.83895 66.9515H9.97692C10.2989 66.9515 10.5748 67.2275 10.5748 67.5494V77.1922C10.5748 77.5295 10.2989 77.8054 9.97692 77.8054C9.63966 77.8054 9.36371 77.5142 9.36371 77.1922V69.1898L5.92971 74.2335C5.79174 74.4328 5.63843 74.5401 5.42381 74.5401C5.20918 74.5401 5.04055 74.4328 4.90257 74.2335L1.4839 69.2051V77.2076C1.4839 77.5448 1.22329 77.8054 0.88602 77.8054C0.564083 77.8054 0.303467 77.5448 0.303467 77.2076ZM13.5712 77.2535C13.5712 77.1616 13.5865 77.0542 13.6478 76.9316L18.0017 67.4115C18.155 67.0742 18.3849 66.8749 18.7682 66.8749H18.8295C19.1974 66.8749 19.4427 67.0742 19.5807 67.4115L23.9345 76.9163C23.9805 77.0236 24.0112 77.1309 24.0112 77.2229C24.0112 77.5448 23.7506 77.8054 23.4286 77.8054C23.1373 77.8054 22.938 77.6061 22.8307 77.3609L21.7116 74.8927H15.8248L14.7056 77.3915C14.5983 77.6521 14.399 77.8054 14.1231 77.8054C13.8165 77.8054 13.5712 77.5601 13.5712 77.2535ZM16.3 73.7889H21.2364L18.7682 68.3006L16.3 73.7889ZM27.0229 77.1922V67.6107C27.0229 67.2735 27.2988 66.9975 27.6208 66.9975H31.6373C32.9557 66.9975 34.0135 67.3961 34.6881 68.0707C35.2093 68.5919 35.5159 69.3431 35.5159 70.1862V70.2169C35.5159 71.9799 34.3201 73.007 32.6491 73.329L35.3166 76.763C35.4393 76.9009 35.5159 77.0389 35.5159 77.2076C35.5159 77.5295 35.2093 77.8054 34.9027 77.8054C34.6574 77.8054 34.4734 77.6675 34.3355 77.4835L31.3154 73.5589H28.234V77.1922C28.234 77.5295 27.958 77.8054 27.6208 77.8054C27.2988 77.8054 27.0229 77.5295 27.0229 77.1922ZM28.234 72.4705H31.53C33.1397 72.4705 34.2895 71.6426 34.2895 70.2629V70.2322C34.2895 68.9138 33.2777 68.1167 31.5453 68.1167H28.234V72.4705ZM38.2977 77.2382C38.2977 77.0849 38.359 76.9316 38.4663 76.809L42.0536 72.2558L38.6503 67.9633C38.543 67.8254 38.451 67.6874 38.451 67.5034C38.451 67.1968 38.7116 66.9209 39.0489 66.9209C39.2941 66.9209 39.4321 67.0435 39.5854 67.2275L42.8201 71.428L46.0088 67.2735C46.1775 67.0742 46.3308 66.9209 46.5914 66.9209C46.8827 66.9209 47.1433 67.1662 47.1433 67.4881C47.1433 67.6414 47.082 67.7947 46.9747 67.9174L43.556 72.2405L47.0973 76.763C47.2199 76.9009 47.2966 77.0389 47.2966 77.2076C47.2966 77.5295 47.036 77.8054 46.6987 77.8054C46.4534 77.8054 46.3154 77.6828 46.1621 77.4988L42.7741 73.099L39.4321 77.4528C39.2635 77.6521 39.1102 77.8054 38.8342 77.8054C38.5583 77.8054 38.2977 77.5602 38.2977 77.2382ZM55.8189 77.1922V67.5341C55.8189 67.1968 56.0948 66.9209 56.4168 66.9209C56.754 66.9209 57.03 67.1968 57.03 67.5341V73.4056L63.1468 67.1355C63.2848 67.0129 63.4227 66.9209 63.622 66.9209C63.944 66.9209 64.2046 67.2122 64.2046 67.5188C64.2046 67.6874 64.1279 67.8254 64.0053 67.948L60.2034 71.7193L64.2812 76.7476C64.3885 76.8856 64.4499 77.0083 64.4499 77.1922C64.4499 77.5142 64.1739 77.8054 63.8367 77.8054C63.6067 77.8054 63.4534 77.6828 63.3461 77.5295L59.3449 72.5471L57.03 74.862V77.1922C57.03 77.5295 56.754 77.8054 56.4168 77.8054C56.0948 77.8054 55.8189 77.5295 55.8189 77.1922ZM67.4616 77.1922V67.6107C67.4616 67.2735 67.7375 66.9975 68.0595 66.9975H72.076C73.3944 66.9975 74.4522 67.3961 75.1268 68.0707C75.648 68.5919 75.9546 69.3431 75.9546 70.1862V70.2169C75.9546 71.9799 74.7588 73.007 73.0878 73.329L75.7553 76.763C75.8779 76.9009 75.9546 77.0389 75.9546 77.2076C75.9546 77.5295 75.648 77.8054 75.3414 77.8054C75.0961 77.8054 74.9121 77.6675 74.7742 77.4835L71.7541 73.5589H68.6727V77.1922C68.6727 77.5295 68.3967 77.8054 68.0595 77.8054C67.7375 77.8054 67.4616 77.5295 67.4616 77.1922ZM68.6727 72.4705H71.9687C73.5784 72.4705 74.7282 71.6426 74.7282 70.2629V70.2322C74.7282 68.9138 73.7164 68.1167 71.984 68.1167H68.6727V72.4705ZM84.2246 77.9127C80.9593 77.9127 78.767 75.3526 78.767 72.3938V72.3632C78.767 69.4044 80.9899 66.8136 84.2553 66.8136C87.5207 66.8136 89.7129 69.3737 89.7129 72.3325V72.3632C89.7129 75.3219 87.49 77.9127 84.2246 77.9127ZM84.2553 76.7936C86.7081 76.7936 88.4558 74.8313 88.4558 72.3938V72.3632C88.4558 69.9256 86.6775 67.9327 84.2246 67.9327C81.7718 67.9327 80.0241 69.895 80.0241 72.3325V72.3632C80.0241 74.8007 81.8024 76.7936 84.2553 76.7936ZM92.9699 77.2076V67.5494C92.9699 67.2275 93.2458 66.9515 93.5678 66.9515H93.7364C94.0124 66.9515 94.181 67.0895 94.3496 67.3041L100.865 75.6132V67.5188C100.865 67.1968 101.126 66.9209 101.463 66.9209C101.785 66.9209 102.045 67.1968 102.045 67.5188V77.2076C102.045 77.5295 101.816 77.7748 101.494 77.7748H101.432C101.172 77.7748 100.988 77.6215 100.804 77.4068L94.1503 68.8985V77.2076C94.1503 77.5295 93.8897 77.8054 93.5525 77.8054C93.2305 77.8054 92.9699 77.5295 92.9699 77.2076ZM108.614 77.1922V68.1167H105.502C105.195 68.1167 104.935 67.8714 104.935 67.5648C104.935 67.2581 105.195 66.9975 105.502 66.9975H112.952C113.259 66.9975 113.52 67.2581 113.52 67.5648C113.52 67.8714 113.259 68.1167 112.952 68.1167H109.84V77.1922C109.84 77.5295 109.564 77.8054 109.227 77.8054C108.89 77.8054 108.614 77.5295 108.614 77.1922ZM114.354 77.2535C114.354 77.1616 114.37 77.0542 114.431 76.9316L118.785 67.4115C118.938 67.0742 119.168 66.8749 119.551 66.8749H119.613C119.981 66.8749 120.226 67.0742 120.364 67.4115L124.718 76.9163C124.764 77.0236 124.794 77.1309 124.794 77.2229C124.794 77.5448 124.534 77.8054 124.212 77.8054C123.92 77.8054 123.721 77.6061 123.614 77.3609L122.495 74.8927H116.608L115.489 77.3915C115.381 77.6521 115.182 77.8054 114.906 77.8054C114.6 77.8054 114.354 77.5601 114.354 77.2535ZM117.083 73.7889H122.02L119.551 68.3006L117.083 73.7889ZM127.806 77.1156V67.5341C127.806 67.1968 128.082 66.9209 128.404 66.9209C128.741 66.9209 129.017 67.1968 129.017 67.5341V76.6097H134.582C134.889 76.6097 135.134 76.8703 135.134 77.1769C135.134 77.4835 134.889 77.7288 134.582 77.7288H128.404C128.082 77.7288 127.806 77.4528 127.806 77.1156ZM143.288 77.1922V67.6107C143.288 67.2735 143.564 66.9975 143.886 66.9975H147.305C149.727 66.9975 151.321 68.2853 151.321 70.4009V70.4315C151.321 72.7464 149.39 73.9422 147.106 73.9422H144.499V77.1922C144.499 77.5295 144.223 77.8054 143.886 77.8054C143.564 77.8054 143.288 77.5295 143.288 77.1922ZM144.499 72.8384H147.152C148.93 72.8384 150.095 71.8879 150.095 70.4775V70.4469C150.095 68.9138 148.945 68.1167 147.213 68.1167H144.499V72.8384ZM152.493 77.2535C152.493 77.1616 152.509 77.0542 152.57 76.9316L156.924 67.4115C157.077 67.0742 157.307 66.8749 157.69 66.8749H157.752C158.12 66.8749 158.365 67.0742 158.503 67.4115L162.857 76.9163C162.903 77.0236 162.933 77.1309 162.933 77.2229C162.933 77.5448 162.673 77.8054 162.351 77.8054C162.06 77.8054 161.86 77.6061 161.753 77.3609L160.634 74.8927H154.747L153.628 77.3915C153.521 77.6521 153.321 77.8054 153.045 77.8054C152.739 77.8054 152.493 77.5601 152.493 77.2535ZM155.222 73.7889H160.159L157.69 68.3006L155.222 73.7889ZM165.945 77.1922V67.6107C165.945 67.2735 166.221 66.9975 166.543 66.9975H170.56C171.878 66.9975 172.936 67.3961 173.61 68.0707C174.132 68.5919 174.438 69.3431 174.438 70.1862V70.2169C174.438 71.9799 173.242 73.007 171.571 73.329L174.239 76.763C174.362 76.9009 174.438 77.0389 174.438 77.2076C174.438 77.5295 174.132 77.8054 173.825 77.8054C173.58 77.8054 173.396 77.6675 173.258 77.4835L170.238 73.5589H167.156V77.1922C167.156 77.5295 166.88 77.8054 166.543 77.8054C166.221 77.8054 165.945 77.5295 165.945 77.1922ZM167.156 72.4705H170.452C172.062 72.4705 173.212 71.6426 173.212 70.2629V70.2322C173.212 68.9138 172.2 68.1167 170.468 68.1167H167.156V72.4705ZM180.455 77.1922V68.1167H177.343C177.036 68.1167 176.775 67.8714 176.775 67.5648C176.775 67.2581 177.036 66.9975 177.343 66.9975H184.793C185.1 66.9975 185.36 67.2581 185.36 67.5648C185.36 67.8714 185.1 68.1167 184.793 68.1167H181.681V77.1922C181.681 77.5295 181.405 77.8054 181.068 77.8054C180.731 77.8054 180.455 77.5295 180.455 77.1922ZM188.249 77.2076V67.5494C188.249 67.2275 188.525 66.9515 188.847 66.9515H189.016C189.292 66.9515 189.461 67.0895 189.629 67.3041L196.145 75.6132V67.5188C196.145 67.1968 196.405 66.9209 196.742 66.9209C197.064 66.9209 197.325 67.1968 197.325 67.5188V77.2076C197.325 77.5295 197.095 77.7748 196.773 77.7748H196.712C196.451 77.7748 196.267 77.6215 196.083 77.4068L189.43 68.8985V77.2076C189.43 77.5295 189.169 77.8054 188.832 77.8054C188.51 77.8054 188.249 77.5295 188.249 77.2076ZM201.655 77.7288C201.333 77.7288 201.057 77.4528 201.057 77.1156V67.6107C201.057 67.2735 201.333 66.9975 201.655 66.9975H208.324C208.63 66.9975 208.876 67.2428 208.876 67.5494C208.876 67.856 208.63 68.1013 208.324 68.1013H202.268V71.7653H207.634C207.941 71.7653 208.186 72.0259 208.186 72.3172C208.186 72.6238 207.941 72.8691 207.634 72.8691H202.268V76.625H208.401C208.707 76.625 208.952 76.8703 208.952 77.1769C208.952 77.4835 208.707 77.7288 208.401 77.7288H201.655ZM212.025 77.1922V67.6107C212.025 67.2735 212.301 66.9975 212.623 66.9975H216.64C217.958 66.9975 219.016 67.3961 219.691 68.0707C220.212 68.5919 220.518 69.3431 220.518 70.1862V70.2169C220.518 71.9799 219.323 73.007 217.652 73.329L220.319 76.763C220.442 76.9009 220.518 77.0389 220.518 77.2076C220.518 77.5295 220.212 77.8054 219.905 77.8054C219.66 77.8054 219.476 77.6675 219.338 77.4835L216.318 73.5589H213.237V77.1922C213.237 77.5295 212.961 77.8054 212.623 77.8054C212.301 77.8054 212.025 77.5295 212.025 77.1922ZM213.237 72.4705H216.533C218.142 72.4705 219.292 71.6426 219.292 70.2629V70.2322C219.292 68.9138 218.28 68.1167 216.548 68.1167H213.237V72.4705Z" fill="#003B62"/>
+</g>
+</svg>
+
+"""
+MKP_LOGO_SVG_DARK = MKP_LOGO_SVG_LIGHT.replace("#003B62", "#EAF2F8")
+
+
+def _render_svg_to_pixmap(svg_data: str, target_height: int) -> QtGui.QPixmap:
+    renderer = QtSvg.QSvgRenderer(QtCore.QByteArray(svg_data.encode("utf-8")))
+    if not renderer.isValid():
+        return QtGui.QPixmap()
+    default_size = renderer.defaultSize()
+    if default_size.isEmpty() or default_size.height() <= 0:
+        target_width = max(1, int(target_height * 2.8))
+    else:
+        target_width = max(1, int(default_size.width() * target_height / default_size.height()))
+    pixmap = QtGui.QPixmap(target_width, target_height)
+    pixmap.fill(QtCore.Qt.transparent)
+    painter = QtGui.QPainter(pixmap)
+    painter.setRenderHint(QtGui.QPainter.Antialiasing, True)
+    painter.setRenderHint(QtGui.QPainter.SmoothPixmapTransform, True)
+    renderer.render(painter)
+    painter.end()
+    return pixmap
+
+
+def _mkp_logo_pixmap(theme_name: str, target_height: int) -> QtGui.QPixmap:
+    svg_data = MKP_LOGO_SVG_DARK if theme_name == "dark" else MKP_LOGO_SVG_LIGHT
+    return _render_svg_to_pixmap(svg_data, target_height)
+
+
 def _make_light_palette(style: QtWidgets.QStyle) -> QtGui.QPalette:
     palette = style.standardPalette()
     palette.setColor(QtGui.QPalette.Window, QtGui.QColor('#f6f7f8'))
@@ -100,8 +168,133 @@ def _make_light_palette(style: QtWidgets.QStyle) -> QtGui.QPalette:
     return palette
 
 
+def _read_saved_theme_name() -> str:
+    settings = QtCore.QSettings("OpenAI", "LoRaSensePcControl")
+    theme_name = settings.value("ui/theme", "dark", str)
+    return theme_name if theme_name in {"dark", "light"} else "dark"
+
+
+
+def _build_splash_pixmap(theme_name: str, icon: QtGui.QIcon) -> QtGui.QPixmap:
+    width, height = 560, 320
+    pixmap = QtGui.QPixmap(width, height)
+    pixmap.fill(QtCore.Qt.transparent)
+
+    painter = QtGui.QPainter(pixmap)
+    painter.setRenderHint(QtGui.QPainter.Antialiasing, True)
+    painter.setRenderHint(QtGui.QPainter.TextAntialiasing, True)
+    painter.setRenderHint(QtGui.QPainter.SmoothPixmapTransform, True)
+
+    if theme_name == "light":
+        bg = QtGui.QColor("#f6f7f8")
+        card = QtGui.QColor("#e3e5e7")
+        border = QtGui.QColor("#c8ccd0")
+        title = QtGui.QColor("#101418")
+        subtitle = QtGui.QColor("#4e5b66")
+        accent = QtGui.QColor("#1f4d7a")
+    else:
+        bg = QtGui.QColor("#101215")
+        card = QtGui.QColor("#181c21")
+        border = QtGui.QColor("#2a3138")
+        title = QtGui.QColor("#f3f5f7")
+        subtitle = QtGui.QColor("#9aa6b2")
+        accent = QtGui.QColor("#6fb1ff")
+
+    outer = QtCore.QRectF(0, 0, width, height)
+    painter.setPen(QtCore.Qt.NoPen)
+    painter.setBrush(bg)
+    painter.drawRoundedRect(outer.adjusted(8, 8, -8, -8), 24, 24)
+
+    card_rect = QtCore.QRectF(26, 26, width - 52, height - 52)
+    painter.setPen(QtGui.QPen(border, 1.2))
+    painter.setBrush(card)
+    painter.drawRoundedRect(card_rect, 20, 20)
+
+    logo_pixmap = _mkp_logo_pixmap(theme_name, 52)
+    if not logo_pixmap.isNull():
+        logo_x = int(card_rect.left()) + 28
+        logo_y = int(card_rect.top()) + 28
+        painter.drawPixmap(logo_x, logo_y, logo_pixmap)
+
+    icon_size = 56
+    icon_rect = QtCore.QRect(int(card_rect.right()) - icon_size - 28, int(card_rect.top()) + 26, icon_size, icon_size)
+    if not icon.isNull():
+        icon.paint(painter, icon_rect)
+    else:
+        painter.setPen(QtCore.Qt.NoPen)
+        painter.setBrush(accent)
+        painter.drawRoundedRect(QtCore.QRectF(icon_rect), 16, 16)
+        painter.setPen(QtGui.QPen(QtGui.QColor("white")))
+        font = QtGui.QFont("Segoe UI", 24, QtGui.QFont.Bold)
+        painter.setFont(font)
+        painter.drawText(icon_rect, QtCore.Qt.AlignCenter, "L")
+
+    painter.setPen(title)
+    title_font = QtGui.QFont("Segoe UI", 22, QtGui.QFont.Bold)
+    painter.setFont(title_font)
+    painter.drawText(
+        QtCore.QRectF(card_rect.left() + 28, card_rect.top() + 102, card_rect.width() - 56, 38),
+        QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter,
+        "LoRaSense PC Control",
+    )
+
+    painter.setPen(subtitle)
+    subtitle_font = QtGui.QFont("Segoe UI", 11)
+    painter.setFont(subtitle_font)
+    painter.drawText(
+        QtCore.QRectF(card_rect.left() + 28, card_rect.top() + 140, card_rect.width() - 56, 24),
+        QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter,
+        "Initializing interface, theme, network and plots",
+    )
+
+    line_y = int(card_rect.top()) + 190
+    painter.setPen(QtGui.QPen(border, 1))
+    painter.drawLine(int(card_rect.left()) + 28, line_y, int(card_rect.right()) - 28, line_y)
+
+    bar_rect = QtCore.QRectF(card_rect.left() + 28, card_rect.bottom() - 56, card_rect.width() - 56, 10)
+    painter.setPen(QtCore.Qt.NoPen)
+    painter.setBrush(border)
+    painter.drawRoundedRect(bar_rect, 5, 5)
+
+    progress_rect = QtCore.QRectF(bar_rect.left(), bar_rect.top(), bar_rect.width() * 0.62, bar_rect.height())
+    painter.setBrush(accent)
+    painter.drawRoundedRect(progress_rect, 5, 5)
+
+    painter.setPen(subtitle)
+    footer_font = QtGui.QFont("Segoe UI", 10)
+    painter.setFont(footer_font)
+    painter.drawText(
+        QtCore.QRectF(card_rect.left() + 28, card_rect.bottom() - 34, card_rect.width() - 56, 20),
+        QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter,
+        "MKP · Measurement startup",
+    )
+
+    painter.end()
+    return pixmap
+
+
+def _create_splash(theme_name: str, icon: QtGui.QIcon) -> QtWidgets.QSplashScreen:
+    splash = QtWidgets.QSplashScreen(_build_splash_pixmap(theme_name, icon))
+    splash.setWindowFlags(
+        QtCore.Qt.SplashScreen
+        | QtCore.Qt.WindowStaysOnTopHint
+        | QtCore.Qt.FramelessWindowHint
+        | QtCore.Qt.NoDropShadowWindowHint
+    )
+    splash.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
+    splash.setAttribute(QtCore.Qt.WA_ShowWithoutActivating, True)
+    splash.setEnabled(False)
+    if not icon.isNull():
+        splash.setWindowIcon(icon)
+    return splash
+
+
 def _safe_plot_field(value: Any, fallback: str) -> str:
     return value if value in PLOT_FIELDS else fallback
+
+
+def _plot_field_label(field: Any) -> str:
+    return PLOT_FIELD_LABELS.get(str(field), str(field))
 
 
 def _short(text: Any, max_len: int = 14) -> str:
@@ -464,6 +657,7 @@ class MarqueeLabel(QtWidgets.QWidget):
 class TempSettingsDialog(QtWidgets.QDialog):
     def __init__(self, parent: QtWidgets.QWidget, settings: TempSettings) -> None:
         super().__init__(parent)
+        _apply_window_icon(self)
         self.setWindowTitle("Temperature settings")
         self.setModal(True)
         self.resize(360, 150)
@@ -501,6 +695,7 @@ class DmsSettingsDialog(QtWidgets.QDialog):
             selftest_supported: bool = False,
     ) -> None:
         super().__init__(parent)
+        _apply_window_icon(self)
         self._selftest_supported = selftest_supported
         self._initial_tare_enabled = settings.tare_enabled
         self._current_value = current_value
@@ -607,6 +802,7 @@ class Ain2SettingsDialog(QtWidgets.QDialog):
     def __init__(self, parent: QtWidgets.QWidget, settings: Ain2Settings, current_value: float,
                  current_unit: str) -> None:
         super().__init__(parent)
+        _apply_window_icon(self)
         self._initial_tare_enabled = settings.tare_enabled
         self._current_value = current_value
         self._current_unit = current_unit
@@ -766,8 +962,14 @@ class Ain2SettingsDialog(QtWidgets.QDialog):
 
 
 class CsvLoggerSettingsDialog(QtWidgets.QDialog):
-    def __init__(self, parent: QtWidgets.QWidget, settings: CsvLoggerSettings, available: dict[str, bool]) -> None:
+    def __init__(
+            self,
+            parent: QtWidgets.QWidget,
+            settings: CsvLoggerSettings,
+            available: dict[str, bool],
+    ) -> None:
         super().__init__(parent)
+        _apply_window_icon(self)
         self.setWindowTitle("CSV logger settings")
         self.setModal(True)
         self.resize(520, 520)
@@ -888,6 +1090,7 @@ class NetworkSettingsDialog(QtWidgets.QDialog):
             oled_supported: bool = False,
     ) -> None:
         super().__init__(parent)
+        _apply_window_icon(self)
         self._oled_supported = oled_supported
         self.setWindowTitle("Connection settings")
         self.setModal(True)
@@ -958,6 +1161,7 @@ class NetworkSettingsDialog(QtWidgets.QDialog):
 class App(QtWidgets.QMainWindow):
     def __init__(self) -> None:
         super().__init__()
+        _apply_window_icon(self)
         self.setWindowTitle("LoRaSense PC Control")
         self.resize(1400, 900)
 
@@ -1101,10 +1305,9 @@ class App(QtWidgets.QMainWindow):
         self.setCentralWidget(central)
         root = QtWidgets.QVBoxLayout(central)
         root.setContentsMargins(12, 12, 12, 12)
-        root.setSpacing(10)
+        root.setSpacing(6)
 
-        root.addLayout(self._build_top_bar())
-        root.addLayout(self._build_status_bar())
+        root.addLayout(self._build_header())
 
         body = QtWidgets.QHBoxLayout()
         body.setSpacing(12)
@@ -1131,52 +1334,78 @@ class App(QtWidgets.QMainWindow):
         splitter.setStretchFactor(1, 1)
         right.addWidget(splitter, 1)
 
-    def _build_top_bar(self) -> QtWidgets.QGridLayout:
-        top = QtWidgets.QGridLayout()
-        top.setHorizontalSpacing(8)
-        top.setColumnStretch(0, 0)
-        top.setColumnStretch(1, 0)
-        top.setColumnStretch(2, 0)
-        top.setColumnStretch(3, 1)
+    def _build_header(self) -> QtWidgets.QGridLayout:
+        top_bar = self._build_top_bar()
+        status_bar = self._build_status_bar()
+
+        header = QtWidgets.QGridLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.setHorizontalSpacing(10)
+        header.setVerticalSpacing(4)
+        header.setColumnStretch(0, 1)
+        header.setColumnStretch(1, 0)
+
+        header.addLayout(top_bar, 0, 0)
+        header.addLayout(status_bar, 1, 0)
+        header.addWidget(self.logo_label, 0, 1, 2, 1, QtCore.Qt.AlignTop | QtCore.Qt.AlignRight)
+        return header
+
+    def _build_top_bar(self) -> QtWidgets.QHBoxLayout:
+        top = QtWidgets.QHBoxLayout()
+        top.setContentsMargins(0, 0, 0, 0)
+        top.setSpacing(8)
 
         self.btn_connect = QtWidgets.QPushButton("Connect")
         self.btn_disconnect = QtWidgets.QPushButton("Disconnect")
         self.btn_csv_start = QtWidgets.QPushButton("Start CSV")
         self.btn_csv_stop = QtWidgets.QPushButton("Stop CSV")
         self.btn_csv_settings = QtWidgets.QPushButton("⚙")
-        self.btn_csv_settings.setFixedWidth(42)
-        self.btn_theme = QtWidgets.QPushButton("☀")
-        self.btn_theme.setFixedWidth(42)
-        self.btn_theme.clicked.connect(self.toggle_theme)
+        self.btn_theme = QtWidgets.QPushButton()
+        self.logo_label = QtWidgets.QLabel()
+        self.logo_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignTop)
+        self.logo_label.setMinimumWidth(180)
+        self.logo_label.setSizePolicy(QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Fixed)
+        self._update_logo_pixmap()
 
         button_height = 30
         button_width = 110
         for button in (self.btn_connect, self.btn_disconnect, self.btn_csv_start, self.btn_csv_stop):
             button.setFixedSize(button_width, button_height)
+        self.btn_csv_settings.setFixedSize(42, button_height)
+        self.btn_theme.setFixedSize(42, button_height)
 
         self.btn_connect.clicked.connect(self.connect_stream)
         self.btn_disconnect.clicked.connect(self.disconnect_stream)
         self.btn_csv_start.clicked.connect(self.start_csv)
         self.btn_csv_stop.clicked.connect(self.stop_csv)
         self.btn_csv_settings.clicked.connect(self.open_csv_settings)
+        self.btn_theme.clicked.connect(self.toggle_theme)
 
-        row = QtWidgets.QHBoxLayout()
-        row.setSpacing(8)
-        row.addWidget(self.btn_connect)
-        row.addWidget(self.btn_disconnect)
-        row.addWidget(self.btn_csv_start)
-        row.addWidget(self.btn_csv_stop)
-        row.addWidget(self.btn_csv_settings)
-        row.addStretch(1)
-        row.addWidget(self.btn_theme)
-
-        top.addLayout(row, 0, 0, 1, 4)
+        top.addWidget(self.btn_connect)
+        top.addWidget(self.btn_disconnect)
+        top.addWidget(self.btn_csv_start)
+        top.addWidget(self.btn_csv_stop)
+        top.addWidget(self.btn_csv_settings)
+        top.addWidget(self.btn_theme)
+        top.addStretch(1)
         return top
 
-    def _build_status_bar(self) -> QtWidgets.QGridLayout:
-        info = QtWidgets.QGridLayout()
-        info.setHorizontalSpacing(16)
-        info.setVerticalSpacing(8)
+    def _update_logo_pixmap(self) -> None:
+        target_height = 46
+        pixmap = _mkp_logo_pixmap(getattr(self, "theme_name", "dark"), target_height)
+        if pixmap.isNull():
+            self.logo_label.clear()
+            self.logo_label.hide()
+            return
+
+        scaled = pixmap.scaledToHeight(target_height, QtCore.Qt.SmoothTransformation)
+        self.logo_label.setPixmap(scaled)
+        self.logo_label.show()
+
+    def _build_status_bar(self) -> QtWidgets.QHBoxLayout:
+        info = QtWidgets.QHBoxLayout()
+        info.setContentsMargins(0, 0, 0, 0)
+        info.setSpacing(10)
 
         self.status_label = QtWidgets.QLabel("disconnected")
         self.status_label.setStyleSheet("padding:4px 10px; border-radius:10px; background:#424242; color:white;")
@@ -1192,15 +1421,14 @@ class App(QtWidgets.QMainWindow):
             "}"
         )
 
-        info.addWidget(QtWidgets.QLabel("Status:"), 0, 0)
-        info.addWidget(self.status_label, 0, 1)
-        info.addWidget(QtWidgets.QLabel("Last seq:"), 0, 2)
-        info.addWidget(self.seq_label, 0, 3)
-        info.addWidget(QtWidgets.QLabel("Actual Hz:"), 0, 4)
-        info.addWidget(self.hz_label, 0, 5)
-        info.addWidget(QtWidgets.QLabel("Info / CSV:"), 0, 6)
-        info.addWidget(self.csv_label, 0, 7)
-        info.setColumnStretch(7, 1)
+        info.addWidget(QtWidgets.QLabel("Status:"))
+        info.addWidget(self.status_label)
+        info.addWidget(QtWidgets.QLabel("Last seq:"))
+        info.addWidget(self.seq_label)
+        info.addWidget(QtWidgets.QLabel("Actual Hz:"))
+        info.addWidget(self.hz_label)
+        info.addWidget(QtWidgets.QLabel("Info / CSV:"))
+        info.addWidget(self.csv_label, 1)
         return info
 
     def _build_stream_card(self) -> QtWidgets.QGroupBox:
@@ -1214,7 +1442,7 @@ class App(QtWidgets.QMainWindow):
         top.addStretch(1)
 
         self.btn_controller_settings = QtWidgets.QPushButton("⚙")
-        self.btn_controller_settings.setFixedWidth(40)
+        self.btn_controller_settings.setFixedSize(40, 30)
         self.btn_controller_settings.clicked.connect(self.open_network_settings)
         top.addWidget(self.btn_controller_settings)
         outer.addLayout(top)
@@ -1286,7 +1514,7 @@ class App(QtWidgets.QMainWindow):
         top.addStretch(1)
         if include_button:
             btn = QtWidgets.QPushButton("⚙")
-            btn.setFixedWidth(40)
+            btn.setFixedSize(40, 30)
             btn.clicked.connect(callback)
             top.addWidget(btn)
         layout.addLayout(top)
@@ -1313,11 +1541,15 @@ class App(QtWidgets.QMainWindow):
         header.addWidget(title_label)
 
         combo = QtWidgets.QComboBox()
-        combo.addItems(PLOT_FIELDS)
+        for field in PLOT_FIELDS:
+            combo.addItem(_plot_field_label(field), field)
         stored_field = self.plot1_field if index == 1 else self.plot2_field
-        combo.setCurrentText(_safe_plot_field(stored_field, default_field))
+        current_field = _safe_plot_field(stored_field, default_field)
+        current_index = combo.findData(current_field)
+        if current_index >= 0:
+            combo.setCurrentIndex(current_index)
         combo.setMaximumWidth(190)
-        combo.currentTextChanged.connect(self._on_plot_selection_changed)
+        combo.currentIndexChanged.connect(self._on_plot_selection_changed)
         combo.currentIndexChanged.connect(self.refresh_plots)
         header.addWidget(combo)
 
@@ -1338,8 +1570,8 @@ class App(QtWidgets.QMainWindow):
         return panel
 
     def _on_plot_selection_changed(self) -> None:
-        self.plot1_field = self.combo1.currentText() if hasattr(self, "combo1") else "dms_display"
-        self.plot2_field = self.combo2.currentText() if hasattr(self, "combo2") else "ain2_display"
+        self.plot1_field = self.combo1.currentData() if hasattr(self, "combo1") else "dms_display"
+        self.plot2_field = self.combo2.currentData() if hasattr(self, "combo2") else "ain2_display"
         self._save_local_settings()
 
     def toggle_theme(self) -> None:
@@ -1359,7 +1591,13 @@ class App(QtWidgets.QMainWindow):
             app.setPalette(QtGui.QPalette(self._default_palette))
             app.setStyleSheet(self._default_style_sheet)
 
-        self.btn_theme.setText("☀" if self.theme_name == "dark" else "🌙")
+        if hasattr(self, "btn_theme"):
+            is_dark = self.theme_name == "dark"
+            self.btn_theme.setText("🌙" if is_dark else "☀️")
+            self.btn_theme.setToolTip("Dark mode" if is_dark else "Light mode")
+        if hasattr(self, "logo_label"):
+            self._update_logo_pixmap()
+
         self._apply_plot_theme()
         self._apply_status_style(self.receiver.status)
         self.csv_label.setStyleSheet(
@@ -2107,23 +2345,19 @@ class App(QtWidgets.QMainWindow):
 
     def refresh_plots(self) -> None:
         samples = list(self.receiver.samples)
-        self.draw_plot(self.plot1, samples, self.combo1.currentText())
-        self.draw_plot(self.plot2, samples, self.combo2.currentText())
+        self.draw_plot(self.plot1, samples, self.combo1.currentData())
+        self.draw_plot(self.plot2, samples, self.combo2.currentData())
 
     def draw_plot(self, plot: pg.PlotWidget, samples: list[Sample], field: str) -> None:
         plot.clear()
         if not samples:
-            plot.setTitle(field)
+            plot.setTitle(_plot_field_label(field))
             return
 
         window_s = max(1.0, float(self.window_s))
 
         label_unit = self._field_value(samples[-1], field)[1]
-        pretty_name = {
-            "dms_display": "DMS",
-            "ain2_display": "Channel 2",
-            "temp_c": "Temperature",
-        }.get(field, field)
+        pretty_name = _plot_field_label(field)
         plot.setTitle(f"{pretty_name} [{label_unit}]")
         plot.setLabel("bottom", "Time relative to latest sample, s")
         plot.setLabel("left", label_unit)
@@ -2157,11 +2391,40 @@ class App(QtWidgets.QMainWindow):
 
 
 def main() -> None:
-    app = QtWidgets.QApplication([])
+    _set_windows_app_id()
+
+    theme_name = _read_saved_theme_name()
+    app = QtWidgets.QApplication(sys.argv)
+    app.setQuitOnLastWindowClosed(True)
+
+    app_icon = _load_app_icon()
+    if not app_icon.isNull():
+        app.setWindowIcon(app_icon)
+
     pg.setConfigOptions(antialias=False)
+
+    splash = _create_splash(theme_name, app_icon)
+    splash.show()
+    splash.showMessage(
+        "Preparing workspace…",
+        QtCore.Qt.AlignBottom | QtCore.Qt.AlignHCenter,
+        QtGui.QColor("#dfe6ee") if theme_name == "dark" else QtGui.QColor("#3c4954"),
+    )
+    app.processEvents()
+
     win = App()
-    win.show()
-    app.exec()
+    win.setVisible(False)
+    if hasattr(win, "apply_theme"):
+        win.apply_theme()
+
+    def _finish_startup() -> None:
+        splash.finish(win)
+        win.show()
+        win.raise_()
+        win.activateWindow()
+
+    QtCore.QTimer.singleShot(120, _finish_startup)
+    sys.exit(app.exec())
 
 
 if __name__ == "__main__":
