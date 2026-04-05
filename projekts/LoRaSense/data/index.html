@@ -109,6 +109,19 @@ button{cursor:pointer}
 .footer{width:min(100%,1160px);margin:30px auto 0;padding:18px 0 30px;border-top:1px solid var(--line);font-size:12px;color:var(--muted);display:flex;justify-content:center;gap:8px;flex-wrap:wrap;align-items:center;flex-shrink:0}
 .footer a{text-decoration:none}
 .footer a:hover{text-decoration:underline}
+
+.loading-overlay{position:fixed;inset:0;z-index:3000;display:flex;align-items:center;justify-content:center;background:var(--bg);padding:20px;transition:opacity .28s ease,visibility .28s ease}
+.loading-overlay.hidden{opacity:0;visibility:hidden;pointer-events:none}
+.loading-card{width:min(100%,520px);background:linear-gradient(180deg,var(--card),var(--card-2));border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow);padding:22px;display:flex;flex-direction:column;gap:14px}
+.loading-head{display:flex;align-items:center;gap:14px}
+.loading-head img{height:34px;width:auto;display:block}
+.loading-title{font-size:18px;font-weight:800;line-height:1.2}
+.loading-sub{font-size:13px;color:var(--muted)}
+.loading-bar{height:12px;border-radius:999px;border:1px solid var(--line);background:var(--field);overflow:hidden}
+.loading-fill{height:100%;width:0%;border-radius:999px;background:linear-gradient(90deg,var(--accent),var(--accent-2));transition:width .18s ease}
+.loading-status{font-size:13px;color:var(--muted);min-height:1.6em}
+.app-shell.booting{visibility:hidden}
+
 @media (max-width:1460px){.grid{grid-template-columns:repeat(2,minmax(270px,1fr));}}
 @media (max-width:780px){
   body{padding:8px 10px 0}
@@ -143,6 +156,22 @@ button{cursor:pointer}
 </style>
 </head>
 <body>
+
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="loading-card">
+    <div class="loading-head">
+      <img alt="MKP" src="/logo.svg"/>
+      <div>
+        <div class="loading-title">LoRaSense is starting</div>
+        <div class="loading-sub">controller reachable · config loaded · state loaded · assets ready</div>
+      </div>
+    </div>
+    <div class="loading-bar"><div class="loading-fill" id="loadingFill"></div></div>
+    <div class="loading-status" id="loadingStatus">Connecting to controller...</div>
+  </div>
+</div>
+<div class="app-shell booting" id="appShell">
+
 <header class="header">
 <a class="brand" href="https://www.marxkrontal.com/de/" rel="noopener noreferrer" target="_blank">
 <img alt="MKP" src="/logo.svg"/>
@@ -164,11 +193,16 @@ button{cursor:pointer}
 <div class="k" id="lab_time">Time</div><div class="v" id="time">--:--:--</div>
 <div class="k" id="lab_selftest">Self-test</div><div class="v"><span class="badge" id="selftest">-</span></div>
 <div class="k" id="lab_delta">Delta</div><div class="v"><span id="selftest_delta">-</span> mV</div>
+<div class="k">Measurements</div><div class="v"><span class="badge off" id="measureState">STOPPED</span></div>
+</div>
+<div class="btn-pair" style="margin-top:12px">
+<button class="btn" id="startMeasureBtn" type="button">Start measurement</button>
+<button class="btn" id="stopMeasureBtn" type="button">Stop measurement</button>
 </div>
 <div class="hr"></div>
 <div class="kv">
 <div class="k" id="lab_dms_raw">DMS raw</div><div class="v" id="dms_raw">-</div>
-<div class="k" id="lab_dms_mvv">DMS mV/V</div><div class="v" id="dms_mvv">-</div>
+<div class="k" id="lab_dms_value">DMS value</div><div class="v"><span id="dms_value">-</span> <span id="dms_value_unit">mV/V</span></div>
 <div class="k" id="lab_dms_mv">DMS est. mV</div><div class="v" id="dms_mv">-</div>
 <div class="k" id="lab_dms_actual">DMS actual</div><div class="v"><span id="dms_actual">-</span> Hz</div>
 </div>
@@ -204,6 +238,8 @@ button{cursor:pointer}
 <label class="switch"><input id="dmsOn" type="checkbox"/><span class="switch-ui"></span><span id="sw_on_off_dms">On</span></label>
 </div>
 <div class="field"><label for="dmsHz" id="lab_dms_hz">Frequency, Hz</label><select id="dmsHz"><option value="5">5</option><option value="11.25">11.25</option><option value="20">20</option><option value="22.5">22.5</option><option value="40">40</option><option value="44">44</option><option value="45">45</option><option value="82.5">82.5</option><option value="90">90</option><option value="150">150</option><option value="175">175</option><option value="180">180</option><option value="250">250</option><option value="330">330</option><option value="350">350</option><option value="600">600</option><option value="660">660</option><option value="1000">1000</option><option value="1200">1200</option><option value="2000">2000</option></select></div>
+<div class="field"><label for="dmsKFactor" id="lab_dms_kfactor">K-factor</label><input id="dmsKFactor" min="0" step="0.0001" type="number"/></div>
+<div class="note" id="dms_kfactor_note">If K-factor is 0, DMS stays in mV/V. If K-factor is greater than 0, the value is calculated in um/m.</div>
 </div>
 <div class="sensor-box">
 <div class="sensor-head">
@@ -292,6 +328,10 @@ button{cursor:pointer}
 <div class="hr"></div>
 <div aria-live="polite" class="status" id="statusMsg" role="status"></div>
 <div class="status" id="ctrlMsg"></div>
+<div class="btn-pair" style="margin-top:12px">
+<button class="btn" id="runSelftestBtn" type="button">Run self-test</button>
+<button class="btn" id="toggleOledBtn" type="button">OLED ON/OFF</button>
+</div>
 <button class="btn btn-block" id="resetBtn" type="button">Reboot</button>
 </section></div><div class="tabs-stack"><section class="card">
 <h3 id="h_lora">LoRa</h3>
@@ -389,6 +429,7 @@ button{cursor:pointer}
 <a href="mailto:evgenij.koloda@marxkrontal.com">KOE</a>
 <a href="mailto:Bernd.Schinkoethe@marxkrontal.com">SCE</a>
 </footer>
+</div>
 <script>
 var THEME_KEY = 'lora_theme';
 var LANG_KEY = 'lora_lang';
@@ -401,11 +442,16 @@ var configLoaded = false;
 var plotValues = [];
 var ain2PlotValues = [];
 var PLOT_MAX = 160;
+var bootReady = false;
+var bootProgress = 4;
+var bootChecksPassed = 0;
+var bootStage = { reachable:false, config:false, state:false, assets:false };
 window.__lastCfg = null;
 
 function $(id){ return document.getElementById(id); }
 function setText(id, value){ var el = $(id); if (el) el.textContent = value; }
 function setMsg(id, value){ var el = $(id); if (el) el.textContent = value || ''; }
+function setBadgeState(id, onText, isOn){ var el = $(id); if (!el) return; el.textContent = onText; el.className = 'badge ' + (isOn ? 'ok' : 'off'); }
 function num(v, d){ return (typeof v === 'number' && isFinite(v)) ? Number(v).toFixed(d) : '-'; }
 function intNum(v){ return (typeof v === 'number' && isFinite(v)) ? String(Math.round(v)) : '-'; }
 function fmtTime(){ var d = new Date(); var p = function(n){ return String(n).padStart(2,'0'); }; return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()); }
@@ -420,6 +466,139 @@ function setSelectValue(id, value, fallback){
   el.value = has ? val : String(fallback);
 }
 function tr(key, fallback){ var pack = I18N && I18N[currentLang]; return (pack && pack[key]) || fallback || key; }
+
+
+function setLoadingProgress(value){
+  bootProgress = Math.max(0, Math.min(100, Number(value || 0)));
+  var el = $('loadingFill');
+  if (el) el.style.width = bootProgress.toFixed(0) + '%';
+}
+function setLoadingStatus(text){
+  var el = $('loadingStatus');
+  if (el) el.textContent = text || '';
+}
+function refreshBootProgress(){
+  var score = 8;
+  if (bootStage.reachable) score = 30;
+  if (bootStage.reachable && bootStage.config) score = 55;
+  if (bootStage.reachable && bootStage.config && bootStage.state) score = 80;
+  if (bootStage.reachable && bootStage.config && bootStage.state && bootStage.assets) score = 100;
+  setLoadingProgress(score);
+}
+function updateBootText(){
+  if (!bootStage.reachable) {
+    setLoadingStatus('Connecting to controller...');
+    return;
+  }
+  if (!bootStage.config) {
+    setLoadingStatus('Controller reachable · loading config...');
+    return;
+  }
+  if (!bootStage.state) {
+    setLoadingStatus('Config loaded · loading state...');
+    return;
+  }
+  if (!bootStage.assets) {
+    setLoadingStatus('State loaded · preparing interface...');
+    return;
+  }
+  setLoadingStatus('Controller ready. Opening interface...');
+}
+function showApp(){
+  bootReady = true;
+  refreshBootProgress();
+  updateBootText();
+  var shell = $('appShell');
+  var overlay = $('loadingOverlay');
+  setTimeout(function(){
+    if (shell) shell.classList.remove('booting');
+    if (overlay) overlay.classList.add('hidden');
+  }, 180);
+}
+async function apiWithTimeout(url, opt, timeoutMs){
+  return await Promise.race([
+    api(url, opt),
+    new Promise(function(_, reject){
+      setTimeout(function(){ reject(new Error('timeout')); }, timeoutMs || 1800);
+    })
+  ]);
+}
+function markAssetsReady(){
+  if (bootStage.assets) return;
+  bootStage.assets = true;
+  refreshBootProgress();
+  updateBootText();
+}
+async function waitForControllerReady(){
+  setLoadingProgress(8);
+  updateBootText();
+  var attempts = 0;
+  while (!bootReady) {
+    attempts++;
+    try {
+      var live = await apiWithTimeout('/api/live', null, 1500);
+      bootStage.reachable = true;
+      updateLive(live);
+      refreshBootProgress();
+      updateBootText();
+    } catch (e) {
+      bootStage.reachable = false;
+      bootStage.config = false;
+      bootStage.state = false;
+      refreshBootProgress();
+      updateBootText();
+      await new Promise(function(resolve){ setTimeout(resolve, 450); });
+      continue;
+    }
+
+    if (!bootStage.config) {
+      try {
+        var cfg = await apiWithTimeout('/api/config', null, 1500);
+        fillConfig(cfg);
+        configLoaded = true;
+        bootStage.config = true;
+        refreshBootProgress();
+        updateBootText();
+      } catch (e) {
+        await new Promise(function(resolve){ setTimeout(resolve, 350); });
+        continue;
+      }
+    }
+
+    if (!bootStage.state) {
+      try {
+        var state = await apiWithTimeout('/api/state', null, 1500);
+        updateMeta(state);
+        if (!configLoaded && state.cfg) {
+          fillConfig(state.cfg);
+          configLoaded = true;
+          bootStage.config = true;
+        }
+        bootStage.state = true;
+        refreshBootProgress();
+        updateBootText();
+      } catch (e) {
+        await new Promise(function(resolve){ setTimeout(resolve, 350); });
+        continue;
+      }
+    }
+
+    if (bootStage.reachable && bootStage.config && bootStage.state) {
+      if (!bootStage.assets) {
+        await new Promise(function(resolve){ requestAnimationFrame(resolve); });
+        await new Promise(function(resolve){ setTimeout(resolve, 120); });
+        markAssetsReady();
+      }
+      if (bootChecksPassed < 2) {
+        bootChecksPassed++;
+        await new Promise(function(resolve){ setTimeout(resolve, 180); });
+        continue;
+      }
+      showApp();
+      return;
+    }
+  }
+}
 
 async function api(url, opt){
   var r = await fetch(url, opt || {});
@@ -456,10 +635,11 @@ function applyLang(){
   setText('lab_selftest', tr('selftest','Self-test'));
   setText('lab_delta', tr('delta','Delta'));
   setText('lab_dms_raw', tr('dms_raw','DMS raw'));
-  setText('lab_dms_mvv', tr('dms_mvv','DMS mV/V'));
+  setText('lab_dms_value', tr('dms_value','DMS value'));
   setText('lab_dms_mv', tr('dms_mv','DMS est. mV'));
   setText('lab_dms_actual', tr('dms_actual','DMS actual'));
-  setText('plot_caption', tr('plot_caption','Live trend: DMS mV/V'));
+  setText('plot_caption', tr('plot_caption','Live trend: DMS'));
+  updateDmsUi(window.__lastCfg || null, window.__lastLive || null);
   setText('plot_caption_ain2', tr('plot_caption_ain2','Live trend: AIN2 scaled'));
   setText('lab_ain2_raw', tr('ain2_raw','AIN2 raw'));
   setText('lab_ain2_adc', tr('ain2_adc','AIN2 ADC'));
@@ -481,6 +661,8 @@ function applyLang(){
   setText('lab_sdst', tr('sd_state','SD'));
   setText('lab_chipmac', tr('chip_mac','Chip MAC'));
   setText('lab_chipeui', tr('chip_eui','Chip DevEUI'));
+  setText('runSelftestBtn', tr('run_selftest','Run self-test'));
+  setText('toggleOledBtn', tr('toggle_oled','OLED ON/OFF'));
   setText('resetBtn', tr('reboot','Reboot'));
 
   setText('h_lora', tr('lora','LoRa'));
@@ -499,6 +681,8 @@ function applyLang(){
   setText('dms_hint', tr('dms_hint','Fast differential channel'));
   setText('sw_on_off_dms', tr('on','On'));
   setText('lab_dms_hz', tr('dms_hz','Frequency, Hz'));
+  setText('lab_dms_kfactor', tr('dms_kfactor','K-factor'));
+  setText('dms_kfactor_note', tr('dms_kfactor_note','If K-factor is 0, DMS stays in mV/V. If K-factor is greater than 0, the value is calculated in um/m.'));
   setText('tit_ain2', tr('tit_ain2','AIN2'));
   setText('ain2_hint', tr('ain2_hint','Potentiometer or 0-10 V input'));
   setText('sw_on_off_ain2', tr('on','On'));
@@ -560,6 +744,30 @@ function updateAin2Mode(){
   $('potBlock').classList.toggle('hidden', isVolt);
 }
 
+function getDmsKFactor(cfg, live){
+  if (live && live.dms_k_factor != null && isFinite(Number(live.dms_k_factor))) return Number(live.dms_k_factor);
+  if (cfg && cfg.dms_k_factor != null && isFinite(Number(cfg.dms_k_factor))) return Number(cfg.dms_k_factor);
+  var el = $('dmsKFactor');
+  if (el && isFinite(Number(el.value))) return Number(el.value);
+  return 0;
+}
+
+function updateDmsUi(cfg, live){
+  var kf = getDmsKFactor(cfg, live);
+  var useUm = kf > 0;
+  setText('lab_dms_value', useUm ? tr('dms_value_um','DMS value') : tr('dms_value_mv','DMS value'));
+  setText('dms_value_unit', useUm ? 'um/m' : 'mV/V');
+  setText('plot_caption', useUm ? tr('plot_caption_um','Live trend: DMS um/m') : tr('plot_caption_mv','Live trend: DMS mV/V'));
+}
+
+function calcDmsDisplayValue(s, cfg){
+  var raw = Number(s && s.dms_mV_per_V);
+  if (!(isFinite(raw))) return null;
+  var kf = getDmsKFactor(cfg, s);
+  if (kf > 0) return raw * 1000.0 / kf;
+  return raw;
+}
+
 function fillConfig(cfg){
   window.__lastCfg = cfg || null;
   $('devEui').value = cfg.devEui || '';
@@ -568,6 +776,7 @@ function fillConfig(cfg){
   $('minutes').value = cfg.minutes != null ? cfg.minutes : 15;
   $('dmsOn').checked = boolNum(cfg.dms_enabled);
   setSelectValue('dmsHz', cfg.dms_hz != null ? cfg.dms_hz : 2000, 2000);
+  $('dmsKFactor').value = Number(cfg.dms_k_factor != null ? cfg.dms_k_factor : 0).toFixed(4);
   $('ain2On').checked = boolNum(cfg.ain2_enabled);
   setSelectValue('ain2Hz', cfg.ain2_hz != null ? cfg.ain2_hz : 20, 20);
   $('ain2Mode').value = cfg.ain2_mode || 'pot';
@@ -581,6 +790,7 @@ function fillConfig(cfg){
   $('drMode').value = boolNum(cfg.adr) ? 'auto' : String(cfg.dr != null ? cfg.dr : 5);
   syncPreset();
   updateAin2Mode();
+  updateDmsUi(cfg, window.__lastLive || null);
   updatePerfBox(window.__lastLive || null, cfg);
 }
 
@@ -589,12 +799,16 @@ function updateLive(s){
   setText('time', fmtTime());
   $('selftest').textContent = s.selftest_ok ? tr('ok','OK') : tr('fail','FAIL');
   $('selftest').className = 'badge ' + (s.selftest_ok ? 'ok' : 'bad');
+  setBadgeState('measureState', boolNum(s.measurements_running) ? 'RUNNING' : 'STOPPED', boolNum(s.measurements_running));
   setText('selftest_delta', num(s.selftest_delta_mV, 6));
 
   setText('dms_raw', boolNum(s.dms_enabled) ? intNum(s.dms_raw) : tr('off','OFF'));
-  setText('dms_mvv', boolNum(s.dms_enabled) ? (boolNum(s.dms_valid) ? num(s.dms_mV_per_V, 6) : '-') : tr('off','OFF'));
+  var dmsDisplay = calcDmsDisplayValue(s, window.__lastCfg || null);
+  var dmsUseUm = getDmsKFactor(window.__lastCfg || null, s) > 0;
+  setText('dms_value', boolNum(s.dms_enabled) ? (boolNum(s.dms_valid) && dmsDisplay != null ? num(dmsDisplay, dmsUseUm ? 2 : 6) : '-') : tr('off','OFF'));
   setText('dms_mv', boolNum(s.dms_enabled) ? (boolNum(s.dms_valid) ? num(s.dms_mV, 6) : '-') : tr('off','OFF'));
   setText('dms_actual', boolNum(s.dms_enabled) ? num(s.dms_rate_hz_actual, 0) : tr('off','OFF'));
+  updateDmsUi(window.__lastCfg || null, s);
 
   setText('ain2_raw', boolNum(s.ain2_enabled) ? intNum(s.ain2_raw) : tr('off','OFF'));
   setText('ain2_mv', boolNum(s.ain2_enabled) ? (boolNum(s.ain2_valid) ? num(s.ain2_mV, 3) : '-') : tr('off','OFF'));
@@ -605,8 +819,13 @@ function updateLive(s){
   setText('temp', boolNum(s.temp_enabled) ? (boolNum(s.temp_valid) ? num(s.temp_C, 2) : '-') : tr('off','OFF'));
   setText('total_actual', num(s.total_rate_hz_actual, 0));
   setText('sdstate', s.sd_status || '-');
+  if ($('toggleOledBtn')) {
+    var oledActive = boolNum(s.oled_active);
+    $('toggleOledBtn').textContent = oledActive ? tr('oled_off','OLED OFF') : tr('oled_on','OLED ON');
+  }
 
-  pushPlot(boolNum(s.dms_enabled) && boolNum(s.dms_valid) ? Number(s.dms_mV_per_V) : null);
+  var dmsPlotValue = boolNum(s.dms_enabled) && boolNum(s.dms_valid) ? calcDmsDisplayValue(s, window.__lastCfg || null) : null;
+  pushPlot(dmsPlotValue);
   pushAin2Plot(boolNum(s.ain2_enabled) && boolNum(s.ain2_valid) ? Number(s.ain2_value) : null);
   updatePerfBox(s, window.__lastCfg || null);
 }
@@ -666,6 +885,7 @@ function updateMeta(s){
   setText('streamIp', ipVal || '-');
   setText('streamPort', String(c.stream_port || s.stream_port || 3333));
   setText('streamClient', (c.stream_client_connected || s.stream_client_connected) ? 'Connected' : 'Waiting');
+  setBadgeState('measureState', boolNum(s.measurements_running || c.measurements_running) ? 'RUNNING' : 'STOPPED', boolNum(s.measurements_running || c.measurements_running));
 
   updateStatusText(modeVal || 'CONFIG');
 }
@@ -903,6 +1123,32 @@ async function pollMeta(){
   metaBusy = false;
 }
 
+
+async function runSelftest(){
+  var r = await api('/api/selftest', { method:'POST' });
+  setMsg('ctrlMsg', tr('selftest_done','Self-test completed.') + ' Δ=' + (r.selftest_delta_mV != null ? num(r.selftest_delta_mV, 6) : '-'));
+  try { await loadStateOnce(); } catch (e) {}
+}
+
+async function toggleOled(){
+  var r = await api('/api/oled', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action:'toggle' }) });
+  var active = boolNum(r.active);
+  setMsg('ctrlMsg', active ? tr('oled_enabled','OLED enabled.') : tr('oled_disabled','OLED disabled.'));
+  if ($('toggleOledBtn')) $('toggleOledBtn').textContent = active ? tr('oled_off','OLED OFF') : tr('oled_on','OLED ON');
+  try { await loadStateOnce(); } catch (e) {}
+}
+
+async function setMeasurementsRunning(action){
+  var r = await api('/api/measure', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ action: action })
+  });
+  setMsg('measMsg', action === 'start' ? 'Measurement started.' : 'Measurement stopped.');
+  try { await loadStateOnce(); } catch (e) {}
+  return r;
+}
+
 async function saveLoRa(){
   var devEui = normalizeHex($('devEui').value);
   var appEui = normalizeHex($('appEui').value);
@@ -929,6 +1175,7 @@ async function saveMeas(){
   var payload = {
     dms_enabled: $('dmsOn').checked ? 1 : 0,
     dms_hz: Number($('dmsHz').value || 200),
+    dms_k_factor: Number($('dmsKFactor').value || 0),
     ain2_enabled: $('ain2On').checked ? 1 : 0,
     ain2_hz: Number($('ain2Hz').value || 1),
     ain2_mode: $('ain2Mode').value,
@@ -989,6 +1236,22 @@ $('useChipBtn').addEventListener('click', async function(){
   }
 });
 
+if ($('runSelftestBtn')) $('runSelftestBtn').addEventListener('click', async function(){
+  try { await runSelftest(); }
+  catch (e) { setMsg('ctrlMsg', tr('save_error','Save error') + ': ' + e.message); }
+});
+if ($('toggleOledBtn')) $('toggleOledBtn').addEventListener('click', async function(){
+  try { await toggleOled(); }
+  catch (e) { setMsg('ctrlMsg', tr('save_error','Save error') + ': ' + e.message); }
+});
+if ($('startMeasureBtn')) $('startMeasureBtn').addEventListener('click', async function(){
+  try { await setMeasurementsRunning('start'); }
+  catch (e) { setMsg('measMsg', tr('save_error','Save error') + ': ' + e.message); }
+});
+if ($('stopMeasureBtn')) $('stopMeasureBtn').addEventListener('click', async function(){
+  try { await setMeasurementsRunning('stop'); }
+  catch (e) { setMsg('measMsg', tr('save_error','Save error') + ': ' + e.message); }
+});
 $('resetBtn').addEventListener('click', async function(){
   try {
     await api('/api/reset', { method:'POST' });
@@ -1076,10 +1339,23 @@ async function boot(){
   applyLang();
   initTabs();
   updateAin2Mode();
-  try { await loadConfig(); } catch (e) { setMsg('loraMsg', tr('save_error','Save error') + ': ' + e.message); }
-  try { await loadStateOnce(); } catch (e) { setMsg('ctrlMsg', tr('save_error','Save error') + ': ' + e.message); }
-  setInterval(pollLive, 250);
-  setInterval(pollMeta, 5000);
+  try {
+    await waitForControllerReady();
+  } catch (e) {
+    setLoadingStatus('Still waiting for controller... retrying');
+    setTimeout(function(){ waitForControllerReady(); }, 500);
+    return;
+  }
+
+  setTimeout(function(){
+    pollLive();
+    setInterval(pollLive, 250);
+  }, 250);
+
+  setTimeout(function(){
+    pollMeta();
+    setInterval(pollMeta, 10000);
+  }, 1200);
 }
 
 boot();
