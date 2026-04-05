@@ -296,6 +296,27 @@ def _safe_plot_field(value: Any, fallback: str) -> str:
 def _plot_field_label(field: Any) -> str:
     return PLOT_FIELD_LABELS.get(str(field), str(field))
 
+def _parse_selftest_float(value: Any) -> float | None:
+    try:
+        parsed = float(str(value).strip().replace(",", "."))
+    except (TypeError, ValueError):
+        return None
+    if math.isnan(parsed) or math.isinf(parsed):
+        return None
+    return parsed
+
+
+def evaluate_selftest_status(value: Any, expected_mv_v: float = 3.51, tolerance_mv_v: float = 0.30) -> tuple[str, str]:
+    parsed = _parse_selftest_float(value)
+    if parsed is None:
+        return "Unknown", "#666666"
+    if abs(parsed) <= 0.15:
+        return "Warning: sensor may be disconnected or wired incorrectly", "#b36b00"
+    if abs(parsed - expected_mv_v) <= tolerance_mv_v:
+        return "OK: self-test passed", "#1b5e20"
+    return "Warning: sensor may be disconnected or wired incorrectly", "#b00020"
+
+
 
 def _short(text: Any, max_len: int = 14) -> str:
     value = "-" if text is None else str(text).strip()
@@ -758,6 +779,11 @@ class DmsSettingsDialog(QtWidgets.QDialog):
         self.selftest_value_label.setStyleSheet("font-family:'Courier New', monospace;")
         form.addRow("Selbsttest", self.selftest_value_label)
 
+        self.selftest_status_label = QtWidgets.QLabel()
+        self.selftest_status_label.setWordWrap(True)
+        form.addRow("Status", self.selftest_status_label)
+        self.update_selftest_status(selftest_value)
+
         if self._selftest_supported:
             self.selftest_button = QtWidgets.QPushButton("Run Selbsttest")
             form.addRow("", self.selftest_button)
@@ -766,7 +792,8 @@ class DmsSettingsDialog(QtWidgets.QDialog):
             "K-factor = 0  -> display in mV/V\n"
             "K-factor > 0 -> display in um/m\n"
             "Spike filter removes isolated jumps. 4 is a good default.\n"
-            "Selbsttest value is read from controller API."
+            "Self-test status is evaluated locally in the PC app.\n"
+            "Expected range: 3.51 ± 0.30 mV/V."
         )
         note.setStyleSheet("color:#666;")
         layout.addWidget(note)
@@ -781,6 +808,11 @@ class DmsSettingsDialog(QtWidgets.QDialog):
         self.filter_strength.setEnabled(enabled)
         self.filter_label.setEnabled(enabled)
         self.filter_reset.setEnabled(enabled)
+
+    def update_selftest_status(self, value: Any) -> None:
+        status_text, color = evaluate_selftest_status(value)
+        self.selftest_status_label.setText(status_text)
+        self.selftest_status_label.setStyleSheet(f"color:{color}; font-weight:600;")
 
     def value(self) -> DmsSettings:
         tare_enabled = self.tare_box.isChecked()
@@ -910,6 +942,22 @@ class Ain2SettingsDialog(QtWidgets.QDialog):
         buttons.accepted.connect(self._validate_and_accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+    def set_oled_state(self, active: bool | None) -> None:
+        self._oled_active = active
+        if not getattr(self, "_oled_supported", False):
+            return
+        if not hasattr(self, "oled_button"):
+            return
+        if active is True:
+            self.oled_status.setText("On")
+            self.oled_button.setText("Deactivate OLED")
+        elif active is False:
+            self.oled_status.setText("Off")
+            self.oled_button.setText("Activate OLED")
+        else:
+            self.oled_status.setText("Unknown")
+            self.oled_button.setText("Toggle OLED")
 
     def _set_row_visible(self, label: QtWidgets.QWidget | None, field: QtWidgets.QWidget, visible: bool) -> None:
         if label is not None:
@@ -1088,10 +1136,12 @@ class NetworkSettingsDialog(QtWidgets.QDialog):
             port: int,
             window_s: float,
             oled_supported: bool = False,
+            oled_active: bool | None = None,
     ) -> None:
         super().__init__(parent)
         _apply_window_icon(self)
         self._oled_supported = oled_supported
+        self._oled_active = oled_active
         self.setWindowTitle("Connection settings")
         self.setModal(True)
         self.resize(380, 210)
@@ -1120,8 +1170,12 @@ class NetworkSettingsDialog(QtWidgets.QDialog):
         action_layout.addWidget(self.restart_button)
 
         if self._oled_supported:
-            self.oled_button = QtWidgets.QPushButton("Activate OLED")
+            self.oled_status = QtWidgets.QLabel("Unknown")
+            self.oled_status.setStyleSheet("color:palette(text); font-family:'Courier New', monospace;")
+            form.addRow("OLED", self.oled_status)
+            self.oled_button = QtWidgets.QPushButton()
             action_layout.addWidget(self.oled_button)
+            self.set_oled_state(self._oled_active)
 
         layout.addWidget(action_box)
 
@@ -1137,6 +1191,22 @@ class NetworkSettingsDialog(QtWidgets.QDialog):
         buttons.accepted.connect(self._validate_and_accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+    def set_oled_state(self, active: bool | None) -> None:
+        self._oled_active = active
+        if not getattr(self, "_oled_supported", False):
+            return
+        if not hasattr(self, "oled_button"):
+            return
+        if active is True:
+            self.oled_status.setText("On")
+            self.oled_button.setText("Deactivate OLED")
+        elif active is False:
+            self.oled_status.setText("Off")
+            self.oled_button.setText("Activate OLED")
+        else:
+            self.oled_status.setText("Unknown")
+            self.oled_button.setText("Toggle OLED")
 
     def _validate_and_accept(self) -> None:
         host = self.host_edit.text().strip()
@@ -1459,13 +1529,15 @@ class App(QtWidgets.QMainWindow):
         self.stream_mode = QtWidgets.QLabel("-")
         self.stream_target = QtWidgets.QLabel("-")
         self.ctrl_firmware = QtWidgets.QLabel("-")
+        self.ctrl_oled = QtWidgets.QLabel("-")
 
-        for value_label in (self.stream_mode, self.stream_target, self.ctrl_firmware):
+        for value_label in (self.stream_mode, self.stream_target, self.ctrl_firmware, self.ctrl_oled):
             value_label.setStyleSheet("color:palette(text); font-family:'Courier New', monospace;")
 
         layout.addRow("Connection", self.stream_mode)
         layout.addRow("Target", self.stream_target)
         layout.addRow("Firmware", self.ctrl_firmware)
+        layout.addRow("OLED", self.ctrl_oled)
 
         outer.addWidget(card)
         return box
@@ -1693,6 +1765,26 @@ class App(QtWidgets.QMainWindow):
                 return bool(state.get(key))
         return False
 
+    def _extract_oled_active(self) -> bool | None:
+        state = self.remote_state if isinstance(self.remote_state, dict) else {}
+        for key in ("oled_active", "oled_enabled", "display_active", "display_enabled"):
+            if key in state:
+                value = state.get(key)
+                if value is None:
+                    continue
+                return bool(value)
+        return None
+
+    def _oled_status_text(self) -> str:
+        if not self._oled_api_supported():
+            return "Unavailable"
+        active = self._extract_oled_active()
+        if active is True:
+            return "On"
+        if active is False:
+            return "Off"
+        return "Unknown"
+
     def _update_sensor_buttons(self) -> None:
         self.dms_meta.setText(
             f"{self.dms_settings.frequency_hz} Hz | "
@@ -1724,15 +1816,22 @@ class App(QtWidgets.QMainWindow):
                 f"Restart request failed.\n\n{exc}",
             )
 
-    def activate_controller_oled(self) -> None:
+    def activate_controller_oled(self) -> bool | None:
         if not self._is_connected():
             QtWidgets.QMessageBox.information(self, "OLED activation", "Connect to controller first.")
-            return
+            return None
         try:
             response = requests.post(f"http://{self.host}/api/oled", timeout=HTTP_TIMEOUT_S)
             if response.ok:
-                self._set_info_message("OLED activation requested.")
-                return
+                self.fetch_state()
+                active = self._extract_oled_active()
+                if active is True:
+                    self._set_info_message("OLED enabled.")
+                elif active is False:
+                    self._set_info_message("OLED disabled.")
+                else:
+                    self._set_info_message("OLED state changed.")
+                return active
             raise requests.HTTPError(f"{response.status_code} {response.reason}")
         except Exception as exc:
             QtWidgets.QMessageBox.information(
@@ -1741,6 +1840,7 @@ class App(QtWidgets.QMainWindow):
                 "OLED activation API is not available yet on controller.\n\n"
                 f"{exc}",
             )
+            return None
 
     def open_dms_settings(self) -> None:
         current_value = float("nan")
@@ -1780,6 +1880,7 @@ class App(QtWidgets.QMainWindow):
                 value = self._extract_selftest_value()
                 if dialog is not None:
                     dialog.selftest_value_label.setText(value)
+                    dialog.update_selftest_status(value)
                 self._set_info_message(f"Selbsttest finished: {value}")
                 return
             raise requests.HTTPError(f"{response.status_code} {response.reason}")
@@ -1830,10 +1931,14 @@ class App(QtWidgets.QMainWindow):
             self.port,
             self.window_s,
             oled_supported=self._oled_api_supported(),
+            oled_active=self._extract_oled_active(),
         )
         dlg.restart_button.clicked.connect(self.restart_controller)
         if hasattr(dlg, "oled_button"):
-            dlg.oled_button.clicked.connect(self.activate_controller_oled)
+            def _toggle_oled_from_dialog() -> None:
+                active = self.activate_controller_oled()
+                dlg.set_oled_state(active)
+            dlg.oled_button.clicked.connect(_toggle_oled_from_dialog)
         if dlg.exec() == QtWidgets.QDialog.Accepted:
             host, port, window_s = dlg.value()
             self.host = host
@@ -2167,6 +2272,7 @@ class App(QtWidgets.QMainWindow):
                 or state.get("version")
         )
         self.ctrl_firmware.setText(_short(firmware_value))
+        self.ctrl_oled.setText(self._oled_status_text())
 
         samples = list(self.receiver.samples)
         if samples:
@@ -2190,6 +2296,7 @@ class App(QtWidgets.QMainWindow):
             self.temp_value.setText("-")
             if not self._is_connected():
                 self.ctrl_firmware.setText("-")
+                self.ctrl_oled.setText("-")
 
         self.hz_label.setText(f"{self.actual_hz():.1f}")
         self._refresh_info_label()

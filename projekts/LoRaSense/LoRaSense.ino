@@ -903,6 +903,8 @@ static void chipMac48Hex(char out[13]) {
   bytesToHex(mac, 6, out);
 }
 static String modeToString();
+static bool oledAllowedInCurrentMode() { return g_oledSupported && g_mode == RunMode::CONFIG; }
+static bool oledIsActiveNow() { return oledAllowedInCurrentMode() && g_oledEnabled; }
 static float ain2DerivedValue();
 static const char* ain2DerivedUnit();
 static void chipDevEuiHex(char out[17]) {
@@ -919,7 +921,7 @@ static void VextOFF(void) {
   digitalWrite(Vext, HIGH);
 }
 static bool oledEnsureInit() {
-  if (!g_oledSupported || !g_oledEnabled) return false;
+  if (!oledAllowedInCurrentMode() || !g_oledEnabled) return false;
   if (g_oledInitDone) return true;
   VextON();
   delay(50);
@@ -973,7 +975,7 @@ static String oledDmsString() {
   return String(dms_mV_per_V, 3) + " mV/V";
 }
 static void oledUpdateLive(bool force = false) {
-  if (!g_oledEnabled || !g_oledSupported) return;
+  if (!oledIsActiveNow()) return;
   uint32_t now = millis();
   if (!force && (uint32_t)(now - g_oledLastDrawMs) < 250UL) return;
   if (!oledEnsureInit()) return;
@@ -2618,9 +2620,9 @@ static void appendLive(JsonObject obj) {
   obj["selftest_value"] = selfTestDelta_mV;
   obj["selftest_supported"] = 1;
   obj["selftest_run_supported"] = 1;
-  obj["oled_supported"] = g_oledSupported ? 1 : 0;
-  obj["oled_activate_supported"] = g_oledSupported ? 1 : 0;
-  obj["oled_active"] = (g_oledSupported && g_oledEnabled) ? 1 : 0;
+  obj["oled_supported"] = oledAllowedInCurrentMode() ? 1 : 0;
+  obj["oled_activate_supported"] = oledAllowedInCurrentMode() ? 1 : 0;
+  obj["oled_active"] = oledIsActiveNow() ? 1 : 0;
   obj["dms_enabled"] = cfg.dmsEnabled ? 1 : 0;
   obj["dms_valid"] = dms_valid ? 1 : 0;
   obj["dms_raw"] = lastDmsRaw;
@@ -2692,9 +2694,9 @@ static void appendController(JsonObject obj) {
   obj["selftest_supported"] = 1;
   obj["selftest_run_supported"] = 1;
   obj["selftest_value"] = selfTestDelta_mV;
-  obj["oled_supported"] = g_oledSupported ? 1 : 0;
-  obj["oled_activate_supported"] = g_oledSupported ? 1 : 0;
-  obj["oled_active"] = (g_oledSupported && g_oledEnabled) ? 1 : 0;
+  obj["oled_supported"] = oledAllowedInCurrentMode() ? 1 : 0;
+  obj["oled_activate_supported"] = oledAllowedInCurrentMode() ? 1 : 0;
+  obj["oled_active"] = oledIsActiveNow() ? 1 : 0;
 }
 static void handleApiLive() {
   if (cfg.streamModeEnabled) {
@@ -2721,9 +2723,9 @@ static void handleApiState() {
     doc["selftest_supported"] = 1;
     doc["selftest_run_supported"] = 1;
     doc["selftest_value"] = selfTestDelta_mV;
-    doc["oled_supported"] = g_oledSupported ? 1 : 0;
-    doc["oled_activate_supported"] = g_oledSupported ? 1 : 0;
-  doc["oled_active"] = (g_oledSupported && g_oledEnabled) ? 1 : 0;
+    doc["oled_supported"] = oledAllowedInCurrentMode() ? 1 : 0;
+    doc["oled_activate_supported"] = oledAllowedInCurrentMode() ? 1 : 0;
+  doc["oled_active"] = oledIsActiveNow() ? 1 : 0;
     appendConfig(doc["cfg"].to<JsonObject>());
     appendController(doc["controller"].to<JsonObject>());
     String out;
@@ -2742,9 +2744,9 @@ static void handleApiState() {
   doc["selftest_supported"] = 1;
   doc["selftest_run_supported"] = 1;
   doc["selftest_value"] = selfTestDelta_mV;
-  doc["oled_supported"] = g_oledSupported ? 1 : 0;
-  doc["oled_activate_supported"] = g_oledSupported ? 1 : 0;
-  doc["oled_active"] = (g_oledSupported && g_oledEnabled) ? 1 : 0;
+  doc["oled_supported"] = oledAllowedInCurrentMode() ? 1 : 0;
+  doc["oled_activate_supported"] = oledAllowedInCurrentMode() ? 1 : 0;
+  doc["oled_active"] = oledIsActiveNow() ? 1 : 0;
   doc["lora_enabled"] = g_loraEnabled ? 1 : 0;
   doc["lora_init_done"] = g_loraInitDone ? 1 : 0;
   appendLive(doc.to<JsonObject>());
@@ -2845,21 +2847,28 @@ static void handleApiSelftestPost() {
 }
 static void handleApiOledPost() {
   StaticJsonDocument<384> req;
-  bool wantEnabled = g_oledEnabled;
+  bool wantEnabled = !g_oledEnabled;  // default behavior: toggle on every POST
   if (server.hasArg("plain")) {
-    DeserializationError err = deserializeJson(req, server.arg("plain"));
-    if (!err) {
-      if (!req["enabled"].isNull()) wantEnabled = req["enabled"].as<int>() != 0;
-      else if (!req["on"].isNull()) wantEnabled = req["on"].as<int>() != 0;
-      else if (!req["active"].isNull()) wantEnabled = req["active"].as<int>() != 0;
-      else if (!req["action"].isNull()) {
-        const char* action = req["action"].as<const char*>();
-        if (action && strcmp(action, "toggle") == 0) wantEnabled = !g_oledEnabled;
+    String body = server.arg("plain");
+    if (body.length() > 0) {
+      DeserializationError err = deserializeJson(req, body);
+      if (!err) {
+        if (!req["enabled"].isNull()) wantEnabled = req["enabled"].as<int>() != 0;
+        else if (!req["on"].isNull()) wantEnabled = req["on"].as<int>() != 0;
+        else if (!req["active"].isNull()) wantEnabled = req["active"].as<int>() != 0;
+        else if (!req["action"].isNull()) {
+          const char* action = req["action"].as<const char*>();
+          if (action && (strcmp(action, "toggle") == 0)) wantEnabled = !g_oledEnabled;
+          else if (action && (strcmp(action, "on") == 0 || strcmp(action, "enable") == 0 || strcmp(action, "show") == 0)) wantEnabled = true;
+          else if (action && (strcmp(action, "off") == 0 || strcmp(action, "disable") == 0 || strcmp(action, "hide") == 0)) wantEnabled = false;
+        }
       }
     }
   }
   g_oledEnabled = wantEnabled;
-  if (g_oledEnabled) {
+  if (!oledAllowedInCurrentMode()) {
+    oledSleep();
+  } else if (g_oledEnabled) {
     oledEnsureInit();
     oledUpdateLive(true);
   } else {
@@ -2868,8 +2877,9 @@ static void handleApiOledPost() {
   saveCfg();
   StaticJsonDocument<256> doc;
   doc["ok"] = true;
-  doc["supported"] = g_oledSupported ? 1 : 0;
-  doc["active"] = (g_oledSupported && g_oledEnabled) ? 1 : 0;
+  doc["supported"] = oledAllowedInCurrentMode() ? 1 : 0;
+  doc["enabled"] = g_oledEnabled ? 1 : 0;
+  doc["active"] = oledIsActiveNow() ? 1 : 0;
   String out;
   serializeJson(doc, out);
   server.send(200, "application/json", out);
@@ -3094,8 +3104,8 @@ void setup() {
   g_spiBusMutex = xSemaphoreCreateMutex();
   loadCfg();
   applyLoraConfig();
-  if (!g_oledEnabled) oledSleep();
   g_mode = isApModeRequested() ? RunMode::CONFIG : RunMode::FIELD;
+  if (!oledIsActiveNow()) oledSleep();
   if (g_mode == RunMode::CONFIG) {
     startApAndWeb();
     g_loraEnabled = false;
@@ -3109,9 +3119,7 @@ void setup() {
   runSelfTest();
   if (cfg.dmsEnabled) restoreDmsRunMode();
   if (g_mode == RunMode::FIELD) {
-    oledShowBootLogo();
-    delay(1200);
-    oledShowBanner("FIELD MODE", String("DevEUI ") + String(cfg.devEui));
+    oledSleep();
   }
   last_dms_read_us = micros();
   last_ain2_read_us = micros();
