@@ -8,6 +8,10 @@
 #include <ArduinoJson.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
+#include <Wire.h>
+#include "HT_SSD1306Wire.h"
+#include "logoMKP.h"
+#include "HT_DisplayFonts.h"
 #include <ctype.h>
 #include <math.h>
 #include "LoRaWan_APP.h"
@@ -48,10 +52,17 @@ static constexpr size_t DEV_EUI_HEX_LEN = 16;
 static constexpr size_t APP_EUI_HEX_LEN = 16;
 static constexpr size_t APP_KEY_HEX_LEN = 32;
 static constexpr size_t LOG_BASENAME_LEN = 24;
+static constexpr size_t AIN2_VOLT_DISPLAY_LEN = 12;
+static constexpr size_t AIN2_SCALING_UNIT_LEN = 12;
 static WebServer server(80);
 static Preferences prefs;
 static OneWire oneWire(PIN_DS18B20);
 static DallasTemperature dsSensor(&oneWire);
+static SSD1306Wire OLED_Display(0x3c, 500000, SDA_OLED, SCL_OLED, GEOMETRY_128_64, RST_OLED);
+static bool g_oledSupported = true;
+static bool g_oledEnabled = true;
+static bool g_oledInitDone = false;
+static uint32_t g_oledLastDrawMs = 0;
 enum class RunMode : uint8_t { FIELD = 0, CONFIG = 1 };
 static RunMode g_mode = RunMode::FIELD;
 static bool g_loraEnabled = false;
@@ -97,12 +108,17 @@ struct Cfg {
   uint8_t dr;
   bool dmsEnabled;
   float dmsHz;
+  float dmsKFactor;
   bool ain2Enabled;
   float ain2Hz;
   uint8_t ain2Mode;
   float ain2LengthMm;
   float ain2AdcFullscaleV;
   float ain2InputFullscaleV;
+  char ain2VoltDisplay[AIN2_VOLT_DISPLAY_LEN + 1];
+  char ain2ScalingUnit[AIN2_SCALING_UNIT_LEN + 1];
+  float ain2ScaleMin;
+  float ain2ScaleMax;
   bool tempEnabled;
   bool sdLogEnabled;
   bool streamModeEnabled;
@@ -118,11 +134,16 @@ static Cfg cfg = {
   5,
   true,
   40.0f,
+  0.0f,
   true,
   1.0f,
   AIN2_MODE_POT,
   10.0f,
   3.123f,
+  10.0f,
+  "volts",
+  "mm",
+  0.0f,
   10.0f,
   true,
   false,
@@ -778,6 +799,26 @@ static void sanitizeFileStem(char* dst, size_t dstLen, const char* src) {
   }
   dst[j] = '\0';
 }
+static void sanitizeLowerToken(char* dst, size_t dstLen, const char* src, const char* fallback) {
+  if (dstLen == 0) return;
+  size_t j = 0;
+  for (size_t i = 0; src && src[i] != '\0'; ++i) {
+    unsigned char c = (unsigned char)src[i];
+    if (isspace(c)) continue;
+    if (j + 1 < dstLen) dst[j++] = (char)tolower(c);
+  }
+  dst[j] = '\0';
+  if (j == 0 && fallback) strlcpy(dst, fallback, dstLen);
+}
+static bool strEqIgnoreCase(const char* a, const char* b) {
+  if (!a || !b) return false;
+  while (*a && *b) {
+    if (tolower((unsigned char)*a) != tolower((unsigned char)*b)) return false;
+    ++a;
+    ++b;
+  }
+  return *a == '\0' && *b == '\0';
+}
 static bool isExactHex(const char* s, size_t len) {
   if (!s || strlen(s) != len) return false;
   for (size_t i = 0; i < len; ++i) {
@@ -861,10 +902,103 @@ static void chipMac48Hex(char out[13]) {
   getChipMac48(mac);
   bytesToHex(mac, 6, out);
 }
+static String modeToString();
+static float ain2DerivedValue();
+static const char* ain2DerivedUnit();
 static void chipDevEuiHex(char out[17]) {
   uint8_t eui[8];
   makeChipDevEui(eui);
   bytesToHex(eui, 8, out);
+}
+static void VextON(void) {
+  pinMode(Vext, OUTPUT);
+  digitalWrite(Vext, LOW);
+}
+static void VextOFF(void) {
+  pinMode(Vext, OUTPUT);
+  digitalWrite(Vext, HIGH);
+}
+static bool oledEnsureInit() {
+  if (!g_oledSupported || !g_oledEnabled) return false;
+  if (g_oledInitDone) return true;
+  VextON();
+  delay(50);
+  Wire.begin(SDA_OLED, SCL_OLED);
+  OLED_Display.init();
+  OLED_Display.clear();
+  OLED_Display.display();
+  g_oledInitDone = true;
+  return true;
+}
+static void oledSleep() {
+  if (!g_oledSupported) return;
+  if (g_oledInitDone) {
+    OLED_Display.clear();
+    OLED_Display.display();
+  }
+  VextOFF();
+  g_oledInitDone = false;
+}
+static void oledShowBootLogo() {
+  if (!oledEnsureInit()) return;
+  OLED_Display.clear();
+  OLED_Display.drawXbm(0, 10, logoMKP_width, logoMKP_height, (const unsigned char*)logoMKP_bits);
+  OLED_Display.setFont(DejaVu_Serif_8);
+  OLED_Display.setTextAlignment(TEXT_ALIGN_LEFT);
+  OLED_Display.drawString(0, 50, "MARX KRONTAL PARTNER");
+  OLED_Display.display();
+}
+static void oledShowBanner(const String& l1, const String& l2) {
+  if (!oledEnsureInit()) return;
+  OLED_Display.clear();
+  OLED_Display.setFont(ArialMT_Plain_10);
+  OLED_Display.setTextAlignment(TEXT_ALIGN_LEFT);
+  OLED_Display.drawString(0, 2, l1);
+  OLED_Display.drawString(0, 20, l2);
+  OLED_Display.display();
+}
+static String oledAin2String() {
+  if (!cfg.ain2Enabled) return String("OFF");
+  if (!ain2_valid) return String("--");
+  return String(ain2DerivedValue(), 2) + " " + String(ain2DerivedUnit());
+}
+static String oledTempString() {
+  if (!cfg.tempEnabled) return String("OFF");
+  if (!temp_valid) return String("--");
+  return String(ds_temp_c, 2) + " C";
+}
+static String oledDmsString() {
+  if (!cfg.dmsEnabled) return String("OFF");
+  if (!dms_valid) return String("--");
+  return String(dms_mV_per_V, 3) + " mV/V";
+}
+static void oledUpdateLive(bool force = false) {
+  if (!g_oledEnabled || !g_oledSupported) return;
+  uint32_t now = millis();
+  if (!force && (uint32_t)(now - g_oledLastDrawMs) < 250UL) return;
+  if (!oledEnsureInit()) return;
+  OLED_Display.clear();
+  OLED_Display.setFont(ArialMT_Plain_10);
+  OLED_Display.setTextAlignment(TEXT_ALIGN_CENTER);
+  OLED_Display.drawString(64, 0, String("LoRaSense ") + modeToString());
+  OLED_Display.setTextAlignment(TEXT_ALIGN_LEFT);
+  OLED_Display.drawString(0, 12, "DMS");
+  OLED_Display.setTextAlignment(TEXT_ALIGN_RIGHT);
+  OLED_Display.drawString(128, 12, oledDmsString());
+  OLED_Display.setTextAlignment(TEXT_ALIGN_LEFT);
+  OLED_Display.drawString(0, 24, "AIN2");
+  OLED_Display.setTextAlignment(TEXT_ALIGN_RIGHT);
+  OLED_Display.drawString(128, 24, oledAin2String());
+  OLED_Display.setTextAlignment(TEXT_ALIGN_LEFT);
+  OLED_Display.drawString(0, 36, "Temp");
+  OLED_Display.setTextAlignment(TEXT_ALIGN_RIGHT);
+  OLED_Display.drawString(128, 36, oledTempString());
+  OLED_Display.setTextAlignment(TEXT_ALIGN_LEFT);
+  OLED_Display.drawString(0, 48, "AP");
+  OLED_Display.setTextAlignment(TEXT_ALIGN_RIGHT);
+  OLED_Display.drawString(128, 48, (g_mode == RunMode::CONFIG) ? g_apIp.toString() : String("FIELD"));
+  OLED_Display.display();
+  g_oledLastDrawMs = now;
 }
 static void normalizeCfg(Cfg& c) {
   copyUpperNoSpace(c.devEui, sizeof(c.devEui), c.devEui);
@@ -875,11 +1009,20 @@ static void normalizeCfg(Cfg& c) {
   if (c.intervalMin > 1440) c.intervalMin = 1440;
   if (c.dr > 5) c.dr = 5;
   c.dmsHz = clampf(c.dmsHz, DMS_MIN_HZ, DMS_MAX_HZ);
+  if (!(c.dmsKFactor >= 0.0f)) c.dmsKFactor = 0.0f;
   c.ain2Hz = clampf(c.ain2Hz, AIN2_MIN_HZ, AIN2_MAX_HZ);
   if (c.ain2Mode != AIN2_MODE_POT && c.ain2Mode != AIN2_MODE_VOLT) c.ain2Mode = AIN2_MODE_POT;
   if (!(c.ain2LengthMm > 0.0f)) c.ain2LengthMm = 10.0f;
   if (!(c.ain2AdcFullscaleV > 0.05f)) c.ain2AdcFullscaleV = 3.123f;
   if (!(c.ain2InputFullscaleV > 0.05f)) c.ain2InputFullscaleV = 10.0f;
+  sanitizeLowerToken(c.ain2VoltDisplay, sizeof(c.ain2VoltDisplay), c.ain2VoltDisplay, "volts");
+  if (!strEqIgnoreCase(c.ain2VoltDisplay, "volts") && !strEqIgnoreCase(c.ain2VoltDisplay, "scaled")) {
+    strlcpy(c.ain2VoltDisplay, "volts", sizeof(c.ain2VoltDisplay));
+  }
+  sanitizeLowerToken(c.ain2ScalingUnit, sizeof(c.ain2ScalingUnit), c.ain2ScalingUnit, "mm");
+  if (strlen(c.ain2ScalingUnit) == 0) strlcpy(c.ain2ScalingUnit, "mm", sizeof(c.ain2ScalingUnit));
+  if (!isfinite(c.ain2ScaleMin)) c.ain2ScaleMin = 0.0f;
+  if (!isfinite(c.ain2ScaleMax)) c.ain2ScaleMax = 10.0f;
   if (c.logRotateKB < 64) c.logRotateKB = 64;
   if (c.logRotateKB > 1024UL * 1024UL) c.logRotateKB = 1024UL * 1024UL;
   if (c.streamModeEnabled) c.sdLogEnabled = false;
@@ -928,21 +1071,29 @@ static void loadCfg() {
   uint32_t oldAin2Per = prefs.getUInt("aper", hzToPeriodMsClamped(defaults.ain2Hz, 1, 600000UL));
   cfg.dmsEnabled = prefs.getBool("dmson", defaults.dmsEnabled);
   cfg.dmsHz = prefs.getFloat("dmsHz", oldDmsPerUs ? periodUsToHz(oldDmsPerUs) : periodMsToHz(oldDmsPer));
+  cfg.dmsKFactor = prefs.getFloat("dmsKFac", defaults.dmsKFactor);
   cfg.ain2Enabled = prefs.getBool("a2on", defaults.ain2Enabled);
   cfg.ain2Hz = prefs.getFloat("a2Hz", oldAin2PerUs ? periodUsToHz(oldAin2PerUs) : periodMsToHz(oldAin2Per));
   cfg.ain2Mode = prefs.getUChar("a2mode", defaults.ain2Mode);
   cfg.ain2LengthMm = prefs.getFloat("a2len", defaults.ain2LengthMm);
   cfg.ain2AdcFullscaleV = prefs.getFloat("a2adcfs", defaults.ain2AdcFullscaleV);
   cfg.ain2InputFullscaleV = prefs.getFloat("a2infs", defaults.ain2InputFullscaleV);
+  String a2vdisp = prefs.getString("a2vdisp", defaults.ain2VoltDisplay);
+  String a2unit = prefs.getString("a2unit", defaults.ain2ScalingUnit);
+  cfg.ain2ScaleMin = prefs.getFloat("a2smin", defaults.ain2ScaleMin);
+  cfg.ain2ScaleMax = prefs.getFloat("a2smax", defaults.ain2ScaleMax);
   cfg.tempEnabled = prefs.getBool("tmpon", defaults.tempEnabled);
   cfg.sdLogEnabled = prefs.getBool("sdon", defaults.sdLogEnabled);
   cfg.streamModeEnabled = prefs.getBool("streamon", defaults.streamModeEnabled);
   String base = prefs.getString("sdbase", defaults.logBaseName);
   cfg.logRotateKB = prefs.getUInt("sdkb", defaults.logRotateKB);
+  g_oledEnabled = prefs.getBool("oledon", true);
   prefs.end();
   strlcpy(cfg.devEui, dE.c_str(), sizeof(cfg.devEui));
   strlcpy(cfg.appEui, aE.c_str(), sizeof(cfg.appEui));
   strlcpy(cfg.appKey, aK.c_str(), sizeof(cfg.appKey));
+  strlcpy(cfg.ain2VoltDisplay, a2vdisp.c_str(), sizeof(cfg.ain2VoltDisplay));
+  strlcpy(cfg.ain2ScalingUnit, a2unit.c_str(), sizeof(cfg.ain2ScalingUnit));
   strlcpy(cfg.logBaseName, base.c_str(), sizeof(cfg.logBaseName));
   normalizeCfg(cfg);
   String err;
@@ -964,6 +1115,7 @@ static void saveCfg() {
   prefs.putUChar("dr", cfg.dr);
   prefs.putBool("dmson", cfg.dmsEnabled);
   prefs.putFloat("dmsHz", cfg.dmsHz);
+  prefs.putFloat("dmsKFac", cfg.dmsKFactor);
   prefs.putUInt("dmsper", hzToPeriodMsClamped(cfg.dmsHz, 1, 600000UL));
   prefs.putUInt("dmsperus", hzToPeriodUsClamped(cfg.dmsHz, 500, 600000000UL));
   prefs.putBool("a2on", cfg.ain2Enabled);
@@ -974,11 +1126,16 @@ static void saveCfg() {
   prefs.putFloat("a2len", cfg.ain2LengthMm);
   prefs.putFloat("a2adcfs", cfg.ain2AdcFullscaleV);
   prefs.putFloat("a2infs", cfg.ain2InputFullscaleV);
+  prefs.putString("a2vdisp", cfg.ain2VoltDisplay);
+  prefs.putString("a2unit", cfg.ain2ScalingUnit);
+  prefs.putFloat("a2smin", cfg.ain2ScaleMin);
+  prefs.putFloat("a2smax", cfg.ain2ScaleMax);
   prefs.putBool("tmpon", cfg.tempEnabled);
   prefs.putBool("sdon", cfg.sdLogEnabled);
   prefs.putBool("streamon", cfg.streamModeEnabled);
   prefs.putString("sdbase", cfg.logBaseName);
   prefs.putUInt("sdkb", cfg.logRotateKB);
+  prefs.putBool("oledon", g_oledEnabled);
   prefs.end();
 }
 static void applyLoraConfig() {
@@ -1399,7 +1556,9 @@ static void sensorLoopAp() {
     captureStreamSample(g_lastSampleSeq, now, nowUs);
     captureLogSample(now);
   }
+  oledUpdateLive(false);
 }
+
 static void sensorTask(void* /*arg*/) {
   // Give Wi-Fi / system tasks time to settle after boot.
   vTaskDelay(pdMS_TO_TICKS(50));
@@ -2433,12 +2592,17 @@ static void appendConfig(JsonObject obj) {
   obj["dr"] = cfg.dr;
   obj["dms_enabled"] = cfg.dmsEnabled ? 1 : 0;
   obj["dms_hz"] = cfg.dmsHz;
+  obj["dms_k_factor"] = cfg.dmsKFactor;
   obj["ain2_enabled"] = cfg.ain2Enabled ? 1 : 0;
   obj["ain2_hz"] = cfg.ain2Hz;
   obj["ain2_mode"] = ain2ModeName();
   obj["ain2_length_mm"] = cfg.ain2LengthMm;
   obj["ain2_adc_fullscale_v"] = cfg.ain2AdcFullscaleV;
   obj["ain2_input_fullscale_v"] = cfg.ain2InputFullscaleV;
+  obj["ain2_volt_display"] = cfg.ain2VoltDisplay;
+  obj["ain2_scaling_unit"] = cfg.ain2ScalingUnit;
+  obj["ain2_scale_min"] = cfg.ain2ScaleMin;
+  obj["ain2_scale_max"] = cfg.ain2ScaleMax;
   obj["temp_enabled"] = cfg.tempEnabled ? 1 : 0;
   obj["temp_hz"] = TEMP_FIXED_HZ;
   obj["sd_log_enabled"] = cfg.sdLogEnabled ? 1 : 0;
@@ -2451,6 +2615,12 @@ static void appendConfig(JsonObject obj) {
 static void appendLive(JsonObject obj) {
   obj["selftest_ok"] = selfTestOk ? 1 : 0;
   obj["selftest_delta_mV"] = selfTestDelta_mV;
+  obj["selftest_value"] = selfTestDelta_mV;
+  obj["selftest_supported"] = 1;
+  obj["selftest_run_supported"] = 1;
+  obj["oled_supported"] = g_oledSupported ? 1 : 0;
+  obj["oled_activate_supported"] = g_oledSupported ? 1 : 0;
+  obj["oled_active"] = (g_oledSupported && g_oledEnabled) ? 1 : 0;
   obj["dms_enabled"] = cfg.dmsEnabled ? 1 : 0;
   obj["dms_valid"] = dms_valid ? 1 : 0;
   obj["dms_raw"] = lastDmsRaw;
@@ -2519,6 +2689,12 @@ static void appendController(JsonObject obj) {
   obj["stream_dropped"] = g_streamDropped;
   obj["stream_buffered"] = g_streamBufCount;
   obj["stream_buffered_max"] = g_streamBufMax;
+  obj["selftest_supported"] = 1;
+  obj["selftest_run_supported"] = 1;
+  obj["selftest_value"] = selfTestDelta_mV;
+  obj["oled_supported"] = g_oledSupported ? 1 : 0;
+  obj["oled_activate_supported"] = g_oledSupported ? 1 : 0;
+  obj["oled_active"] = (g_oledSupported && g_oledEnabled) ? 1 : 0;
 }
 static void handleApiLive() {
   if (cfg.streamModeEnabled) {
@@ -2542,6 +2718,12 @@ static void handleApiState() {
     doc["ip"] = (g_mode == RunMode::CONFIG) ? g_apIp.toString() : String("-");
     doc["uptime_s"] = millis() / 1000UL;
     doc["heap_free"] = ESP.getFreeHeap();
+    doc["selftest_supported"] = 1;
+    doc["selftest_run_supported"] = 1;
+    doc["selftest_value"] = selfTestDelta_mV;
+    doc["oled_supported"] = g_oledSupported ? 1 : 0;
+    doc["oled_activate_supported"] = g_oledSupported ? 1 : 0;
+  doc["oled_active"] = (g_oledSupported && g_oledEnabled) ? 1 : 0;
     appendConfig(doc["cfg"].to<JsonObject>());
     appendController(doc["controller"].to<JsonObject>());
     String out;
@@ -2557,6 +2739,12 @@ static void handleApiState() {
   doc["ip"] = (g_mode == RunMode::CONFIG) ? g_apIp.toString() : String("-");
   doc["uptime_s"] = millis() / 1000UL;
   doc["heap_free"] = ESP.getFreeHeap();
+  doc["selftest_supported"] = 1;
+  doc["selftest_run_supported"] = 1;
+  doc["selftest_value"] = selfTestDelta_mV;
+  doc["oled_supported"] = g_oledSupported ? 1 : 0;
+  doc["oled_activate_supported"] = g_oledSupported ? 1 : 0;
+  doc["oled_active"] = (g_oledSupported && g_oledEnabled) ? 1 : 0;
   doc["lora_enabled"] = g_loraEnabled ? 1 : 0;
   doc["lora_init_done"] = g_loraInitDone ? 1 : 0;
   appendLive(doc.to<JsonObject>());
@@ -2593,6 +2781,7 @@ static void handleApiConfigPost() {
   if (!doc["dr"].isNull()) next.dr = doc["dr"].as<uint8_t>();
   if (!doc["dms_enabled"].isNull()) next.dmsEnabled = doc["dms_enabled"].as<int>() != 0;
   if (!doc["dms_hz"].isNull()) next.dmsHz = doc["dms_hz"].as<float>();
+  if (!doc["dms_k_factor"].isNull()) next.dmsKFactor = doc["dms_k_factor"].as<float>();
   if (!doc["ain2_enabled"].isNull()) next.ain2Enabled = doc["ain2_enabled"].as<int>() != 0;
   if (!doc["ain2_hz"].isNull()) next.ain2Hz = doc["ain2_hz"].as<float>();
   if (!doc["ain2_mode"].isNull()) {
@@ -2602,6 +2791,16 @@ static void handleApiConfigPost() {
   if (!doc["ain2_length_mm"].isNull()) next.ain2LengthMm = doc["ain2_length_mm"].as<float>();
   if (!doc["ain2_adc_fullscale_v"].isNull()) next.ain2AdcFullscaleV = doc["ain2_adc_fullscale_v"].as<float>();
   if (!doc["ain2_input_fullscale_v"].isNull()) next.ain2InputFullscaleV = doc["ain2_input_fullscale_v"].as<float>();
+  if (!doc["ain2_volt_display"].isNull()) {
+    const char* s = doc["ain2_volt_display"].as<const char*>();
+    if (s) strlcpy(next.ain2VoltDisplay, s, sizeof(next.ain2VoltDisplay));
+  }
+  if (!doc["ain2_scaling_unit"].isNull()) {
+    const char* s = doc["ain2_scaling_unit"].as<const char*>();
+    if (s) strlcpy(next.ain2ScalingUnit, s, sizeof(next.ain2ScalingUnit));
+  }
+  if (!doc["ain2_scale_min"].isNull()) next.ain2ScaleMin = doc["ain2_scale_min"].as<float>();
+  if (!doc["ain2_scale_max"].isNull()) next.ain2ScaleMax = doc["ain2_scale_max"].as<float>();
   if (!doc["temp_enabled"].isNull()) next.tempEnabled = doc["temp_enabled"].as<int>() != 0;
   if (!doc["sd_log_enabled"].isNull()) next.sdLogEnabled = doc["sd_log_enabled"].as<int>() != 0;
   if (!doc["stream_mode_enabled"].isNull()) next.streamModeEnabled = doc["stream_mode_enabled"].as<int>() != 0;
@@ -2630,6 +2829,49 @@ static void handleApiConfigPost() {
   appendConfig(resp["cfg"].to<JsonObject>());
   String out;
   serializeJson(resp, out);
+  server.send(200, "application/json", out);
+}
+static void handleApiSelftestPost() {
+  bool resultOk = runSelfTest();
+  StaticJsonDocument<512> doc;
+  doc["ok"] = true;
+  doc["result_ok"] = resultOk ? 1 : 0;
+  doc["selftest_ok"] = selfTestOk ? 1 : 0;
+  doc["selftest_value"] = selfTestDelta_mV;
+  doc["selftest_delta_mV"] = selfTestDelta_mV;
+  String out;
+  serializeJson(doc, out);
+  server.send(200, "application/json", out);
+}
+static void handleApiOledPost() {
+  StaticJsonDocument<384> req;
+  bool wantEnabled = g_oledEnabled;
+  if (server.hasArg("plain")) {
+    DeserializationError err = deserializeJson(req, server.arg("plain"));
+    if (!err) {
+      if (!req["enabled"].isNull()) wantEnabled = req["enabled"].as<int>() != 0;
+      else if (!req["on"].isNull()) wantEnabled = req["on"].as<int>() != 0;
+      else if (!req["active"].isNull()) wantEnabled = req["active"].as<int>() != 0;
+      else if (!req["action"].isNull()) {
+        const char* action = req["action"].as<const char*>();
+        if (action && strcmp(action, "toggle") == 0) wantEnabled = !g_oledEnabled;
+      }
+    }
+  }
+  g_oledEnabled = wantEnabled;
+  if (g_oledEnabled) {
+    oledEnsureInit();
+    oledUpdateLive(true);
+  } else {
+    oledSleep();
+  }
+  saveCfg();
+  StaticJsonDocument<256> doc;
+  doc["ok"] = true;
+  doc["supported"] = g_oledSupported ? 1 : 0;
+  doc["active"] = (g_oledSupported && g_oledEnabled) ? 1 : 0;
+  String out;
+  serializeJson(doc, out);
   server.send(200, "application/json", out);
 }
 static void handleApiReset() {
@@ -2764,6 +3006,8 @@ static void startApAndWeb() {
   server.on("/api/state", HTTP_GET, handleApiState);
   server.on("/api/config", HTTP_GET, handleApiConfigGet);
   server.on("/api/config", HTTP_POST, handleApiConfigPost);
+  server.on("/api/selftest", HTTP_POST, handleApiSelftestPost);
+  server.on("/api/oled", HTTP_POST, handleApiOledPost);
   server.on("/api/reset", HTTP_POST, handleApiReset);
   server.on("/api/deveui", HTTP_GET, handleApiDevEuiGet);
   server.on("/api/deveui", HTTP_POST, handleApiDevEuiPost);
@@ -2822,6 +3066,7 @@ static void loraLoop() {
     case DEVICE_STATE_SEND:
       Serial.println("[LORA] SEND");
       captureFieldSnapshot();
+      oledUpdateLive(true);
       prepareTxFrame(appPort);
       g_radioQuietUntilMs = millis() + 3000UL;
       LoRaWAN.send();
@@ -2849,16 +3094,25 @@ void setup() {
   g_spiBusMutex = xSemaphoreCreateMutex();
   loadCfg();
   applyLoraConfig();
+  if (!g_oledEnabled) oledSleep();
   g_mode = isApModeRequested() ? RunMode::CONFIG : RunMode::FIELD;
   if (g_mode == RunMode::CONFIG) {
     startApAndWeb();
     g_loraEnabled = false;
     g_sdStatus = cfg.sdLogEnabled ? g_sdStatus : "disabled";
+    oledShowBootLogo();
+    delay(1500);
+    oledShowBanner("CONFIG MODE", g_apSsid);
   }
   adsInit();
   dsInit();
   runSelfTest();
   if (cfg.dmsEnabled) restoreDmsRunMode();
+  if (g_mode == RunMode::FIELD) {
+    oledShowBootLogo();
+    delay(1200);
+    oledShowBanner("FIELD MODE", String("DevEUI ") + String(cfg.devEui));
+  }
   last_dms_read_us = micros();
   last_ain2_read_us = micros();
   Serial.print("FW ");
@@ -2892,6 +3146,7 @@ void setup() {
     xTaskCreatePinnedToCore(sensorTask, "sensorTask", 8192, nullptr, 1, &g_sensorTaskHandle, 1);
     xTaskCreatePinnedToCore(sdTask, "sdTask", 8192, nullptr, 1, &g_sdTaskHandle, 1);
     xTaskCreatePinnedToCore(streamTask, "streamTask", 6144, nullptr, 1, &g_streamTaskHandle, 0);
+    oledUpdateLive(true);
   }
 }
 void loop() {
@@ -2902,4 +3157,4 @@ void loop() {
     loraLoop();
     delay(2);
   }
-}
+}//TESTMARK
