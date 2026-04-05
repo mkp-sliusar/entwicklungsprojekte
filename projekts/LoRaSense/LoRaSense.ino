@@ -3012,6 +3012,10 @@ static void startApAndWeb() {
   server.on("/logo.svg", HTTP_GET, []() {
     if (!serveFile("/logo.svg", "image/svg+xml")) server.send(404, "text/plain", "not found");
   });
+
+  server.on("/lorasense_qr.png", HTTP_GET, []() {
+    if (!serveFile("/lorasense_qr.png", "image/png")) server.send(404, "text/plain", "not found");
+  });
   server.on("/api/live", HTTP_GET, handleApiLive);
   server.on("/api/state", HTTP_GET, handleApiState);
   server.on("/api/config", HTTP_GET, handleApiConfigGet);
