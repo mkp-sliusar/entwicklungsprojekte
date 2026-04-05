@@ -1,17 +1,21 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_data_files
 from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_all
 
 datas = [('lorasense_icon.ico', '.'), ('lorasense_icon.png', '.')]
-hiddenimports = ['pyqtgraph', 'pyqtgraph.opengl']
+binaries = []
+hiddenimports = ['pyqtgraph', 'pyqtgraph.Qt', 'pyqtgraph.exporters', 'pyqtgraph.graphicsItems.ViewBox.ViewBoxMenu', 'PySide6.QtSvg', 'requests']
 datas += collect_data_files('pyqtgraph')
 hiddenimports += collect_submodules('pyqtgraph')
+tmp_ret = collect_all('PySide6')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
 
 a = Analysis(
     ['main.py'],
     pathex=[],
-    binaries=[],
+    binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],

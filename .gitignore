@@ -40,3 +40,6 @@
 *.dwo
 projekts/lindaunis_lora/data/DMS Gehäuse_Bot.3mf
 projekts/LoRaSense/pc_stream_plotter/build
+pc_stream_plotter/build/
+pc_stream_plotter/dist/
+*.spec
