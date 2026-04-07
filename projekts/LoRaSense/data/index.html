@@ -133,7 +133,6 @@ button{cursor:pointer}
   .title{white-space:normal}
 }
 
-
 .tabs-shell{max-width:1160px;margin:0 auto;display:flex;flex-direction:column;gap:18px;width:100%}
 .tabs-bar{display:grid;grid-template-columns:repeat(3,minmax(220px,1fr));gap:14px;justify-content:center;align-content:center;max-width:980px;margin:0 auto}
 .tab-btn{position:relative;display:flex;align-items:center;justify-content:center;height:52px;width:100%;padding:0 22px;border-radius:16px;background:var(--btn);font-weight:800;color:var(--muted);text-align:center;transition:background .2s ease,color .2s ease,transform .2s ease,border-color .2s ease,box-shadow .2s ease}
@@ -151,6 +150,13 @@ button{cursor:pointer}
 .field{display:grid;grid-template-columns:180px minmax(0,1fr);gap:12px;align-items:center;margin:0}.system-grid .card:last-child .field + .field{margin-top:12px}.system-grid .card:last-child .summary{margin-top:16px !important}.system-grid .card:last-child .status{margin-top:12px !important}.system-grid .card:last-child .btn-pair{margin-bottom:16px}.system-grid .card #resetBtn,.system-grid .card #saveLoRaBtn{margin-top:auto}
 .field input,.field select,.field .fixed{width:100%;min-width:0}
 .btn-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:12px}
+
+.pcstream-banner{display:none;width:min(100%,1160px);margin:0 auto 12px;padding:12px 14px;border:1px solid rgba(84,184,230,.45);border-radius:16px;background:rgba(84,184,230,.10);box-shadow:var(--shadow);align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.pcstream-banner.show{display:flex}
+.pcstream-banner-title{font-weight:800}
+.pcstream-banner-text{font-size:13px;color:var(--muted);line-height:1.45}
+.pcstream-banner-actions{display:flex;gap:8px;flex-wrap:wrap}
+
 @media (max-width:980px){.tabs-inner-grid,.tabs-inner-grid.system-grid{grid-template-columns:1fr}.tabs-shell{max-width:960px}}
 @media (max-width:780px){.tabs-bar{grid-template-columns:1fr;max-width:100%}.tab-btn{width:100%}.field{grid-template-columns:1fr}}
 </style>
@@ -162,12 +168,13 @@ button{cursor:pointer}
     <div class="loading-head">
       <img alt="MKP" src="/logo.svg"/>
       <div>
-        <div class="loading-title">LoRaSense is starting</div>
-        <div class="loading-sub">controller reachable · config loaded · state loaded · assets ready</div>
+        <div class="loading-title" id="loadingTitle">LoRaSense is starting</div>
+        <div class="loading-sub" id="loadingSubtitle">controller reachable · config loaded · state loaded · assets ready</div>
       </div>
     </div>
     <div class="loading-bar"><div class="loading-fill" id="loadingFill"></div></div>
     <div class="loading-status" id="loadingStatus">Connecting to controller...</div>
+    <div class="loading-status" id="loadingHint" style="min-height:0"></div>
   </div>
 </div>
 <div class="app-shell booting" id="appShell">
@@ -186,6 +193,17 @@ button{cursor:pointer}
 <button aria-label="Theme" class="icon-btn" id="themeBtn" type="button">☀️</button>
 </div>
 </header>
+
+<div class="pcstream-banner" id="pcStreamBanner">
+  <div>
+    <div class="pcstream-banner-title" id="pcStreamBannerTitle">PC Stream mode active</div>
+    <div class="pcstream-banner-text" id="pcStreamBannerText">The controller is now intended for direct PC streaming. Open the PC Stream tab for connection details.</div>
+  </div>
+  <div class="pcstream-banner-actions">
+    <button class="btn" id="pcStreamBannerOpenBtn" type="button">Open PC Stream tab</button>
+  </div>
+</div>
+
 <main class="main">
 <div class="tabs-shell"><div aria-label="Main sections" class="tabs-bar" role="tablist"><button aria-controls="tabPanel-measure" aria-selected="true" class="tab-btn active" data-tab="measure" id="tabBtn-measure" role="tab" type="button">Measurements &amp; settings</button><button aria-controls="tabPanel-system" aria-selected="false" class="tab-btn" data-tab="system" id="tabBtn-system" role="tab" type="button">LoRa &amp; controller</button><button aria-controls="tabPanel-stream" aria-selected="false" class="tab-btn" data-tab="stream" id="tabBtn-stream" role="tab" type="button">PC Stream</button></div><div class="tab-panels"><section aria-labelledby="tabBtn-measure" class="tab-panel active" data-tab="measure" id="tabPanel-measure" role="tabpanel"><div class="tabs-inner-grid"><div class="tabs-stack"><section class="card">
 <h3 id="h_measurements">Measurements</h3>
@@ -193,7 +211,7 @@ button{cursor:pointer}
 <div class="k" id="lab_time">Time</div><div class="v" id="time">--:--:--</div>
 <div class="k" id="lab_selftest">Self-test</div><div class="v"><span class="badge" id="selftest">-</span></div>
 <div class="k" id="lab_delta">Delta</div><div class="v"><span id="selftest_delta">-</span> mV</div>
-<div class="k">Measurements</div><div class="v"><span class="badge off" id="measureState">STOPPED</span></div>
+<div class="k" id="lab_measure_state">Measurements</div><div class="v"><span class="badge off" id="measureState">STOPPED</span></div>
 </div>
 <div class="btn-pair" style="margin-top:12px">
 <button class="btn" id="startMeasureBtn" type="button">Start measurement</button>
@@ -354,16 +372,16 @@ button{cursor:pointer}
 <div class="status" id="loraMsg" style="margin-top:8px"></div>
 <button class="btn btn-block" id="saveLoRaBtn" type="button">Save LoRa settings</button>
 </section></div></div></section><section aria-labelledby="tabBtn-stream" class="tab-panel" data-tab="stream" id="tabPanel-stream" role="tabpanel"><div class="tabs-inner-grid system-grid"><div class="tabs-stack"><section class="card">
-<h3>PC Stream mode</h3>
-<div class="summary">This mode disables SD logging and keeps the controller focused on acquisition plus direct transfer to a PC over the AP. Use it to reach the highest stable measurement speed with the least interference on the shared SPI bus.</div>
+<h3 id="streamHeading">PC Stream mode</h3>
+<div class="summary" id="streamSummary">This mode disables SD logging and keeps the controller focused on acquisition plus direct transfer to a PC over the AP. Use it to reach the highest stable measurement speed with the least interference on the shared SPI bus.</div>
 <div class="hr"></div>
 <div class="kv">
-<div class="k">Mode</div><div class="v" id="streamModeState">-</div>
-<div class="k">Status</div><div class="v" id="streamStatus">-</div>
+<div class="k" id="streamModeLabel">Mode</div><div class="v" id="streamModeState">-</div>
+<div class="k" id="streamStatusLabel">Status</div><div class="v" id="streamStatus">-</div>
 <div class="k">AP SSID</div><div class="v mono" id="streamSsid">-</div>
 <div class="k">IP</div><div class="v mono" id="streamIp">-</div>
-<div class="k">TCP port</div><div class="v mono" id="streamPort">-</div>
-<div class="k">Client</div><div class="v" id="streamClient">-</div>
+<div class="k" id="streamPortLabel">TCP port</div><div class="v mono" id="streamPort">-</div>
+<div class="k" id="streamClientLabel">Client</div><div class="v" id="streamClient">-</div>
 </div>
 <div class="hr"></div>
 <div class="btn-pair">
@@ -372,23 +390,23 @@ button{cursor:pointer}
 </div>
 <div class="status" id="streamMsg"></div>
 </section></div><div class="tabs-stack"><section class="card">
-<h3>Desktop app</h3>
+<h3 id="desktopAppHeading">Desktop app</h3>
 <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;min-height:240px;border:1px dashed var(--line);border-radius:18px;background:rgba(84,184,230,.05);padding:20px">
 
   <img src="/lorasense_qr.png" alt="Download QR"
        style="width:200px;height:200px;border-radius:12px;background:#fff;padding:6px">
 
   <div style="font-weight:800;text-align:center;font-size:16px">
-    Для завантаження<br/>скануйте QR або натисніть
+    <span id="desktopDownloadHint">Для завантаження<br/>скануйте QR або натисніть</span>
   </div>
 
   <a href="https://github.com/mkp-sliusar/entwicklungsprojekte/releases/download/v1.0.1/LoRaSense_v1.0.1.exe"
      style="display:inline-block;padding:12px 20px;border-radius:12px;background:var(--btn);border:1px solid var(--line);font-weight:800;text-decoration:none">
-    ⬇ Завантажити LoRaSense
+    <span id="desktopDownloadText">⬇ Завантажити LoRaSense</span>
   </a>
 
 </div>
-<div class="note" style="margin-top:12px">Planned workflow: connect the PC to the controller AP, start the desktop receiver, then enable PC Stream mode here. The controller will push compact binary frames directly to the computer. Visualization, saving, filtering and analysis move to the PC side.</div>
+<div class="note" id="desktopWorkflow" style="margin-top:12px">Planned workflow: connect the PC to the controller AP, start the desktop receiver, then enable PC Stream mode here. The controller will push compact binary frames directly to the computer. Visualization, saving, filtering and analysis move to the PC side.</div>
 </section></div></div></section></div></div>
 </main>
 <div class="hidden" id="sdModal" style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;padding:18px;">
@@ -441,6 +459,11 @@ var bootReady = false;
 var bootProgress = 4;
 var bootChecksPassed = 0;
 var bootStage = { reachable:false, config:false, state:false, assets:false };
+var liveTimer = null;
+var metaTimer = null;
+var currentTab = 'measure';
+var pcStreamHandoffActive = false;
+var bootDetectedPcStream = false;
 window.__lastCfg = null;
 
 function $(id){ return document.getElementById(id); }
@@ -462,7 +485,6 @@ function setSelectValue(id, value, fallback){
 }
 function tr(key, fallback){ var pack = I18N && I18N[currentLang]; return (pack && pack[key]) || fallback || key; }
 
-
 function setLoadingProgress(value){
   bootProgress = Math.max(0, Math.min(100, Number(value || 0)));
   var el = $('loadingFill');
@@ -471,6 +493,16 @@ function setLoadingProgress(value){
 function setLoadingStatus(text){
   var el = $('loadingStatus');
   if (el) el.textContent = text || '';
+}
+function setLoadingHint(text){
+  var el = $('loadingHint');
+  if (el) el.textContent = text || '';
+}
+function setBootPcStreamUi(){
+  bootDetectedPcStream = true;
+  setLoadingProgress(100);
+  setLoadingStatus(tr('loading_pcstream','PC Stream mode active'));
+  setLoadingHint(tr('loading_pcstream_hint','Open the PC Stream tab for connection details.'));
 }
 function refreshBootProgress(){
   var score = 8;
@@ -481,23 +513,28 @@ function refreshBootProgress(){
   setLoadingProgress(score);
 }
 function updateBootText(){
+  if (bootDetectedPcStream) {
+    setBootPcStreamUi();
+    return;
+  }
+  setLoadingHint('');
   if (!bootStage.reachable) {
-    setLoadingStatus('Connecting to controller...');
+    setLoadingStatus(tr('loading_connecting','Connecting to controller...'));
     return;
   }
   if (!bootStage.config) {
-    setLoadingStatus('Controller reachable · loading config...');
+    setLoadingStatus(tr('loading_reachable','Controller reachable · loading config...'));
     return;
   }
   if (!bootStage.state) {
-    setLoadingStatus('Config loaded · loading state...');
+    setLoadingStatus(tr('loading_state','Config loaded · loading state...'));
     return;
   }
   if (!bootStage.assets) {
-    setLoadingStatus('State loaded · preparing interface...');
+    setLoadingStatus(tr('loading_preparing','State loaded · preparing interface...'));
     return;
   }
-  setLoadingStatus('Controller ready. Opening interface...');
+  setLoadingStatus(tr('loading_ready','Controller ready. Opening interface...'));
 }
 function showApp(){
   bootReady = true;
@@ -527,10 +564,33 @@ function markAssetsReady(){
 async function waitForControllerReady(){
   setLoadingProgress(8);
   updateBootText();
-  var attempts = 0;
   while (!bootReady) {
-    attempts++;
     try {
+      var stateOnly = null;
+      try {
+        stateOnly = await apiWithTimeout('/api/state', null, 1400);
+      } catch (stateErr) {}
+
+      if (stateOnly) {
+        bootStage.reachable = true;
+        updateMeta(stateOnly);
+        if (!configLoaded && stateOnly.cfg) {
+          fillConfig(stateOnly.cfg);
+          configLoaded = true;
+          bootStage.config = true;
+        }
+        bootStage.state = true;
+        var streamEnabledState = !!((stateOnly.controller && stateOnly.controller.stream_mode_enabled) || (stateOnly.cfg && stateOnly.cfg.stream_mode_enabled) || stateOnly.stream_mode_enabled);
+        if (streamEnabledState) {
+          markAssetsReady();
+          showPcStreamHandoff();
+          activateTab('stream');
+          setBootPcStreamUi();
+          showApp();
+          return;
+        }
+      }
+
       var live = await apiWithTimeout('/api/live', null, 1500);
       bootStage.reachable = true;
       updateLive(live);
@@ -570,6 +630,15 @@ async function waitForControllerReady(){
           bootStage.config = true;
         }
         bootStage.state = true;
+        var streamEnabledNow = !!((state.controller && state.controller.stream_mode_enabled) || (state.cfg && state.cfg.stream_mode_enabled) || state.stream_mode_enabled);
+        if (streamEnabledNow) {
+          markAssetsReady();
+          showPcStreamHandoff();
+          activateTab('stream');
+          setBootPcStreamUi();
+          showApp();
+          return;
+        }
         refreshBootProgress();
         updateBootText();
       } catch (e) {
@@ -584,17 +653,12 @@ async function waitForControllerReady(){
         await new Promise(function(resolve){ setTimeout(resolve, 120); });
         markAssetsReady();
       }
-      if (bootChecksPassed < 2) {
-        bootChecksPassed++;
-        await new Promise(function(resolve){ setTimeout(resolve, 180); });
-        continue;
-      }
+      await new Promise(function(resolve){ setTimeout(resolve, 180); });
       showApp();
       return;
     }
   }
 }
-
 async function api(url, opt){
   var r = await fetch(url, opt || {});
   var txt = await r.text();
@@ -603,6 +667,19 @@ async function api(url, opt){
   catch (e) { throw new Error(txt || ('HTTP ' + r.status)); }
   if (!r.ok || data.ok === false) throw new Error(data.error || ('HTTP ' + r.status));
   return data;
+}
+
+async function syncControllerTime(){
+  try {
+    await api('/api/time', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        epoch_ms: Date.now(),
+        tz_offset_min: -new Date().getTimezoneOffset()
+      })
+    });
+  } catch (e) {}
 }
 
 function setTheme(t){
@@ -624,6 +701,15 @@ function applyLang(){
   $('langBtn').textContent = currentLang.toUpperCase();
   setText('i_title', tr('title','MKP LoRaSense File Node'));
   setText('sub_title', tr('subtitle','AP live measurement / BIN logging / PC stream / FIELD LoRa snapshot'));
+  setText('loadingTitle', tr('loading_title','LoRaSense is starting'));
+  setText('loadingSubtitle', tr('loading_subtitle','controller reachable · config loaded · state loaded · assets ready'));
+  setText('pcStreamBannerTitle', tr('pcstream_banner_title','PC Stream mode active'));
+  setText('pcStreamBannerText', tr('pcstream_banner_text','The controller is now intended for direct PC streaming. Open the PC Stream tab for connection details.'));
+  setText('pcStreamBannerOpenBtn', tr('pcstream_open_tab','Open PC Stream tab'));
+  setText('tabBtn-measure', tr('tab_measure','Measurements & settings'));
+  setText('tabBtn-system', tr('tab_system','LoRa & controller'));
+  setText('tabBtn-stream', tr('tab_stream','PC Stream'));
+  setText('lab_measure_state', tr('measure_state','Measurements'));
   setText('lab_fw', tr('firmware','Firmware'));
   setText('h_measurements', tr('measurements','Measurements'));
   setText('lab_time', tr('time','Time'));
@@ -705,7 +791,19 @@ function applyLang(){
   setText('convertBinCsvBtn', tr('convert_bin_csv','Convert BIN to CSV'));
   setText('sdModalHint', tr('sd_modal_hint','Choose one file to download it directly. Choose multiple files to download them as one real ZIP file without compression. The active current log file cannot be deleted.'));
   setText('saveMeasBtn', tr('save_meas','Save measurement settings'));
-  setText('footer_by', tr('footer_by','developed by'));
+  setText('streamHeading', tr('stream_heading','PC Stream mode'));
+  setText('streamSummary', tr('stream_summary','This mode disables SD logging and keeps the controller focused on acquisition plus direct transfer to a PC over the AP. Use it to reach the highest stable measurement speed with the least interference on the shared SPI bus.'));
+  setText('streamModeLabel', tr('stream_mode_label','Mode'));
+  setText('streamStatusLabel', tr('stream_status_label','Status'));
+  setText('streamPortLabel', tr('stream_port_label','TCP port'));
+  setText('streamClientLabel', tr('stream_client_label','Client'));
+  setText('enableStreamBtn', tr('enable_stream','Enable stream mode'));
+  setText('disableStreamBtn', tr('disable_stream','Disable stream mode'));
+  setText('desktopAppHeading', tr('desktop_app','Desktop app'));
+  var desktopHint = $('desktopDownloadHint'); if (desktopHint) desktopHint.innerHTML = tr('desktop_download_hint','To download, scan the QR code or click below').replace(/\n/g,'<br/>');
+  var desktopDownloadText = $('desktopDownloadText'); if (desktopDownloadText) desktopDownloadText.textContent = '⬇ ' + tr('desktop_download','Download LoRaSense');
+  setText('desktopWorkflow', tr('desktop_workflow','Planned workflow: connect the PC to the controller AP, start the desktop receiver, then enable PC Stream mode here. The controller will push compact binary frames directly to the computer. Visualization, saving, filtering and analysis move to the PC side.'));
+  setText('i_footer_by', tr('footer_by','developed by'));
 
   $('devEui').placeholder = tr('ph_deveui','DevEUI');
   $('appEui').placeholder = tr('ph_appeui','AppEUI');
@@ -867,13 +965,17 @@ function updateMeta(s){
   setText('chipeui', c.chip_eui64 || s.chip_eui64 || '-');
 
   var streamEnabled = !!(c.stream_mode_enabled || (s.cfg && s.cfg.stream_mode_enabled) || s.stream_mode_enabled);
-  setText('streamModeState', streamEnabled ? 'Enabled' : 'Disabled');
+  setText('streamModeState', streamEnabled ? tr('stream_enabled','Enabled') : tr('stream_disabled','Disabled'));
   setText('streamStatus', c.stream_status || s.stream_status || '-');
   setText('streamSsid', c.ap_ssid || s.ap_ssid || '-');
   setText('streamIp', ipVal || '-');
   setText('streamPort', String(c.stream_port || s.stream_port || 3333));
-  setText('streamClient', (c.stream_client_connected || s.stream_client_connected) ? 'Connected' : 'Waiting');
+  setText('streamClient', (c.stream_client_connected || s.stream_client_connected) ? tr('stream_connected','Connected') : tr('stream_waiting','Waiting'));
   setBadgeState('measureState', boolNum(s.measurements_running || c.measurements_running) ? 'RUNNING' : 'STOPPED', boolNum(s.measurements_running || c.measurements_running));
+
+  var streamEnabledNow = !!(c.stream_mode_enabled || (s.cfg && s.cfg.stream_mode_enabled) || s.stream_mode_enabled);
+  if (streamEnabledNow) showPcStreamHandoff();
+  else hidePcStreamHandoff();
 
   updateStatusText(modeVal || 'CONFIG');
 }
@@ -890,6 +992,10 @@ function updatePerfBox(live, cfg){
 }
 
 function updateStatusText(mode){
+  if (pcStreamHandoffActive) {
+    setMsg('statusMsg', tr('pcstream_status_long','PC Stream mode active. Open the PC Stream tab for connection details.'));
+    return;
+  }
   var m = mode || 'CONFIG';
   var text = (m === 'FIELD')
     ? tr('status_field','FIELD mode active. Device sends one fresh snapshot per LoRa interval and then returns to LoRaWAN sleep.')
@@ -1111,7 +1217,6 @@ async function pollMeta(){
   metaBusy = false;
 }
 
-
 async function runSelftest(){
   var r = await api('/api/selftest', { method:'POST' });
   setMsg('ctrlMsg', tr('selftest_done','Self-test completed.') + ' Δ=' + (r.selftest_delta_mV != null ? num(r.selftest_delta_mV, 6) : '-'));
@@ -1132,7 +1237,7 @@ async function setMeasurementsRunning(action){
     headers:{'Content-Type':'application/json'},
     body: JSON.stringify({ action: action })
   });
-  setMsg('measMsg', action === 'start' ? 'Measurement started.' : 'Measurement stopped.');
+  setMsg('measMsg', action === 'start' ? tr('measure_started','Measurement started.') : tr('measure_stopped','Measurement stopped.'));
   try { await loadStateOnce(); } catch (e) {}
   return r;
 }
@@ -1180,11 +1285,18 @@ async function saveMeas(){
   setMsg('measMsg', tr('meas_saved','Measurement settings saved to controller.'));
 }
 
-
 async function saveStreamMode(enabled){
   var r = await api('/api/stream', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ enabled: enabled ? 1 : 0 }) });
-  setMsg('streamMsg', enabled ? 'PC Stream mode enabled.' : 'PC Stream mode disabled.');
-  try { await loadStateOnce(); } catch (e) {}
+  setMsg('streamMsg', enabled ? tr('stream_enabled_msg','PC Stream mode enabled.') : tr('stream_disabled_msg','PC Stream mode disabled.'));
+  if (enabled) {
+    activateTab('stream');
+    showPcStreamHandoff();
+  } else {
+    hidePcStreamHandoff();
+  }
+  try { await loadStateOnce(); } catch (e) {
+    if (!enabled) throw e;
+  }
   return r;
 }
 
@@ -1249,7 +1361,6 @@ $('resetBtn').addEventListener('click', async function(){
   }
 });
 
-
 $('browseDatBtn').addEventListener('click', async function(){
   openSdModal();
   await refreshSdList();
@@ -1282,11 +1393,11 @@ $('themeBtn').addEventListener('click', function(){
 });
 if ($('enableStreamBtn')) $('enableStreamBtn').addEventListener('click', async function(){
   try { await saveStreamMode(true); }
-  catch (e) { setMsg('streamMsg', 'Save error: ' + e.message); }
+  catch (e) { setMsg('streamMsg', tr('save_error','Save error') + ': ' + e.message); }
 });
 if ($('disableStreamBtn')) $('disableStreamBtn').addEventListener('click', async function(){
   try { await saveStreamMode(false); }
-  catch (e) { setMsg('streamMsg', 'Save error: ' + e.message); }
+  catch (e) { setMsg('streamMsg', tr('save_error','Save error') + ': ' + e.message); }
 });
 $('langBtn').addEventListener('click', function(){
   var idx = LANGS.indexOf(currentLang);
@@ -1294,27 +1405,59 @@ $('langBtn').addEventListener('click', function(){
   localStorage.setItem(LANG_KEY, currentLang);
   applyLang();
 });
-window.addEventListener('resize', drawPlots);
 
+if ($('pcStreamBannerOpenBtn')) $('pcStreamBannerOpenBtn').addEventListener('click', function(){ activateTab('stream'); });
+
+window.addEventListener('resize', drawPlots);
+document.addEventListener('visibilitychange', function(){
+  if (document.visibilityState === 'visible') syncControllerTime();
+});
+
+function activateTab(name){
+  if (!name) name = 'measure';
+  currentTab = name;
+  var btns = Array.prototype.slice.call(document.querySelectorAll('.tab-btn'));
+  var panels = Array.prototype.slice.call(document.querySelectorAll('.tab-panel'));
+  btns.forEach(function(btn){
+    var active = btn.dataset.tab === name;
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-selected', active ? 'true' : 'false');
+  });
+  panels.forEach(function(panel){
+    panel.classList.toggle('active', panel.dataset.tab === name);
+  });
+  if (location.hash !== '#' + name) {
+    try { history.replaceState(null, '', '#' + name); } catch (e) { location.hash = name; }
+  }
+}
+function stopPolling(){
+  if (liveTimer) { clearInterval(liveTimer); liveTimer = null; }
+  if (metaTimer) { clearInterval(metaTimer); metaTimer = null; }
+}
+function setPcStreamBanner(show){
+  var el = $('pcStreamBanner');
+  if (el) el.classList.toggle('show', !!show);
+}
+function showPcStreamHandoff(){
+  pcStreamHandoffActive = true;
+  stopPolling();
+  setPcStreamBanner(true);
+  setMsg('statusMsg', tr('pcstream_status','PC Stream mode active.'));
+  setMsg('streamMsg', tr('pcstream_status','PC Stream mode active.'));
+}
+function hidePcStreamHandoff(){
+  pcStreamHandoffActive = false;
+  setPcStreamBanner(false);
+}
 
 function initTabs(){
   var btns = Array.prototype.slice.call(document.querySelectorAll('.tab-btn'));
   var panels = Array.prototype.slice.call(document.querySelectorAll('.tab-panel'));
   if (!btns.length || !panels.length) return;
-  function activate(name){
-    btns.forEach(function(btn){
-      var active = btn.dataset.tab === name;
-      btn.classList.toggle('active', active);
-      btn.setAttribute('aria-selected', active ? 'true' : 'false');
-    });
-    panels.forEach(function(panel){
-      panel.classList.toggle('active', panel.dataset.tab === name);
-    });
-  }
   btns.forEach(function(btn){
-    btn.addEventListener('click', function(){ activate(btn.dataset.tab); });
+    btn.addEventListener('click', function(){ activateTab(btn.dataset.tab); });
   });
-  activate((location.hash || '#measure').replace('#','') || 'measure');
+  activateTab((location.hash || '#measure').replace('#','') || 'measure');
 }
 
 async function boot(){
@@ -1328,20 +1471,27 @@ async function boot(){
   updateAin2Mode();
   try {
     await waitForControllerReady();
+    await syncControllerTime();
   } catch (e) {
-    setLoadingStatus('Still waiting for controller... retrying');
+    setLoadingStatus(tr('loading_retry','Still waiting for controller... retrying'));
     setTimeout(function(){ waitForControllerReady(); }, 500);
     return;
   }
 
   setTimeout(function(){
+    if (pcStreamHandoffActive) return;
     pollLive();
-    setInterval(pollLive, 250);
+    liveTimer = setInterval(function(){
+      if (!pcStreamHandoffActive) pollLive();
+    }, 250);
   }, 250);
 
   setTimeout(function(){
+    if (pcStreamHandoffActive) return;
     pollMeta();
-    setInterval(pollMeta, 10000);
+    metaTimer = setInterval(function(){
+      if (!pcStreamHandoffActive) pollMeta();
+    }, 10000);
   }, 1200);
 }
 

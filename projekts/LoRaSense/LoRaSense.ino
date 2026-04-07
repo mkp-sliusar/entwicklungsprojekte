@@ -71,6 +71,8 @@ enum class RunMode : uint8_t { FIELD = 0, CONFIG = 1 };
 static RunMode g_mode = RunMode::FIELD;
 static bool g_loraEnabled = false;
 static bool g_loraInitDone = false;
+static bool g_fieldJoinPassed = false;
+static bool g_fieldAdsReady = false;
 static uint32_t g_radioQuietUntilMs = 0;
 static IPAddress g_apIp(0, 0, 0, 0);
 static String g_apSsid;
@@ -259,7 +261,7 @@ struct LogSample {
 };
 #pragma pack(push,1)
 struct BinLogHeader {
-  char magic[8];      // MKPBIN2\0
+  char magic[8];      // MKPBIN3\0
   uint16_t version;
   uint16_t headerSize;
   uint16_t recordSize;
@@ -300,11 +302,12 @@ static constexpr uint16_t BIN_FLAG_DMS_ENABLED       = 0x0001;
 static constexpr uint16_t BIN_FLAG_AIN2_ENABLED      = 0x0002;
 static constexpr uint16_t BIN_FLAG_TEMP_ENABLED      = 0x0004;
 static constexpr uint16_t BIN_FLAG_AIN2_MODE_VOLT    = 0x0008;
+static constexpr uint16_t BIN_FLAG_DMS_UNIT_UM_M     = 0x0010;
 static_assert(sizeof(BinLogHeader) == 20, "BinLogHeader size");
 static_assert(sizeof(BinLogRecordV1) == 18, "BinLogRecordV1 size");
 static uint32_t g_udbfFileStartUs = 0;
 enum class UdbfSignalKind : uint8_t {
-  DmsMvPerV = 0,
+  DmsScaled = 0,
   Ain2Volt = 1,
   Ain2WayMm = 2,
   TempC = 3,
@@ -324,32 +327,31 @@ static uint16_t currentBinFlags() {
   if (cfg.ain2Enabled) flags |= BIN_FLAG_AIN2_ENABLED;
   if (cfg.tempEnabled) flags |= BIN_FLAG_TEMP_ENABLED;
   if (cfg.ain2Mode == AIN2_MODE_VOLT) flags |= BIN_FLAG_AIN2_MODE_VOLT;
+  if (cfg.dmsKFactor > 0.0f) flags |= BIN_FLAG_DMS_UNIT_UM_M;
   return flags;
 }
 static uint16_t currentBinRecordSize() {
   uint16_t size = sizeof(uint32_t); // TimeCounter in microseconds
-  if (cfg.dmsEnabled) size += sizeof(int32_t);
-  if (cfg.ain2Enabled) size += sizeof(int32_t);
-  if (cfg.tempEnabled) size += sizeof(int16_t);
+  if (cfg.dmsEnabled) size += sizeof(float);
+  if (cfg.ain2Enabled) size += sizeof(float);
+  if (cfg.tempEnabled) size += sizeof(float);
   return size;
 }
 static bool writeBinHeader(File& f) {
   BinLogHeader h{};
-  memcpy(h.magic, "MKPBIN2", 7);
+  memcpy(h.magic, "MKPBIN3", 7);
   h.magic[7] = 0;
-  h.version = 2;
+  h.version = 3;
   h.headerSize = (uint16_t)sizeof(BinLogHeader);
   h.recordSize = currentBinRecordSize();
   h.flags = currentBinFlags();
   h.sampleHzNominal = nominalLogHz();
   return f.write((const uint8_t*)&h, sizeof(h)) == sizeof(h);
 }
-static uint16_t quantizeTempC100(float t) {
-  if (!isfinite(t)) return 0;
-  long v = lroundf(t * 100.0f);
-  if (v < -32768L) v = -32768L;
-  if (v > 32767L) v = 32767L;
-  return (uint16_t)(int16_t)v;
+static float dmsScaledValueFromMvPerV(float dmsMvPerV) {
+  if (!isfinite(dmsMvPerV)) return NAN;
+  if (cfg.dmsKFactor > 0.0f) return dmsMvPerV * 1000.0f / cfg.dmsKFactor;
+  return dmsMvPerV;
 }
 static bool writeBinRecord(File& f, const LogSample& s) {
   if (g_udbfFileStartUs == 0) g_udbfFileStartUs = s.t_us;
@@ -358,15 +360,15 @@ static bool writeBinRecord(File& f, const LogSample& s) {
     : 0U;
   if (f.write((const uint8_t*)&timeCounterUs, sizeof(timeCounterUs)) != sizeof(timeCounterUs)) return false;
   if (cfg.dmsEnabled) {
-    const int32_t v = s.dms_on ? s.dms_raw : 0;
+    const float v = (s.dms_on && s.dms_valid) ? dmsScaledValueFromMvPerV(s.dms_mV_per_V) : NAN;
     if (f.write((const uint8_t*)&v, sizeof(v)) != sizeof(v)) return false;
   }
   if (cfg.ain2Enabled) {
-    const int32_t v = s.ain2_on ? s.ain2_raw : 0;
+    const float v = (s.ain2_on && s.ain2_valid) ? s.ain2_value : NAN;
     if (f.write((const uint8_t*)&v, sizeof(v)) != sizeof(v)) return false;
   }
   if (cfg.tempEnabled) {
-    const int16_t v = (int16_t)quantizeTempC100(s.temp_C);
+    const float v = (s.temp_on && s.temp_valid) ? s.temp_C : NAN;
     if (f.write((const uint8_t*)&v, sizeof(v)) != sizeof(v)) return false;
   }
   return true;
@@ -439,7 +441,7 @@ static double compileTimeOleDate() {
 static void rebuildUdbfLayout() {
   g_udbfVarCount = 0;
   if (cfg.dmsEnabled) {
-    g_udbfVars[g_udbfVarCount++] = {"DMS", "mV/V", 3, UdbfSignalKind::DmsMvPerV};
+    g_udbfVars[g_udbfVarCount++] = {"DMS", (cfg.dmsKFactor > 0.0f) ? "um/m" : "mV/V", 3, UdbfSignalKind::DmsScaled};
   }
   if (cfg.ain2Enabled) {
     if (cfg.ain2Mode == AIN2_MODE_VOLT) {
@@ -636,8 +638,8 @@ static bool writeUdbfHeader(File& f) {
 }
 static float udbfValueFor(const LogSample& s, UdbfSignalKind kind) {
   switch (kind) {
-    case UdbfSignalKind::DmsMvPerV:
-      return (s.dms_on && s.dms_valid && isfinite(s.dms_mV_per_V)) ? s.dms_mV_per_V : 0.0f;
+    case UdbfSignalKind::DmsScaled:
+      return (s.dms_on && s.dms_valid && isfinite(s.dms_mV_per_V)) ? dmsScaledValueFromMvPerV(s.dms_mV_per_V) : 0.0f;
     case UdbfSignalKind::Ain2Volt:
       return (s.ain2_on && s.ain2_valid && s.ain2_mode == AIN2_MODE_VOLT && isfinite(s.ain2_value)) ? s.ain2_value : 0.0f;
     case UdbfSignalKind::Ain2WayMm:
@@ -715,10 +717,14 @@ static void spiBusUnlock() {
   if (g_spiBusMutex) xSemaphoreGive(g_spiBusMutex);
 }
 static inline void adsCS(bool en) { digitalWrite(PIN_ADS_CS, en ? LOW : HIGH); }
+static inline bool adsRawLooksSaturated(int32_t raw) {
+  return (raw >= 0x7F0000L) || (raw <= (int32_t)0xFF810000L);
+}
 static void restoreAdsBusAfterSd() {
   digitalWrite(PIN_SD_CS, HIGH);
   adsCS(false);
   SPI.begin(PIN_SPI_SCK, PIN_SPI_MISO, PIN_SPI_MOSI, PIN_SD_CS);
+  g_adsConfigSettled = false;
   if (cfg.dmsEnabled) {
     restoreDmsRunMode();
   }
@@ -1332,6 +1338,7 @@ static bool adsWaitDrdyLow(uint32_t timeout_us) {
   uint32_t start = micros();
   uint32_t spins = 0;
   while (digitalRead(PIN_ADS_DRDY) == HIGH) {
+    if (g_sdBusy) return false;
     if ((uint32_t)(micros() - start) >= timeout_us) return false;
     // Let the scheduler breathe often enough to avoid task watchdog resets,
     // but keep the wait mostly tight for high-speed sampling.
@@ -1353,6 +1360,10 @@ static int32_t readSingleShot_DRDY(uint32_t timeoutUs) {
   return ADS_FAIL;
 }
 static bool readChannelRaw(const AdsChanCfg& chan, float& out_mV, int32_t* rawOut) {
+  if (g_sdBusy) {
+    out_mV = NAN;
+    return false;
+  }
   adsApplyConfig(chan);
   if (!g_adsConfigSettled) {
     if (readSingleShot_DRDY(chan.timeoutUs) == ADS_FAIL) {
@@ -1362,7 +1373,7 @@ static bool readChannelRaw(const AdsChanCfg& chan, float& out_mV, int32_t* rawOu
     g_adsConfigSettled = true;
   }
   int32_t raw = readSingleShot_DRDY(chan.timeoutUs);
-  if (raw == ADS_FAIL) {
+  if (raw == ADS_FAIL || adsRawLooksSaturated(raw)) {
     out_mV = NAN;
     return false;
   }
@@ -2105,20 +2116,24 @@ static void handleApiSdConvertBinCsv() {
   }
   const bool isV1 = (strncmp(h.magic, "MKPBIN1", 7) == 0);
   const bool isV2 = (strncmp(h.magic, "MKPBIN2", 7) == 0);
-  if (!isV1 && !isV2) {
+  const bool isV3 = (strncmp(h.magic, "MKPBIN3", 7) == 0);
+  if (!isV1 && !isV2 && !isV3) {
     f.close();
     sdSpiEnd();
     g_sdBusy = false;
     sendJsonError(400, "invalid_bin_format");
     return;
   }
-  const bool dmsEnabled = isV2 ? ((h.flags & BIN_FLAG_DMS_ENABLED) != 0) : true;
-  const bool ain2Enabled = isV2 ? ((h.flags & BIN_FLAG_AIN2_ENABLED) != 0) : true;
-  const bool tempEnabled = isV2 ? ((h.flags & BIN_FLAG_TEMP_ENABLED) != 0) : true;
-  const bool ain2VoltMode = isV2 ? ((h.flags & BIN_FLAG_AIN2_MODE_VOLT) != 0) : (cfg.ain2Mode == AIN2_MODE_VOLT);
-  const uint16_t expectedRecordSize = isV2
-    ? (uint16_t)(sizeof(uint32_t) + (dmsEnabled ? sizeof(int32_t) : 0) + (ain2Enabled ? sizeof(int32_t) : 0) + (tempEnabled ? sizeof(int16_t) : 0))
-    : (uint16_t)sizeof(BinLogRecordV1);
+  const bool dmsEnabled = (isV2 || isV3) ? ((h.flags & BIN_FLAG_DMS_ENABLED) != 0) : true;
+  const bool ain2Enabled = (isV2 || isV3) ? ((h.flags & BIN_FLAG_AIN2_ENABLED) != 0) : true;
+  const bool tempEnabled = (isV2 || isV3) ? ((h.flags & BIN_FLAG_TEMP_ENABLED) != 0) : true;
+  const bool ain2VoltMode = (isV2 || isV3) ? ((h.flags & BIN_FLAG_AIN2_MODE_VOLT) != 0) : (cfg.ain2Mode == AIN2_MODE_VOLT);
+  const bool dmsUmMode = isV3 ? ((h.flags & BIN_FLAG_DMS_UNIT_UM_M) != 0) : (cfg.dmsKFactor > 0.0f);
+  const uint16_t expectedRecordSize = isV3
+    ? (uint16_t)(sizeof(uint32_t) + (dmsEnabled ? sizeof(float) : 0) + (ain2Enabled ? sizeof(float) : 0) + (tempEnabled ? sizeof(float) : 0))
+    : (isV2
+      ? (uint16_t)(sizeof(uint32_t) + (dmsEnabled ? sizeof(int32_t) : 0) + (ain2Enabled ? sizeof(int32_t) : 0) + (tempEnabled ? sizeof(int16_t) : 0))
+      : (uint16_t)sizeof(BinLogRecordV1));
   if (h.recordSize != expectedRecordSize) {
     f.close();
     sdSpiEnd();
@@ -2135,9 +2150,9 @@ static void handleApiSdConvertBinCsv() {
     sendJsonError(500, "csv_create_failed");
     return;
   }
-  String header = "TimeCounter";
-  if (dmsEnabled) header += ",DMS_RAW,DMS_MV,DMS_MV_V,DMS,DMS_uM_M";
-  if (ain2Enabled) header += ain2VoltMode ? ",AIN2_RAW,AIN2_V" : ",AIN2_RAW,AIN2_mm";
+  String header = "TimeCounter_us";
+  if (dmsEnabled) header += dmsUmMode ? ",DMS_uM_m" : ",DMS_mV_V";
+  if (ain2Enabled) header += ain2VoltMode ? ",AIN2_V" : ",AIN2_mm";
   if (tempEnabled) header += ",TEMP_C";
   header += "\r\n";
   out.print(header);
@@ -2147,6 +2162,9 @@ static void handleApiSdConvertBinCsv() {
     int32_t dmsRaw = 0;
     int32_t ain2Raw = 0;
     int16_t tempC100 = 0;
+    float dmsScaled = NAN;
+    float ain2Scaled = NAN;
+    float tempC = NAN;
     bool rowOk = true;
     if (f.read((uint8_t*)&timeCounterUs, sizeof(timeCounterUs)) != (int)sizeof(timeCounterUs)) break;
     if (isV1) {
@@ -2156,38 +2174,53 @@ static void handleApiSdConvertBinCsv() {
       dmsRaw = r.dms_raw;
       ain2Raw = r.ain2_raw;
       tempC100 = r.temp_c_x100;
-    } else {
-      if (dmsEnabled && f.read((uint8_t*)&dmsRaw, sizeof(dmsRaw)) != (int)sizeof(dmsRaw)) { rowOk = false; }
-      if (rowOk && ain2Enabled && f.read((uint8_t*)&ain2Raw, sizeof(ain2Raw)) != (int)sizeof(ain2Raw)) { rowOk = false; }
-      if (rowOk && tempEnabled && f.read((uint8_t*)&tempC100, sizeof(tempC100)) != (int)sizeof(tempC100)) { rowOk = false; }
-      if (!rowOk) break;
-    }
-    String row = String(timeCounterUs);
-    if (dmsEnabled) {
-      const float dmsMv = rawTo_mV_gain(dmsRaw, GAIN_DMS);
-      const float dmsMvPerV = dmsTo_mV_per_V(dmsMv);
-      row += "," + String(dmsRaw);
-      row += "," + String(dmsMv, 4);
-      row += "," + String(dmsMvPerV, 4);
-      row += ",";        // DMS engineering value placeholder
-      row += ",";        // DMS_uM_M placeholder until gauge factor / bridge type is configured
-    }
-    if (ain2Enabled) {
-      row += "," + String(ain2Raw);
+      dmsScaled = dmsTo_mV_per_V(rawTo_mV_gain(dmsRaw, GAIN_DMS));
       const float ain2MvLocal = rawTo_mV_gain(ain2Raw, GAIN_AIN2);
       if (ain2VoltMode) {
         const float adcV = ain2MvLocal / 1000.0f;
         const float fullscale = (cfg.ain2AdcFullscaleV > 0.001f) ? cfg.ain2AdcFullscaleV : 1.0f;
         const float inputScale = (cfg.ain2InputFullscaleV > 0.0f) ? cfg.ain2InputFullscaleV : fullscale;
-        const float v = clampf(adcV / fullscale, 0.0f, 1.0f) * inputScale;
-        row += "," + String(v, 4);
+        ain2Scaled = clampf(adcV / fullscale, 0.0f, 1.0f) * inputScale;
       } else {
-        const float mm = clampf((ain2MvLocal / 3300.0f), 0.0f, 1.0f) * cfg.ain2LengthMm;
-        row += "," + String(mm, 4);
+        ain2Scaled = clampf((ain2MvLocal / 3300.0f), 0.0f, 1.0f) * cfg.ain2LengthMm;
       }
+      tempC = ((float)tempC100) / 100.0f;
+    } else if (isV2) {
+      if (dmsEnabled && f.read((uint8_t*)&dmsRaw, sizeof(dmsRaw)) != (int)sizeof(dmsRaw)) { rowOk = false; }
+      if (rowOk && ain2Enabled && f.read((uint8_t*)&ain2Raw, sizeof(ain2Raw)) != (int)sizeof(ain2Raw)) { rowOk = false; }
+      if (rowOk && tempEnabled && f.read((uint8_t*)&tempC100, sizeof(tempC100)) != (int)sizeof(tempC100)) { rowOk = false; }
+      if (!rowOk) break;
+      if (dmsEnabled) dmsScaled = dmsTo_mV_per_V(rawTo_mV_gain(dmsRaw, GAIN_DMS));
+      if (ain2Enabled) {
+        const float ain2MvLocal = rawTo_mV_gain(ain2Raw, GAIN_AIN2);
+        if (ain2VoltMode) {
+          const float adcV = ain2MvLocal / 1000.0f;
+          const float fullscale = (cfg.ain2AdcFullscaleV > 0.001f) ? cfg.ain2AdcFullscaleV : 1.0f;
+          const float inputScale = (cfg.ain2InputFullscaleV > 0.0f) ? cfg.ain2InputFullscaleV : fullscale;
+          ain2Scaled = clampf(adcV / fullscale, 0.0f, 1.0f) * inputScale;
+        } else {
+          ain2Scaled = clampf((ain2MvLocal / 3300.0f), 0.0f, 1.0f) * cfg.ain2LengthMm;
+        }
+      }
+      if (tempEnabled) tempC = ((float)tempC100) / 100.0f;
+    } else {
+      if (dmsEnabled && f.read((uint8_t*)&dmsScaled, sizeof(dmsScaled)) != (int)sizeof(dmsScaled)) { rowOk = false; }
+      if (rowOk && ain2Enabled && f.read((uint8_t*)&ain2Scaled, sizeof(ain2Scaled)) != (int)sizeof(ain2Scaled)) { rowOk = false; }
+      if (rowOk && tempEnabled && f.read((uint8_t*)&tempC, sizeof(tempC)) != (int)sizeof(tempC)) { rowOk = false; }
+      if (!rowOk) break;
+    }
+    String row = String(timeCounterUs);
+    if (dmsEnabled) {
+      if (isfinite(dmsScaled)) row += "," + String(dmsScaled, dmsUmMode ? 2 : 6);
+      else row += ",";
+    }
+    if (ain2Enabled) {
+      if (isfinite(ain2Scaled)) row += "," + String(ain2Scaled, ain2VoltMode ? 4 : 2);
+      else row += ",";
     }
     if (tempEnabled) {
-      row += "," + String(((float)tempC100) / 100.0f, 2);
+      if (isfinite(tempC)) row += "," + String(tempC, 2);
+      else row += ",";
     }
     row += "\n";
     out.print(row);
@@ -3405,7 +3438,7 @@ static void loraLoop() {
       syncLoraCompatAliases();
       dumpLoraBuffers("buffers before LoRaWAN.init");
       LoRaWAN.init(loraWanClass, loraWanRegion);
-      LoRaWAN.setDefaultDR(cfg.dr);
+      LoRaWAN.setDefaultDR(3);
       g_loraInitDone = true;
       deviceState = DEVICE_STATE_JOIN;
       break;
@@ -3415,12 +3448,36 @@ static void loraLoop() {
       LoRaWAN.join();
       break;
     case DEVICE_STATE_SEND:
-      Serial.println("[LORA] SEND");
+      if (!g_fieldJoinPassed) {
+        Serial.println("[LORA] JOIN SUCCESS");
+        g_fieldJoinPassed = true;
+      }
+      if (!g_fieldAdsReady) {
+        Serial.println("[ADS] INIT AFTER JOIN");
+        adsInit();
+        dsInit();
+        if (cfg.dmsEnabled) {
+          runSelfTest();
+          restoreDmsRunMode();
+        } else {
+          selfTestOk = false;
+          selfTestDelta_mV = NAN;
+        }
+        g_fieldAdsReady = true;
+        g_measurementsInitialized = true;
+      }
+      g_measurementsRunning = true;
+      Serial.println("[LORA] MEASURE");
       captureFieldSnapshot();
       oledUpdateLive(true);
       prepareTxFrame(appPort);
+      Serial.println("[ADS] OFF BEFORE TX");
+      adsCS(false);
+      digitalWrite(PIN_SD_CS, HIGH);
       g_radioQuietUntilMs = millis() + 3000UL;
+      Serial.println("[LORA] SEND");
       LoRaWAN.send();
+      g_measurementsRunning = false;
       deviceState = DEVICE_STATE_CYCLE;
       break;
     case DEVICE_STATE_CYCLE:
@@ -3463,10 +3520,15 @@ void setup() {
       oledShowBanner("CONFIG MODE", g_apSsid);
     }
   } else {
-    adsInit();
-    dsInit();
-    runSelfTest();
-    if (cfg.dmsEnabled) restoreDmsRunMode();
+    g_fieldJoinPassed = false;
+    g_fieldAdsReady = false;
+    g_measurementsInitialized = false;
+    g_measurementsRunning = false;
+    invalidateDms();
+    invalidateAin2();
+    invalidateTemp();
+    selfTestOk = false;
+    selfTestDelta_mV = NAN;
   }
   if (g_mode == RunMode::FIELD) {
     oledSleep();
