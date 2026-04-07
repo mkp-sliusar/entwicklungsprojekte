@@ -2983,6 +2983,7 @@ static void handleApiOledPost() {
   }
 
   g_oledEnabled = wantEnabled;
+  saveCfg();
   bool startedNow = false;
 
   if (!oledAllowedInCurrentMode()) {
@@ -3452,13 +3453,14 @@ void setup() {
     g_sdStatus = cfg.sdLogEnabled ? "ready" : "disabled";
     oledShowBootLogo();
     delay(1500);
-    oledShowBanner("CONFIG MODE", "Manual measurement start");
     startApAndWeb();
-    oledShowBanner("CONFIG MODE", g_apSsid);
     if (g_oledEnabled && oledAllowedInCurrentMode()) {
       startMeasurementsManual();
       oledEnsureInit();
       oledUpdateLive(true);
+    } else {
+      oledShowBanner("CONFIG MODE", "Manual measurement start");
+      oledShowBanner("CONFIG MODE", g_apSsid);
     }
   } else {
     adsInit();
@@ -3500,8 +3502,13 @@ void setup() {
     g_sdStatus = "field_disabled";
   } else {
     ensureMeasurementTasksStarted();
-    g_measurementsRunning = false;
-    oledUpdateLive(true);
+    if (g_oledEnabled && oledAllowedInCurrentMode()) {
+      g_measurementsRunning = true;
+      oledUpdateLive(true);
+    } else {
+      g_measurementsRunning = false;
+      oledUpdateLive(true);
+    }
   }
 }
 void loop() {

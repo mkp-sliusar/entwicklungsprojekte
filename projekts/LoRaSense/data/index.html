@@ -252,7 +252,7 @@ button{cursor:pointer}
 <div class="field"><label for="ain2Hz" id="lab_ain2_hz">Frequency, Hz</label><select id="ain2Hz"><option value="5">5</option><option value="11.25">11.25</option><option value="20">20</option><option value="22.5">22.5</option><option value="40">40</option><option value="44">44</option><option value="45">45</option><option value="82.5">82.5</option><option value="90">90</option><option value="150">150</option><option value="175">175</option><option value="180">180</option><option value="250">250</option><option value="330">330</option><option value="350">350</option><option value="600">600</option><option value="660">660</option><option value="1000">1000</option><option value="1200">1200</option><option value="2000">2000</option></select></div>
 <div class="field"><label for="ain2Mode" id="lab_ain2_type">AIN2 type</label>
 <select id="ain2Mode">
-<option id="opt_ain2_pot" value="pot">Potentiometer / Wegsensor</option>
+<option id="opt_ain2_pot" value="pot">Wegsensor</option>
 <option id="opt_ain2_volt" value="volt">0-10 V input</option>
 </select>
 </div>
@@ -267,16 +267,11 @@ button{cursor:pointer}
 <option value="100">100 mm</option>
 <option value="150">150 mm</option>
 <option value="200">200 mm</option>
-<option id="opt_custom" value="custom">Custom</option>
 </select>
 </div>
-<div class="field"><label for="ain2Len" id="lab_length">Length, mm</label><input id="ain2Len" min="0.01" step="0.01" type="number"/></div>
+<input id="ain2Len" type="hidden"/>
 </div>
-<div class="stack hidden" id="voltBlock">
-<div class="field"><label for="adcFs" id="lab_adc_fs">ADC full-scale, V</label><input id="adcFs" min="0.1" step="0.001" type="number"/></div>
-<div class="field"><label for="inputFs" id="lab_input_fs">Input full-scale, V</label><input id="inputFs" min="0.1" step="0.1" type="number"/></div>
-<div class="note" id="volt_note">Example: if the adapter maps 0-10 V to 0-3.123 V, keep 3.123 and 10.0.</div>
-</div>
+<div class="stack hidden" id="voltBlock"><input id="adcFs" type="hidden"/><input id="inputFs" type="hidden"/></div>
 </div>
 <div class="sensor-box">
 <div class="sensor-head">
@@ -296,8 +291,8 @@ button{cursor:pointer}
 <label class="switch"><input id="sdOn" type="checkbox"/><span class="switch-ui"></span><span id="sw_on_off_sd">On</span></label>
 </div>
 <div class="field"><label for="sdBase" id="lab_sd_base">Base filename</label><input id="sdBase" maxlength="24"/></div>
-<div class="field"><label for="sdRotateKB" id="lab_sd_rotate">Rotate at, KB</label><input id="sdRotateKB" min="64" step="64" type="number"/></div>
-<div class="note" id="sd_note">Files with suffix _001, _002, ... are created automatically when the size limit is reached.</div>
+<input id="sdRotateKB" type="hidden"/>
+<div class="note hidden" id="sd_note">Files with suffix _001, _002, ... are created automatically when the size limit is reached.</div>
 <div class="kv" style="margin-top:8px">
 <div class="k" id="lab_sd_file">Current file</div><div class="v mono" id="sdfile">-</div>
 </div>
@@ -684,18 +679,13 @@ function applyLang(){
   setText('lab_dms_kfactor', tr('dms_kfactor','K-factor'));
   setText('dms_kfactor_note', tr('dms_kfactor_note','If K-factor is 0, DMS stays in mV/V. If K-factor is greater than 0, the value is calculated in um/m.'));
   setText('tit_ain2', tr('tit_ain2','AIN2'));
-  setText('ain2_hint', tr('ain2_hint','Potentiometer or 0-10 V input'));
+  setText('ain2_hint', tr('ain2_hint','Wegsensor or 0-10 V input'));
   setText('sw_on_off_ain2', tr('on','On'));
   setText('lab_ain2_hz', tr('ain2_hz','Frequency, Hz'));
   setText('lab_ain2_type', tr('ain2_type','AIN2 type'));
-  setText('opt_ain2_pot', tr('ain2_pot','Potentiometer / Wegsensor'));
+  setText('opt_ain2_pot', tr('ain2_pot','Wegsensor'));
   setText('opt_ain2_volt', tr('ain2_volt','0-10 V input'));
   setText('lab_preset', tr('preset','Sensor length preset'));
-  setText('lab_length', tr('length','Length, mm'));
-  setText('opt_custom', tr('custom','Custom'));
-  setText('lab_adc_fs', tr('adc_fs','ADC full-scale, V'));
-  setText('lab_input_fs', tr('input_fs','Input full-scale, V'));
-  setText('volt_note', tr('volt_note','Example: if the adapter maps 0-10 V to 0-3.123 V, keep 3.123 and 10.0.'));
   setText('tit_temp', tr('tit_temp','Temperature'));
   setText('temp_hint', tr('temp_hint','DS18B20 fixed rate'));
   setText('sw_on_off_temp', tr('on','On'));
@@ -703,8 +693,6 @@ function applyLang(){
   setText('sd_hint', tr('sd_hint','AP mode only, BIN / DAT / CSV / UDBF rotation'));
   setText('sw_on_off_sd', tr('on','On'));
   setText('lab_sd_base', tr('sd_base','Base filename'));
-  setText('lab_sd_rotate', tr('sd_rotate','Rotate at, KB'));
-  setText('sd_note', tr('sd_note','Files with suffix _001, _002, ... are created automatically when the size limit is reached. CSV export uses only real time.'));
   setText('lab_sd_file', tr('sd_file','Current file'));
   setText('browseDatBtn', tr('browse_dat','Browse / download files'));
   setText('deleteSelectedDatBtn', tr('delete_selected','Delete selected'));
@@ -731,11 +719,11 @@ function applyLang(){
 }
 
 function syncPreset(){
-  var len = Number($('ain2Len').value);
   var preset = $('potPreset');
+  var len = Number(($('ain2Len') && $('ain2Len').value) || 100);
   var opts = ['5','10','25','50','75','100','150','200'];
   var match = opts.find(function(v){ return Math.abs(Number(v) - len) < 0.001; });
-  preset.value = match || 'custom';
+  preset.value = match || '100';
 }
 
 function updateAin2Mode(){
@@ -780,7 +768,7 @@ function fillConfig(cfg){
   $('ain2On').checked = boolNum(cfg.ain2_enabled);
   setSelectValue('ain2Hz', cfg.ain2_hz != null ? cfg.ain2_hz : 20, 20);
   $('ain2Mode').value = cfg.ain2_mode || 'pot';
-  $('ain2Len').value = Number(cfg.ain2_length_mm != null ? cfg.ain2_length_mm : 10).toFixed(2);
+  $('ain2Len').value = Number(cfg.ain2_length_mm != null ? cfg.ain2_length_mm : 100).toFixed(2);
   $('adcFs').value = Number(cfg.ain2_adc_fullscale_v != null ? cfg.ain2_adc_fullscale_v : 3.123).toFixed(3);
   $('inputFs').value = Number(cfg.ain2_input_fullscale_v != null ? cfg.ain2_input_fullscale_v : 10).toFixed(1);
   $('tempOn').checked = boolNum(cfg.temp_enabled);
@@ -1179,9 +1167,9 @@ async function saveMeas(){
     ain2_enabled: $('ain2On').checked ? 1 : 0,
     ain2_hz: Number($('ain2Hz').value || 1),
     ain2_mode: $('ain2Mode').value,
-    ain2_length_mm: Number($('ain2Len').value || 10),
-    ain2_adc_fullscale_v: Number($('adcFs').value || 3.123),
-    ain2_input_fullscale_v: Number($('inputFs').value || 10),
+    ain2_length_mm: Number(($('potPreset') && $('potPreset').value) || $('ain2Len').value || 100),
+    ain2_adc_fullscale_v: 3.123,
+    ain2_input_fullscale_v: 10,
     temp_enabled: $('tempOn').checked ? 1 : 0,
     sd_log_enabled: $('sdOn').checked ? 1 : 0,
     sd_base: $('sdBase').value || 'lorasense',
@@ -1286,9 +1274,8 @@ $('deleteSelectedDatBtn').addEventListener('click', function(){
 $('sdModal').addEventListener('click', function(ev){ if (ev.target === $('sdModal')) closeSdModal(); });
 
 $('potPreset').addEventListener('change', function(){
-  if ($('potPreset').value !== 'custom') $('ain2Len').value = Number($('potPreset').value).toFixed(2);
+  $('ain2Len').value = Number($('potPreset').value || 100).toFixed(2);
 });
-$('ain2Len').addEventListener('input', syncPreset);
 $('ain2Mode').addEventListener('change', updateAin2Mode);
 $('themeBtn').addEventListener('click', function(){
   setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
