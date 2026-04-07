@@ -3241,7 +3241,7 @@ static void handleNotFound() {
     if (serveFile(uri.c_str(), mime.c_str())) return;
   }
   const String host = server.hostHeader();
-  if (g_mode == RunMode::CONFIG && uri == "/connecttest.txt") {
+  if (g_mode == RunMode::CONFIG && (uri == "/connecttest.txt" || uri == "/msftconnecttest.txt")) {
     redirectToRoot();
     return;
   }
@@ -3268,6 +3268,7 @@ static void handleNotFound() {
       uri == "/library/test/success.html" ||
       uri == "/success.txt" ||
       uri == "/redirect" ||
+      uri == "/fwlink/" ||
       uri == "/canonical.html" ||
       (!host.isEmpty() && !isIpv4Host(host) && host != g_apIp.toString() && host != "lorasense.local");
   if (g_mode == RunMode::CONFIG && captiveProbe) {
@@ -3324,6 +3325,7 @@ static void startApAndWeb() {
   server.on("/hotspot-detect.html", HTTP_GET, redirectToRoot);
   server.on("/library/test/success.html", HTTP_GET, redirectToRoot);
   server.on("/connecttest.txt", HTTP_GET, redirectToRoot);
+  server.on("/msftconnecttest.txt", HTTP_GET, redirectToRoot);
   server.on("/ncsi.txt", HTTP_GET, redirectToRoot);
   server.on("/wpad.dat", HTTP_GET, []() {
     static const char pac[] =
@@ -3335,6 +3337,7 @@ static void startApAndWeb() {
   });
   server.on("/success.txt", HTTP_GET, redirectToRoot);
   server.on("/redirect", HTTP_GET, redirectToRoot);
+  server.on("/fwlink/", HTTP_GET, redirectToRoot);
   server.on("/canonical.html", HTTP_GET, redirectToRoot);
 
   server.on("/i18n.json", HTTP_GET, []() {
