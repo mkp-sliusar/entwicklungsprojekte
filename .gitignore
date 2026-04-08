@@ -43,3 +43,7 @@ projekts/LoRaSense/pc_stream_plotter/build
 pc_stream_plotter/build/
 pc_stream_plotter/dist/
 *.spec
+*.xml
+*.iml
+*.pyc
+/projekts/nemiDAQ/build
