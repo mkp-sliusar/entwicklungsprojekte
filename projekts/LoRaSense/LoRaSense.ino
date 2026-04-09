@@ -2,6 +2,7 @@
 #include <SPI.h>
 #include <SD.h>
 #include <WiFi.h>
+#include <DNSServer.h>
 #include <WebServer.h>
 #include <Preferences.h>
 #include <LittleFS.h>
@@ -55,6 +56,9 @@ static constexpr size_t LOG_BASENAME_LEN = 24;
 static constexpr size_t AIN2_VOLT_DISPLAY_LEN = 12;
 static constexpr size_t AIN2_SCALING_UNIT_LEN = 12;
 static WebServer server(80);
+
+static constexpr uint16_t DNS_PORT = 53;
+static DNSServer dnsServer;
 static Preferences prefs;
 static OneWire oneWire(PIN_DS18B20);
 static DallasTemperature dsSensor(&oneWire);
@@ -67,9 +71,19 @@ enum class RunMode : uint8_t { FIELD = 0, CONFIG = 1 };
 static RunMode g_mode = RunMode::FIELD;
 static bool g_loraEnabled = false;
 static bool g_loraInitDone = false;
+static bool g_fieldJoinPassed = false;
+static bool g_fieldAdsReady = false;
 static uint32_t g_radioQuietUntilMs = 0;
 static IPAddress g_apIp(0, 0, 0, 0);
 static String g_apSsid;
+static uint32_t g_diagBootMs = 0;
+static uint32_t g_diagLastLoopStatsMs = 0;
+static uint32_t g_httpReqCount = 0;
+static uint32_t g_httpReqWindowCount = 0;
+static uint32_t g_httpReqWindowStartedMs = 0;
+static uint32_t g_httpSlowReqCount = 0;
+static uint32_t g_httpMaxDurationMs = 0;
+static String g_httpMaxDurationUri;
 static WiFiServer g_streamServer(3333);
 static WiFiClient g_streamClient;
 static TaskHandle_t g_streamTaskHandle = nullptr;
@@ -247,7 +261,7 @@ struct LogSample {
 };
 #pragma pack(push,1)
 struct BinLogHeader {
-  char magic[8];      // MKPBIN2\0
+  char magic[8];      // MKPBIN3\0
   uint16_t version;
   uint16_t headerSize;
   uint16_t recordSize;
@@ -288,11 +302,12 @@ static constexpr uint16_t BIN_FLAG_DMS_ENABLED       = 0x0001;
 static constexpr uint16_t BIN_FLAG_AIN2_ENABLED      = 0x0002;
 static constexpr uint16_t BIN_FLAG_TEMP_ENABLED      = 0x0004;
 static constexpr uint16_t BIN_FLAG_AIN2_MODE_VOLT    = 0x0008;
+static constexpr uint16_t BIN_FLAG_DMS_UNIT_UM_M     = 0x0010;
 static_assert(sizeof(BinLogHeader) == 20, "BinLogHeader size");
 static_assert(sizeof(BinLogRecordV1) == 18, "BinLogRecordV1 size");
 static uint32_t g_udbfFileStartUs = 0;
 enum class UdbfSignalKind : uint8_t {
-  DmsMvPerV = 0,
+  DmsScaled = 0,
   Ain2Volt = 1,
   Ain2WayMm = 2,
   TempC = 3,
@@ -312,32 +327,31 @@ static uint16_t currentBinFlags() {
   if (cfg.ain2Enabled) flags |= BIN_FLAG_AIN2_ENABLED;
   if (cfg.tempEnabled) flags |= BIN_FLAG_TEMP_ENABLED;
   if (cfg.ain2Mode == AIN2_MODE_VOLT) flags |= BIN_FLAG_AIN2_MODE_VOLT;
+  if (cfg.dmsKFactor > 0.0f) flags |= BIN_FLAG_DMS_UNIT_UM_M;
   return flags;
 }
 static uint16_t currentBinRecordSize() {
   uint16_t size = sizeof(uint32_t); // TimeCounter in microseconds
-  if (cfg.dmsEnabled) size += sizeof(int32_t);
-  if (cfg.ain2Enabled) size += sizeof(int32_t);
-  if (cfg.tempEnabled) size += sizeof(int16_t);
+  if (cfg.dmsEnabled) size += sizeof(float);
+  if (cfg.ain2Enabled) size += sizeof(float);
+  if (cfg.tempEnabled) size += sizeof(float);
   return size;
 }
 static bool writeBinHeader(File& f) {
   BinLogHeader h{};
-  memcpy(h.magic, "MKPBIN2", 7);
+  memcpy(h.magic, "MKPBIN3", 7);
   h.magic[7] = 0;
-  h.version = 2;
+  h.version = 3;
   h.headerSize = (uint16_t)sizeof(BinLogHeader);
   h.recordSize = currentBinRecordSize();
   h.flags = currentBinFlags();
   h.sampleHzNominal = nominalLogHz();
   return f.write((const uint8_t*)&h, sizeof(h)) == sizeof(h);
 }
-static uint16_t quantizeTempC100(float t) {
-  if (!isfinite(t)) return 0;
-  long v = lroundf(t * 100.0f);
-  if (v < -32768L) v = -32768L;
-  if (v > 32767L) v = 32767L;
-  return (uint16_t)(int16_t)v;
+static float dmsScaledValueFromMvPerV(float dmsMvPerV) {
+  if (!isfinite(dmsMvPerV)) return NAN;
+  if (cfg.dmsKFactor > 0.0f) return dmsMvPerV * 1000.0f / cfg.dmsKFactor;
+  return dmsMvPerV;
 }
 static bool writeBinRecord(File& f, const LogSample& s) {
   if (g_udbfFileStartUs == 0) g_udbfFileStartUs = s.t_us;
@@ -346,15 +360,15 @@ static bool writeBinRecord(File& f, const LogSample& s) {
     : 0U;
   if (f.write((const uint8_t*)&timeCounterUs, sizeof(timeCounterUs)) != sizeof(timeCounterUs)) return false;
   if (cfg.dmsEnabled) {
-    const int32_t v = s.dms_on ? s.dms_raw : 0;
+    const float v = (s.dms_on && s.dms_valid) ? dmsScaledValueFromMvPerV(s.dms_mV_per_V) : NAN;
     if (f.write((const uint8_t*)&v, sizeof(v)) != sizeof(v)) return false;
   }
   if (cfg.ain2Enabled) {
-    const int32_t v = s.ain2_on ? s.ain2_raw : 0;
+    const float v = (s.ain2_on && s.ain2_valid) ? s.ain2_value : NAN;
     if (f.write((const uint8_t*)&v, sizeof(v)) != sizeof(v)) return false;
   }
   if (cfg.tempEnabled) {
-    const int16_t v = (int16_t)quantizeTempC100(s.temp_C);
+    const float v = (s.temp_on && s.temp_valid) ? s.temp_C : NAN;
     if (f.write((const uint8_t*)&v, sizeof(v)) != sizeof(v)) return false;
   }
   return true;
@@ -427,7 +441,7 @@ static double compileTimeOleDate() {
 static void rebuildUdbfLayout() {
   g_udbfVarCount = 0;
   if (cfg.dmsEnabled) {
-    g_udbfVars[g_udbfVarCount++] = {"DMS", "mV/V", 3, UdbfSignalKind::DmsMvPerV};
+    g_udbfVars[g_udbfVarCount++] = {"DMS", (cfg.dmsKFactor > 0.0f) ? "um/m" : "mV/V", 3, UdbfSignalKind::DmsScaled};
   }
   if (cfg.ain2Enabled) {
     if (cfg.ain2Mode == AIN2_MODE_VOLT) {
@@ -624,8 +638,8 @@ static bool writeUdbfHeader(File& f) {
 }
 static float udbfValueFor(const LogSample& s, UdbfSignalKind kind) {
   switch (kind) {
-    case UdbfSignalKind::DmsMvPerV:
-      return (s.dms_on && s.dms_valid && isfinite(s.dms_mV_per_V)) ? s.dms_mV_per_V : 0.0f;
+    case UdbfSignalKind::DmsScaled:
+      return (s.dms_on && s.dms_valid && isfinite(s.dms_mV_per_V)) ? dmsScaledValueFromMvPerV(s.dms_mV_per_V) : 0.0f;
     case UdbfSignalKind::Ain2Volt:
       return (s.ain2_on && s.ain2_valid && s.ain2_mode == AIN2_MODE_VOLT && isfinite(s.ain2_value)) ? s.ain2_value : 0.0f;
     case UdbfSignalKind::Ain2WayMm:
@@ -685,6 +699,9 @@ DeviceClass_t loraWanClass = CLASS_A;
 static TaskHandle_t g_sensorTaskHandle = nullptr;
 static TaskHandle_t g_sdTaskHandle = nullptr;
 static volatile bool g_sensorTaskRunning = false;
+static volatile bool g_measurementsRunning = false;
+static bool g_measurementsInitialized = false;
+static bool g_measurementTasksStarted = false;
 static SPISettings g_adsSpiSettings(4000000, MSBFIRST, SPI_MODE1);
 static SemaphoreHandle_t g_spiBusMutex = nullptr;
 static portMUX_TYPE g_logBufMux = portMUX_INITIALIZER_UNLOCKED;
@@ -700,10 +717,14 @@ static void spiBusUnlock() {
   if (g_spiBusMutex) xSemaphoreGive(g_spiBusMutex);
 }
 static inline void adsCS(bool en) { digitalWrite(PIN_ADS_CS, en ? LOW : HIGH); }
+static inline bool adsRawLooksSaturated(int32_t raw) {
+  return (raw >= 0x7F0000L) || (raw <= (int32_t)0xFF810000L);
+}
 static void restoreAdsBusAfterSd() {
   digitalWrite(PIN_SD_CS, HIGH);
   adsCS(false);
   SPI.begin(PIN_SPI_SCK, PIN_SPI_MISO, PIN_SPI_MOSI, PIN_SD_CS);
+  g_adsConfigSettled = false;
   if (cfg.dmsEnabled) {
     restoreDmsRunMode();
   }
@@ -1267,6 +1288,9 @@ static bool applyDownSpikeFilter(int32_t candidate, int32_t& lastRaw, bool& have
 }
 static void prepareTxFrame(uint8_t port);
 static void syncSdLogger(bool forceReopen);
+static bool startMeasurementsManual();
+static void stopMeasurementsManual();
+static void ensureMeasurementTasksStarted();
 // ============================================================
 // ADS low-level
 // ============================================================
@@ -1314,6 +1338,7 @@ static bool adsWaitDrdyLow(uint32_t timeout_us) {
   uint32_t start = micros();
   uint32_t spins = 0;
   while (digitalRead(PIN_ADS_DRDY) == HIGH) {
+    if (g_sdBusy) return false;
     if ((uint32_t)(micros() - start) >= timeout_us) return false;
     // Let the scheduler breathe often enough to avoid task watchdog resets,
     // but keep the wait mostly tight for high-speed sampling.
@@ -1335,6 +1360,10 @@ static int32_t readSingleShot_DRDY(uint32_t timeoutUs) {
   return ADS_FAIL;
 }
 static bool readChannelRaw(const AdsChanCfg& chan, float& out_mV, int32_t* rawOut) {
+  if (g_sdBusy) {
+    out_mV = NAN;
+    return false;
+  }
   adsApplyConfig(chan);
   if (!g_adsConfigSettled) {
     if (readSingleShot_DRDY(chan.timeoutUs) == ADS_FAIL) {
@@ -1344,7 +1373,7 @@ static bool readChannelRaw(const AdsChanCfg& chan, float& out_mV, int32_t* rawOu
     g_adsConfigSettled = true;
   }
   int32_t raw = readSingleShot_DRDY(chan.timeoutUs);
-  if (raw == ADS_FAIL) {
+  if (raw == ADS_FAIL || adsRawLooksSaturated(raw)) {
     out_mV = NAN;
     return false;
   }
@@ -1568,7 +1597,7 @@ static void sensorTask(void* /*arg*/) {
   uint32_t nextWakeUs = micros();
   uint32_t lastYieldMs = millis();
   for (;;) {
-    if (g_mode != RunMode::CONFIG) {
+    if (g_mode != RunMode::CONFIG || !g_measurementsRunning) {
       vTaskDelay(pdMS_TO_TICKS(20));
       continue;
     }
@@ -1934,7 +1963,7 @@ static void loggerLoop() {
 static void sdTask(void* /*arg*/) {
   vTaskDelay(pdMS_TO_TICKS(200));
   for (;;) {
-    if (g_mode == RunMode::CONFIG && cfg.sdLogEnabled) {
+    if (g_mode == RunMode::CONFIG && g_measurementsRunning && cfg.sdLogEnabled) {
       loggerLoop();
       vTaskDelay(pdMS_TO_TICKS(20));
     } else {
@@ -2087,20 +2116,24 @@ static void handleApiSdConvertBinCsv() {
   }
   const bool isV1 = (strncmp(h.magic, "MKPBIN1", 7) == 0);
   const bool isV2 = (strncmp(h.magic, "MKPBIN2", 7) == 0);
-  if (!isV1 && !isV2) {
+  const bool isV3 = (strncmp(h.magic, "MKPBIN3", 7) == 0);
+  if (!isV1 && !isV2 && !isV3) {
     f.close();
     sdSpiEnd();
     g_sdBusy = false;
     sendJsonError(400, "invalid_bin_format");
     return;
   }
-  const bool dmsEnabled = isV2 ? ((h.flags & BIN_FLAG_DMS_ENABLED) != 0) : true;
-  const bool ain2Enabled = isV2 ? ((h.flags & BIN_FLAG_AIN2_ENABLED) != 0) : true;
-  const bool tempEnabled = isV2 ? ((h.flags & BIN_FLAG_TEMP_ENABLED) != 0) : true;
-  const bool ain2VoltMode = isV2 ? ((h.flags & BIN_FLAG_AIN2_MODE_VOLT) != 0) : (cfg.ain2Mode == AIN2_MODE_VOLT);
-  const uint16_t expectedRecordSize = isV2
-    ? (uint16_t)(sizeof(uint32_t) + (dmsEnabled ? sizeof(int32_t) : 0) + (ain2Enabled ? sizeof(int32_t) : 0) + (tempEnabled ? sizeof(int16_t) : 0))
-    : (uint16_t)sizeof(BinLogRecordV1);
+  const bool dmsEnabled = (isV2 || isV3) ? ((h.flags & BIN_FLAG_DMS_ENABLED) != 0) : true;
+  const bool ain2Enabled = (isV2 || isV3) ? ((h.flags & BIN_FLAG_AIN2_ENABLED) != 0) : true;
+  const bool tempEnabled = (isV2 || isV3) ? ((h.flags & BIN_FLAG_TEMP_ENABLED) != 0) : true;
+  const bool ain2VoltMode = (isV2 || isV3) ? ((h.flags & BIN_FLAG_AIN2_MODE_VOLT) != 0) : (cfg.ain2Mode == AIN2_MODE_VOLT);
+  const bool dmsUmMode = isV3 ? ((h.flags & BIN_FLAG_DMS_UNIT_UM_M) != 0) : (cfg.dmsKFactor > 0.0f);
+  const uint16_t expectedRecordSize = isV3
+    ? (uint16_t)(sizeof(uint32_t) + (dmsEnabled ? sizeof(float) : 0) + (ain2Enabled ? sizeof(float) : 0) + (tempEnabled ? sizeof(float) : 0))
+    : (isV2
+      ? (uint16_t)(sizeof(uint32_t) + (dmsEnabled ? sizeof(int32_t) : 0) + (ain2Enabled ? sizeof(int32_t) : 0) + (tempEnabled ? sizeof(int16_t) : 0))
+      : (uint16_t)sizeof(BinLogRecordV1));
   if (h.recordSize != expectedRecordSize) {
     f.close();
     sdSpiEnd();
@@ -2117,9 +2150,9 @@ static void handleApiSdConvertBinCsv() {
     sendJsonError(500, "csv_create_failed");
     return;
   }
-  String header = "TimeCounter";
-  if (dmsEnabled) header += ",DMS_RAW,DMS_MV,DMS_MV_V,DMS,DMS_uM_M";
-  if (ain2Enabled) header += ain2VoltMode ? ",AIN2_RAW,AIN2_V" : ",AIN2_RAW,AIN2_mm";
+  String header = "TimeCounter_us";
+  if (dmsEnabled) header += dmsUmMode ? ",DMS_uM_m" : ",DMS_mV_V";
+  if (ain2Enabled) header += ain2VoltMode ? ",AIN2_V" : ",AIN2_mm";
   if (tempEnabled) header += ",TEMP_C";
   header += "\r\n";
   out.print(header);
@@ -2129,6 +2162,9 @@ static void handleApiSdConvertBinCsv() {
     int32_t dmsRaw = 0;
     int32_t ain2Raw = 0;
     int16_t tempC100 = 0;
+    float dmsScaled = NAN;
+    float ain2Scaled = NAN;
+    float tempC = NAN;
     bool rowOk = true;
     if (f.read((uint8_t*)&timeCounterUs, sizeof(timeCounterUs)) != (int)sizeof(timeCounterUs)) break;
     if (isV1) {
@@ -2138,38 +2174,53 @@ static void handleApiSdConvertBinCsv() {
       dmsRaw = r.dms_raw;
       ain2Raw = r.ain2_raw;
       tempC100 = r.temp_c_x100;
-    } else {
-      if (dmsEnabled && f.read((uint8_t*)&dmsRaw, sizeof(dmsRaw)) != (int)sizeof(dmsRaw)) { rowOk = false; }
-      if (rowOk && ain2Enabled && f.read((uint8_t*)&ain2Raw, sizeof(ain2Raw)) != (int)sizeof(ain2Raw)) { rowOk = false; }
-      if (rowOk && tempEnabled && f.read((uint8_t*)&tempC100, sizeof(tempC100)) != (int)sizeof(tempC100)) { rowOk = false; }
-      if (!rowOk) break;
-    }
-    String row = String(timeCounterUs);
-    if (dmsEnabled) {
-      const float dmsMv = rawTo_mV_gain(dmsRaw, GAIN_DMS);
-      const float dmsMvPerV = dmsTo_mV_per_V(dmsMv);
-      row += "," + String(dmsRaw);
-      row += "," + String(dmsMv, 4);
-      row += "," + String(dmsMvPerV, 4);
-      row += ",";        // DMS engineering value placeholder
-      row += ",";        // DMS_uM_M placeholder until gauge factor / bridge type is configured
-    }
-    if (ain2Enabled) {
-      row += "," + String(ain2Raw);
+      dmsScaled = dmsTo_mV_per_V(rawTo_mV_gain(dmsRaw, GAIN_DMS));
       const float ain2MvLocal = rawTo_mV_gain(ain2Raw, GAIN_AIN2);
       if (ain2VoltMode) {
         const float adcV = ain2MvLocal / 1000.0f;
         const float fullscale = (cfg.ain2AdcFullscaleV > 0.001f) ? cfg.ain2AdcFullscaleV : 1.0f;
         const float inputScale = (cfg.ain2InputFullscaleV > 0.0f) ? cfg.ain2InputFullscaleV : fullscale;
-        const float v = clampf(adcV / fullscale, 0.0f, 1.0f) * inputScale;
-        row += "," + String(v, 4);
+        ain2Scaled = clampf(adcV / fullscale, 0.0f, 1.0f) * inputScale;
       } else {
-        const float mm = clampf((ain2MvLocal / 3300.0f), 0.0f, 1.0f) * cfg.ain2LengthMm;
-        row += "," + String(mm, 4);
+        ain2Scaled = clampf((ain2MvLocal / 3300.0f), 0.0f, 1.0f) * cfg.ain2LengthMm;
       }
+      tempC = ((float)tempC100) / 100.0f;
+    } else if (isV2) {
+      if (dmsEnabled && f.read((uint8_t*)&dmsRaw, sizeof(dmsRaw)) != (int)sizeof(dmsRaw)) { rowOk = false; }
+      if (rowOk && ain2Enabled && f.read((uint8_t*)&ain2Raw, sizeof(ain2Raw)) != (int)sizeof(ain2Raw)) { rowOk = false; }
+      if (rowOk && tempEnabled && f.read((uint8_t*)&tempC100, sizeof(tempC100)) != (int)sizeof(tempC100)) { rowOk = false; }
+      if (!rowOk) break;
+      if (dmsEnabled) dmsScaled = dmsTo_mV_per_V(rawTo_mV_gain(dmsRaw, GAIN_DMS));
+      if (ain2Enabled) {
+        const float ain2MvLocal = rawTo_mV_gain(ain2Raw, GAIN_AIN2);
+        if (ain2VoltMode) {
+          const float adcV = ain2MvLocal / 1000.0f;
+          const float fullscale = (cfg.ain2AdcFullscaleV > 0.001f) ? cfg.ain2AdcFullscaleV : 1.0f;
+          const float inputScale = (cfg.ain2InputFullscaleV > 0.0f) ? cfg.ain2InputFullscaleV : fullscale;
+          ain2Scaled = clampf(adcV / fullscale, 0.0f, 1.0f) * inputScale;
+        } else {
+          ain2Scaled = clampf((ain2MvLocal / 3300.0f), 0.0f, 1.0f) * cfg.ain2LengthMm;
+        }
+      }
+      if (tempEnabled) tempC = ((float)tempC100) / 100.0f;
+    } else {
+      if (dmsEnabled && f.read((uint8_t*)&dmsScaled, sizeof(dmsScaled)) != (int)sizeof(dmsScaled)) { rowOk = false; }
+      if (rowOk && ain2Enabled && f.read((uint8_t*)&ain2Scaled, sizeof(ain2Scaled)) != (int)sizeof(ain2Scaled)) { rowOk = false; }
+      if (rowOk && tempEnabled && f.read((uint8_t*)&tempC, sizeof(tempC)) != (int)sizeof(tempC)) { rowOk = false; }
+      if (!rowOk) break;
+    }
+    String row = String(timeCounterUs);
+    if (dmsEnabled) {
+      if (isfinite(dmsScaled)) row += "," + String(dmsScaled, dmsUmMode ? 2 : 6);
+      else row += ",";
+    }
+    if (ain2Enabled) {
+      if (isfinite(ain2Scaled)) row += "," + String(ain2Scaled, ain2VoltMode ? 4 : 2);
+      else row += ",";
     }
     if (tempEnabled) {
-      row += "," + String(((float)tempC100) / 100.0f, 2);
+      if (isfinite(tempC)) row += "," + String(tempC, 2);
+      else row += ",";
     }
     row += "\n";
     out.print(row);
@@ -2611,6 +2662,8 @@ static void appendConfig(JsonObject obj) {
   obj["stream_mode_enabled"] = cfg.streamModeEnabled ? 1 : 0;
   obj["sd_base"] = cfg.logBaseName;
   obj["sd_rotate_kb"] = cfg.logRotateKB;
+  obj["measurements_running"] = g_measurementsRunning ? 1 : 0;
+  obj["measurements_initialized"] = g_measurementsInitialized ? 1 : 0;
   JsonObject perfObj = obj["perf"].to<JsonObject>();
   appendPerf(perfObj);
 }
@@ -2623,6 +2676,8 @@ static void appendLive(JsonObject obj) {
   obj["oled_supported"] = oledAllowedInCurrentMode() ? 1 : 0;
   obj["oled_activate_supported"] = oledAllowedInCurrentMode() ? 1 : 0;
   obj["oled_active"] = oledIsActiveNow() ? 1 : 0;
+  obj["measurements_running"] = g_measurementsRunning ? 1 : 0;
+  obj["measurements_initialized"] = g_measurementsInitialized ? 1 : 0;
   obj["dms_enabled"] = cfg.dmsEnabled ? 1 : 0;
   obj["dms_valid"] = dms_valid ? 1 : 0;
   obj["dms_raw"] = lastDmsRaw;
@@ -2698,6 +2753,93 @@ static void appendController(JsonObject obj) {
   obj["oled_activate_supported"] = oledAllowedInCurrentMode() ? 1 : 0;
   obj["oled_active"] = oledIsActiveNow() ? 1 : 0;
 }
+
+static void ensureMeasurementTasksStarted() {
+  if (g_measurementTasksStarted) return;
+  xTaskCreatePinnedToCore(sensorTask, "sensorTask", 8192, nullptr, 1, &g_sensorTaskHandle, 1);
+  xTaskCreatePinnedToCore(sdTask, "sdTask", 8192, nullptr, 1, &g_sdTaskHandle, 1);
+  xTaskCreatePinnedToCore(streamTask, "streamTask", 6144, nullptr, 1, &g_streamTaskHandle, 0);
+  g_measurementTasksStarted = true;
+}
+
+static void stopMeasurementsManual() {
+  g_measurementsRunning = false;
+  digitalWrite(PIN_MOSFET, LOW);
+  closeLogFile();
+  resetLogBuffer();
+  invalidateDms();
+  invalidateAin2();
+  invalidateTemp();
+  dmsFramesPerSecond = 0;
+  ain2FramesPerSecond = 0;
+  tempFramesPerSecond = 0;
+  totalFramesPerSecond = 0;
+  framesPerSecond = 0;
+  g_lastSampleSeq = 0;
+  if (g_mode == RunMode::CONFIG) {
+    g_sdStatus = cfg.sdLogEnabled ? "ready" : "disabled";
+    oledShowBanner("CONFIG MODE", "Measurements stopped");
+  }
+}
+
+static bool startMeasurementsManual() {
+  if (g_mode != RunMode::CONFIG) return false;
+  if (!g_measurementsInitialized) {
+    adsInit();
+    dsInit();
+    if (cfg.dmsEnabled) runSelfTest();
+    else {
+      selfTestOk = false;
+      selfTestDelta_mV = NAN;
+    }
+    if (cfg.dmsEnabled) restoreDmsRunMode();
+    g_measurementsInitialized = true;
+  }
+  ensureMeasurementTasksStarted();
+  last_dms_read_us = micros();
+  last_ain2_read_us = micros();
+  g_lastSampleSeq = 0;
+  g_lastLoggedSampleSeq = 0;
+  g_lastStreamedSampleSeq = 0;
+  syncSdLogger(true);
+  g_measurementsRunning = true;
+  if (g_mode == RunMode::CONFIG) {
+    oledShowBanner("CONFIG MODE", "Measurements running");
+  }
+  return true;
+}
+
+static void handleApiMeasureControlPost() {
+  if (!server.hasArg("plain")) {
+    server.send(400, "application/json", "{\"ok\":false,\"error\":\"missing body\"}");
+    return;
+  }
+  StaticJsonDocument<256> req;
+  DeserializationError err = deserializeJson(req, server.arg("plain"));
+  if (err) {
+    server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid json\"}");
+    return;
+  }
+  const String action = String((const char*)(req["action"] | ""));
+  bool ok = false;
+  if (action == "start") {
+    ok = startMeasurementsManual();
+  } else if (action == "stop") {
+    stopMeasurementsManual();
+    ok = true;
+  } else {
+    server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid action\"}");
+    return;
+  }
+  StaticJsonDocument<384> doc;
+  doc["ok"] = ok;
+  doc["measurements_running"] = g_measurementsRunning ? 1 : 0;
+  doc["measurements_initialized"] = g_measurementsInitialized ? 1 : 0;
+  String out;
+  serializeJson(doc, out);
+  server.send(200, "application/json", out);
+}
+
 static void handleApiLive() {
   if (cfg.streamModeEnabled) {
     sendJsonError(409, "stream_mode_active");
@@ -2822,6 +2964,8 @@ static void handleApiConfigPost() {
   cfg = next;
   saveCfg();
   applyLoraConfig();
+  if (g_measurementsInitialized && cfg.dmsEnabled) restoreDmsRunMode();
+  if (g_measurementsRunning) syncSdLogger(true);
   if (!cfg.dmsEnabled) invalidateDms();
   if (!cfg.ain2Enabled) invalidateAin2();
   if (!cfg.tempEnabled) invalidateTemp();
@@ -2834,6 +2978,11 @@ static void handleApiConfigPost() {
   server.send(200, "application/json", out);
 }
 static void handleApiSelftestPost() {
+  if (g_mode == RunMode::CONFIG && !g_measurementsInitialized) {
+    adsInit();
+    dsInit();
+    g_measurementsInitialized = true;
+  }
   bool resultOk = runSelfTest();
   StaticJsonDocument<512> doc;
   doc["ok"] = true;
@@ -2847,7 +2996,7 @@ static void handleApiSelftestPost() {
 }
 static void handleApiOledPost() {
   StaticJsonDocument<384> req;
-  bool wantEnabled = !g_oledEnabled;  // default behavior: toggle on every POST
+  bool wantEnabled = !g_oledEnabled;
   if (server.hasArg("plain")) {
     String body = server.arg("plain");
     if (body.length() > 0) {
@@ -2858,28 +3007,36 @@ static void handleApiOledPost() {
         else if (!req["active"].isNull()) wantEnabled = req["active"].as<int>() != 0;
         else if (!req["action"].isNull()) {
           const char* action = req["action"].as<const char*>();
-          if (action && (strcmp(action, "toggle") == 0)) wantEnabled = !g_oledEnabled;
+          if (action && strcmp(action, "toggle") == 0) wantEnabled = !g_oledEnabled;
           else if (action && (strcmp(action, "on") == 0 || strcmp(action, "enable") == 0 || strcmp(action, "show") == 0)) wantEnabled = true;
           else if (action && (strcmp(action, "off") == 0 || strcmp(action, "disable") == 0 || strcmp(action, "hide") == 0)) wantEnabled = false;
         }
       }
     }
   }
+
   g_oledEnabled = wantEnabled;
+  saveCfg();
+  bool startedNow = false;
+
   if (!oledAllowedInCurrentMode()) {
     oledSleep();
   } else if (g_oledEnabled) {
+    startedNow = startMeasurementsManual();
     oledEnsureInit();
     oledUpdateLive(true);
   } else {
     oledSleep();
   }
-  saveCfg();
+
   StaticJsonDocument<256> doc;
   doc["ok"] = true;
   doc["supported"] = oledAllowedInCurrentMode() ? 1 : 0;
   doc["enabled"] = g_oledEnabled ? 1 : 0;
   doc["active"] = oledIsActiveNow() ? 1 : 0;
+  doc["measurements_running"] = g_measurementsRunning ? 1 : 0;
+  doc["measurements_initialized"] = g_measurementsInitialized ? 1 : 0;
+  doc["started_now"] = startedNow ? 1 : 0;
   String out;
   serializeJson(doc, out);
   server.send(200, "application/json", out);
@@ -2969,6 +3126,20 @@ static void handleApiStreamPost() {
   bool streamChanged = (next.streamModeEnabled != cfg.streamModeEnabled);
   cfg = next;
   saveCfg();
+
+  if (cfg.streamModeEnabled && g_mode == RunMode::CONFIG) {
+    if (!g_measurementsInitialized) {
+      adsInit();
+      dsInit();
+      if (cfg.dmsEnabled) {
+        restoreDmsRunMode();
+      }
+      g_measurementsInitialized = true;
+    }
+    ensureMeasurementTasksStarted();
+    g_measurementsRunning = true;
+  }
+
   syncSdLogger(true);
   if (streamChanged || cfg.streamModeEnabled) {
     resetStreamBuffer();
@@ -2981,21 +3152,183 @@ static void handleApiStreamPost() {
   }
   handleApiStreamGet();
 }
-static bool serveFile(const char* path, const char* mime) {
-  if (!LittleFS.exists(path)) return false;
+static bool shouldLogHttpVerbose() {
+  if (g_mode != RunMode::CONFIG) return false;
+  const uint32_t now = millis();
+  return (g_diagBootMs != 0 && (now - g_diagBootMs) <= 180000UL);
+}
+
+static void logHttpEvent(const char* tag, const String& uri, uint32_t startedMs, const String& extra = "") {
+  if (!shouldLogHttpVerbose()) return;
+  const uint32_t now = millis();
+  const uint32_t dt = now - startedMs;
+  ++g_httpReqCount;
+  if (g_httpReqWindowStartedMs == 0 || (now - g_httpReqWindowStartedMs) >= 1000UL) {
+    g_httpReqWindowStartedMs = now;
+    g_httpReqWindowCount = 0;
+  }
+  ++g_httpReqWindowCount;
+  if (dt > g_httpMaxDurationMs) {
+    g_httpMaxDurationMs = dt;
+    g_httpMaxDurationUri = uri;
+  }
+  if (dt >= 200UL) ++g_httpSlowReqCount;
+  Serial.printf("[HTTP][%10lu ms][%s] %s dt=%lu ms heap=%u win=%lu host=%s ua=%s%s%s\n",
+                now, tag, uri.c_str(), dt, ESP.getFreeHeap(),
+                g_httpReqWindowCount, server.hostHeader().c_str(),
+                server.header("User-Agent").c_str(),
+                extra.length() ? " " : "", extra.c_str());
+}
+
+static void logLoopStatsIfNeeded() {
+  if (g_mode != RunMode::CONFIG) return;
+  if (!shouldLogHttpVerbose()) return;
+  const uint32_t now = millis();
+  if (g_diagLastLoopStatsMs == 0 || (now - g_diagLastLoopStatsMs) >= 5000UL) {
+    Serial.printf("[DIAG][%10lu ms] heap=%u minHeap=%u wifiClients=%d httpTotal=%lu slow=%lu max=%lu uri=%s stream=%s\n",
+                  now, ESP.getFreeHeap(), ESP.getMinFreeHeap(), WiFi.softAPgetStationNum(),
+                  g_httpReqCount, g_httpSlowReqCount, g_httpMaxDurationMs,
+                  g_httpMaxDurationUri.c_str(), g_streamStatus.c_str());
+    g_diagLastLoopStatsMs = now;
+  }
+}
+
+bool serveFile(const char* path, const char* mime) {
+  const uint32_t startedMs = millis();
+  if (!LittleFS.exists(path)) {
+    logHttpEvent("MISS", String(path), startedMs, "fs=missing");
+    return false;
+  }
   File f = LittleFS.open(path, "r");
-  if (!f) return false;
+  if (!f) {
+    logHttpEvent("MISS", String(path), startedMs, "fs=open_failed");
+    return false;
+  }
+  const size_t size = f.size();
   server.streamFile(f, mime);
   f.close();
+  logHttpEvent("FILE", String(path), startedMs, String("bytes=") + String((uint32_t)size) + " mime=" + String(mime));
   return true;
 }
+
+static bool isIpv4Host(const String& host) {
+  if (!host.length()) return false;
+  for (size_t i = 0; i < host.length(); ++i) {
+    const char c = host[i];
+    if (!((c >= '0' && c <= '9') || c == '.')) return false;
+  }
+  return true;
+}
+static String mimeFromPath(const String& path) {
+  String p = path;
+  p.toLowerCase();
+  if (p.endsWith(".html") || p.endsWith(".htm")) return "text/html";
+  if (p.endsWith(".css")) return "text/css";
+  if (p.endsWith(".js")) return "application/javascript";
+  if (p.endsWith(".json")) return "application/json";
+  if (p.endsWith(".svg")) return "image/svg+xml";
+  if (p.endsWith(".png")) return "image/png";
+  if (p.endsWith(".jpg") || p.endsWith(".jpeg")) return "image/jpeg";
+  if (p.endsWith(".ico")) return "image/x-icon";
+  if (p.endsWith(".txt")) return "text/plain";
+  return "application/octet-stream";
+}
+static void redirectToRoot() {
+  const uint32_t startedMs = millis();
+  String target = String("http://") + g_apIp.toString() + "/";
+  server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  server.sendHeader("Pragma", "no-cache");
+  server.sendHeader("Expires", "-1");
+  server.sendHeader("Location", target, true);
+  server.send(302, "text/plain", "");
+  logHttpEvent("REDIR", server.uri(), startedMs, String("to=") + target);
+}
+
+static void handleWindowsConnectTest() {
+  const uint32_t startedMs = millis();
+  server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  server.sendHeader("Pragma", "no-cache");
+  server.sendHeader("Expires", "-1");
+  server.send(200, "text/plain", "Microsoft Connect Test");
+  logHttpEvent("WIN", server.uri(), startedMs, "probe=connecttest");
+}
+
+static void handleWindowsNcsi() {
+  const uint32_t startedMs = millis();
+  server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  server.sendHeader("Pragma", "no-cache");
+  server.sendHeader("Expires", "-1");
+  server.send(200, "text/plain", "Microsoft NCSI");
+  logHttpEvent("WIN", server.uri(), startedMs, "probe=ncsi");
+}
+
+static void handleNotFound() {
+  const uint32_t startedMs = millis();
+  const String uri = server.uri();
+  if (uri.startsWith("/api/")) {
+    sendJsonError(404, "not_found");
+    logHttpEvent("API404", uri, startedMs);
+    return;
+  }
+  if (LittleFS.exists(uri)) {
+    const String mime = mimeFromPath(uri);
+    if (serveFile(uri.c_str(), mime.c_str())) return;
+  }
+  const String host = server.hostHeader();
+  if (g_mode == RunMode::CONFIG && (uri == "/connecttest.txt" || uri == "/msftconnecttest.txt")) {
+    redirectToRoot();
+    return;
+  }
+  if (g_mode == RunMode::CONFIG && uri == "/ncsi.txt") {
+    redirectToRoot();
+    return;
+  }
+  if (g_mode == RunMode::CONFIG && uri == "/wpad.dat") {
+    static const char pac[] =
+        "function FindProxyForURL(url, host) { return \"DIRECT\"; }\r\n";
+    server.send(200, "application/x-ns-proxy-autoconfig", pac);
+    logHttpEvent("WPAD", uri, startedMs, "mode=direct");
+    return;
+  }
+  if (g_mode == RunMode::CONFIG && uri == "/cname.aspx") {
+    server.send(204, "text/plain", "");
+    logHttpEvent("CNAME", uri, startedMs, "mode=204");
+    return;
+  }
+  const bool captiveProbe =
+      uri == "/generate_204" ||
+      uri == "/gen_204" ||
+      uri == "/hotspot-detect.html" ||
+      uri == "/library/test/success.html" ||
+      uri == "/success.txt" ||
+      uri == "/redirect" ||
+      uri == "/fwlink/" ||
+      uri == "/canonical.html" ||
+      (!host.isEmpty() && !isIpv4Host(host) && host != g_apIp.toString() && host != "lorasense.local");
+  if (g_mode == RunMode::CONFIG && captiveProbe) {
+    redirectToRoot();
+    return;
+  }
+  if (g_mode == RunMode::CONFIG) {
+    server.send(404, "text/plain", "not found");
+    logHttpEvent("404", uri, startedMs, "config-drop");
+    return;
+  }
+  server.send(404, "text/plain", "not found");
+  logHttpEvent("404", uri, startedMs);
+}
 static void handleRoot() {
-  if (serveFile("/index.html", "text/html")) return;
+  const uint32_t startedMs = millis();
+  if (serveFile("/index.html", "text/html")) {
+    logHttpEvent("ROOT", server.uri(), startedMs, "source=fs");
+    return;
+  }
   server.send(200, "text/html",
               "<html><body><h1>MKP LoRaSense</h1>"
-              "<p><a href=\"/api/state\">/api/state</a></p>"
-              "</body></html>");
+              "<p>Filesystem missing /index.html</p></body></html>");
+  logHttpEvent("ROOT", server.uri(), startedMs, "source=fallback_html");
 }
+
 static void startApAndWeb() {
   if (!LittleFS.begin(true)) {
     Serial.println("[FS] LittleFS mount failed");
@@ -3004,8 +3337,43 @@ static void startApAndWeb() {
   WiFi.mode(WIFI_AP);
   WiFi.softAP(g_apSsid.c_str());
   g_apIp = WiFi.softAPIP();
+  g_diagBootMs = millis();
+  g_diagLastLoopStatsMs = 0;
+  g_httpReqCount = 0;
+  g_httpReqWindowCount = 0;
+  g_httpReqWindowStartedMs = 0;
+  g_httpSlowReqCount = 0;
+  g_httpMaxDurationMs = 0;
+  g_httpMaxDurationUri = "";
+  dnsServer.stop();
+  dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
+  dnsServer.start(DNS_PORT, "*", g_apIp);
+  Serial.printf("[AP] SSID=%s IP=%s heap=%u\n", g_apSsid.c_str(), g_apIp.toString().c_str(), ESP.getFreeHeap());
+
+  const char* headerKeys[] = {"User-Agent", "Host"};
+  server.collectHeaders(headerKeys, 2);
   server.on("/", HTTP_GET, handleRoot);
   server.on("/index.html", HTTP_GET, handleRoot);
+  server.on("/generate_204", HTTP_GET, redirectToRoot);
+  server.on("/gen_204", HTTP_GET, redirectToRoot);
+  server.on("/hotspot-detect.html", HTTP_GET, redirectToRoot);
+  server.on("/library/test/success.html", HTTP_GET, redirectToRoot);
+  server.on("/connecttest.txt", HTTP_GET, redirectToRoot);
+  server.on("/msftconnecttest.txt", HTTP_GET, redirectToRoot);
+  server.on("/ncsi.txt", HTTP_GET, redirectToRoot);
+  server.on("/wpad.dat", HTTP_GET, []() {
+    static const char pac[] =
+        "function FindProxyForURL(url, host) { return \"DIRECT\"; }\r\n";
+    server.send(200, "application/x-ns-proxy-autoconfig", pac);
+  });
+  server.on("/cname.aspx", HTTP_GET, []() {
+    server.send(204, "text/plain", "");
+  });
+  server.on("/success.txt", HTTP_GET, redirectToRoot);
+  server.on("/redirect", HTTP_GET, redirectToRoot);
+  server.on("/fwlink/", HTTP_GET, redirectToRoot);
+  server.on("/canonical.html", HTTP_GET, redirectToRoot);
+
   server.on("/i18n.json", HTTP_GET, []() {
     if (!serveFile("/i18n.json", "application/json")) server.send(404, "text/plain", "not found");
   });
@@ -3021,6 +3389,7 @@ static void startApAndWeb() {
   server.on("/api/config", HTTP_GET, handleApiConfigGet);
   server.on("/api/config", HTTP_POST, handleApiConfigPost);
   server.on("/api/selftest", HTTP_POST, handleApiSelftestPost);
+  server.on("/api/measure", HTTP_POST, handleApiMeasureControlPost);
   server.on("/api/oled", HTTP_POST, handleApiOledPost);
   server.on("/api/reset", HTTP_POST, handleApiReset);
   server.on("/api/deveui", HTTP_GET, handleApiDevEuiGet);
@@ -3032,6 +3401,7 @@ static void startApAndWeb() {
   server.on("/api/sd/archive", HTTP_GET, handleApiSdArchive);
   server.on("/api/sd/convert_bin_csv", HTTP_GET, handleApiSdConvertBinCsv);
   server.on("/api/sd/delete", HTTP_POST, handleApiSdDelete);
+  server.onNotFound(handleNotFound);
   server.begin();
   g_streamServer.begin();
   g_streamServer.setNoDelay(true);
@@ -3068,7 +3438,7 @@ static void loraLoop() {
       syncLoraCompatAliases();
       dumpLoraBuffers("buffers before LoRaWAN.init");
       LoRaWAN.init(loraWanClass, loraWanRegion);
-      LoRaWAN.setDefaultDR(cfg.dr);
+      LoRaWAN.setDefaultDR(3);
       g_loraInitDone = true;
       deviceState = DEVICE_STATE_JOIN;
       break;
@@ -3078,12 +3448,36 @@ static void loraLoop() {
       LoRaWAN.join();
       break;
     case DEVICE_STATE_SEND:
-      Serial.println("[LORA] SEND");
+      if (!g_fieldJoinPassed) {
+        Serial.println("[LORA] JOIN SUCCESS");
+        g_fieldJoinPassed = true;
+      }
+      if (!g_fieldAdsReady) {
+        Serial.println("[ADS] INIT AFTER JOIN");
+        adsInit();
+        dsInit();
+        if (cfg.dmsEnabled) {
+          runSelfTest();
+          restoreDmsRunMode();
+        } else {
+          selfTestOk = false;
+          selfTestDelta_mV = NAN;
+        }
+        g_fieldAdsReady = true;
+        g_measurementsInitialized = true;
+      }
+      g_measurementsRunning = true;
+      Serial.println("[LORA] MEASURE");
       captureFieldSnapshot();
       oledUpdateLive(true);
       prepareTxFrame(appPort);
+      Serial.println("[ADS] OFF BEFORE TX");
+      adsCS(false);
+      digitalWrite(PIN_SD_CS, HIGH);
       g_radioQuietUntilMs = millis() + 3000UL;
+      Serial.println("[LORA] SEND");
       LoRaWAN.send();
+      g_measurementsRunning = false;
       deviceState = DEVICE_STATE_CYCLE;
       break;
     case DEVICE_STATE_CYCLE:
@@ -3105,23 +3499,37 @@ static void loraLoop() {
 void setup() {
   Serial.begin(115200);
   delay(300);
+  g_diagBootMs = millis();
   g_spiBusMutex = xSemaphoreCreateMutex();
   loadCfg();
   applyLoraConfig();
   g_mode = isApModeRequested() ? RunMode::CONFIG : RunMode::FIELD;
   if (!oledIsActiveNow()) oledSleep();
   if (g_mode == RunMode::CONFIG) {
-    startApAndWeb();
     g_loraEnabled = false;
-    g_sdStatus = cfg.sdLogEnabled ? g_sdStatus : "disabled";
+    g_sdStatus = cfg.sdLogEnabled ? "ready" : "disabled";
     oledShowBootLogo();
     delay(1500);
-    oledShowBanner("CONFIG MODE", g_apSsid);
+    startApAndWeb();
+    if (g_oledEnabled && oledAllowedInCurrentMode()) {
+      startMeasurementsManual();
+      oledEnsureInit();
+      oledUpdateLive(true);
+    } else {
+      oledShowBanner("CONFIG MODE", "Manual measurement start");
+      oledShowBanner("CONFIG MODE", g_apSsid);
+    }
+  } else {
+    g_fieldJoinPassed = false;
+    g_fieldAdsReady = false;
+    g_measurementsInitialized = false;
+    g_measurementsRunning = false;
+    invalidateDms();
+    invalidateAin2();
+    invalidateTemp();
+    selfTestOk = false;
+    selfTestDelta_mV = NAN;
   }
-  adsInit();
-  dsInit();
-  runSelfTest();
-  if (cfg.dmsEnabled) restoreDmsRunMode();
   if (g_mode == RunMode::FIELD) {
     oledSleep();
   }
@@ -3155,18 +3563,24 @@ void setup() {
     g_loraEnabled = true;
     g_sdStatus = "field_disabled";
   } else {
-    xTaskCreatePinnedToCore(sensorTask, "sensorTask", 8192, nullptr, 1, &g_sensorTaskHandle, 1);
-    xTaskCreatePinnedToCore(sdTask, "sdTask", 8192, nullptr, 1, &g_sdTaskHandle, 1);
-    xTaskCreatePinnedToCore(streamTask, "streamTask", 6144, nullptr, 1, &g_streamTaskHandle, 0);
-    oledUpdateLive(true);
+    ensureMeasurementTasksStarted();
+    if (g_oledEnabled && oledAllowedInCurrentMode()) {
+      g_measurementsRunning = true;
+      oledUpdateLive(true);
+    } else {
+      g_measurementsRunning = false;
+      oledUpdateLive(true);
+    }
   }
 }
 void loop() {
   if (g_mode == RunMode::CONFIG) {
+    dnsServer.processNextRequest();
     server.handleClient();
+    logLoopStatsIfNeeded();
     delay(cfg.streamModeEnabled ? 5 : 1);
   } else {
     loraLoop();
     delay(2);
   }
-}//TESTMARK
+}

@@ -109,6 +109,19 @@ button{cursor:pointer}
 .footer{width:min(100%,1160px);margin:30px auto 0;padding:18px 0 30px;border-top:1px solid var(--line);font-size:12px;color:var(--muted);display:flex;justify-content:center;gap:8px;flex-wrap:wrap;align-items:center;flex-shrink:0}
 .footer a{text-decoration:none}
 .footer a:hover{text-decoration:underline}
+
+.loading-overlay{position:fixed;inset:0;z-index:3000;display:flex;align-items:center;justify-content:center;background:var(--bg);padding:20px;transition:opacity .28s ease,visibility .28s ease}
+.loading-overlay.hidden{opacity:0;visibility:hidden;pointer-events:none}
+.loading-card{width:min(100%,520px);background:linear-gradient(180deg,var(--card),var(--card-2));border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow);padding:22px;display:flex;flex-direction:column;gap:14px}
+.loading-head{display:flex;align-items:center;gap:14px}
+.loading-head img{height:34px;width:auto;display:block}
+.loading-title{font-size:18px;font-weight:800;line-height:1.2}
+.loading-sub{font-size:13px;color:var(--muted)}
+.loading-bar{height:12px;border-radius:999px;border:1px solid var(--line);background:var(--field);overflow:hidden}
+.loading-fill{height:100%;width:0%;border-radius:999px;background:linear-gradient(90deg,var(--accent),var(--accent-2));transition:width .18s ease}
+.loading-status{font-size:13px;color:var(--muted);min-height:1.6em}
+.app-shell.booting{visibility:hidden}
+
 @media (max-width:1460px){.grid{grid-template-columns:repeat(2,minmax(270px,1fr));}}
 @media (max-width:780px){
   body{padding:8px 10px 0}
@@ -119,7 +132,6 @@ button{cursor:pointer}
   .field,.kv{grid-template-columns:1fr}
   .title{white-space:normal}
 }
-
 
 .tabs-shell{max-width:1160px;margin:0 auto;display:flex;flex-direction:column;gap:18px;width:100%}
 .tabs-bar{display:grid;grid-template-columns:repeat(3,minmax(220px,1fr));gap:14px;justify-content:center;align-content:center;max-width:980px;margin:0 auto}
@@ -138,11 +150,35 @@ button{cursor:pointer}
 .field{display:grid;grid-template-columns:180px minmax(0,1fr);gap:12px;align-items:center;margin:0}.system-grid .card:last-child .field + .field{margin-top:12px}.system-grid .card:last-child .summary{margin-top:16px !important}.system-grid .card:last-child .status{margin-top:12px !important}.system-grid .card:last-child .btn-pair{margin-bottom:16px}.system-grid .card #resetBtn,.system-grid .card #saveLoRaBtn{margin-top:auto}
 .field input,.field select,.field .fixed{width:100%;min-width:0}
 .btn-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:12px}
+
+.pcstream-banner{display:none;width:min(100%,1160px);margin:0 auto 12px;padding:12px 14px;border:1px solid rgba(84,184,230,.45);border-radius:16px;background:rgba(84,184,230,.10);box-shadow:var(--shadow);align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.pcstream-banner.show{display:flex}
+.pcstream-banner-title{font-weight:800}
+.pcstream-banner-text{font-size:13px;color:var(--muted);line-height:1.45}
+.pcstream-banner-actions{display:flex;gap:8px;flex-wrap:wrap}
+
 @media (max-width:980px){.tabs-inner-grid,.tabs-inner-grid.system-grid{grid-template-columns:1fr}.tabs-shell{max-width:960px}}
 @media (max-width:780px){.tabs-bar{grid-template-columns:1fr;max-width:100%}.tab-btn{width:100%}.field{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
+
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="loading-card">
+    <div class="loading-head">
+      <img alt="MKP" src="/logo.svg"/>
+      <div>
+        <div class="loading-title" id="loadingTitle">LoRaSense is starting</div>
+        <div class="loading-sub" id="loadingSubtitle">controller reachable · config loaded · state loaded · assets ready</div>
+      </div>
+    </div>
+    <div class="loading-bar"><div class="loading-fill" id="loadingFill"></div></div>
+    <div class="loading-status" id="loadingStatus">Connecting to controller...</div>
+    <div class="loading-status" id="loadingHint" style="min-height:0"></div>
+  </div>
+</div>
+<div class="app-shell booting" id="appShell">
+
 <header class="header">
 <a class="brand" href="https://www.marxkrontal.com/de/" rel="noopener noreferrer" target="_blank">
 <img alt="MKP" src="/logo.svg"/>
@@ -157,6 +193,17 @@ button{cursor:pointer}
 <button aria-label="Theme" class="icon-btn" id="themeBtn" type="button">☀️</button>
 </div>
 </header>
+
+<div class="pcstream-banner" id="pcStreamBanner">
+  <div>
+    <div class="pcstream-banner-title" id="pcStreamBannerTitle">PC Stream mode active</div>
+    <div class="pcstream-banner-text" id="pcStreamBannerText">The controller is now intended for direct PC streaming. Open the PC Stream tab for connection details.</div>
+  </div>
+  <div class="pcstream-banner-actions">
+    <button class="btn" id="pcStreamBannerOpenBtn" type="button">Open PC Stream tab</button>
+  </div>
+</div>
+
 <main class="main">
 <div class="tabs-shell"><div aria-label="Main sections" class="tabs-bar" role="tablist"><button aria-controls="tabPanel-measure" aria-selected="true" class="tab-btn active" data-tab="measure" id="tabBtn-measure" role="tab" type="button">Measurements &amp; settings</button><button aria-controls="tabPanel-system" aria-selected="false" class="tab-btn" data-tab="system" id="tabBtn-system" role="tab" type="button">LoRa &amp; controller</button><button aria-controls="tabPanel-stream" aria-selected="false" class="tab-btn" data-tab="stream" id="tabBtn-stream" role="tab" type="button">PC Stream</button></div><div class="tab-panels"><section aria-labelledby="tabBtn-measure" class="tab-panel active" data-tab="measure" id="tabPanel-measure" role="tabpanel"><div class="tabs-inner-grid"><div class="tabs-stack"><section class="card">
 <h3 id="h_measurements">Measurements</h3>
@@ -164,11 +211,16 @@ button{cursor:pointer}
 <div class="k" id="lab_time">Time</div><div class="v" id="time">--:--:--</div>
 <div class="k" id="lab_selftest">Self-test</div><div class="v"><span class="badge" id="selftest">-</span></div>
 <div class="k" id="lab_delta">Delta</div><div class="v"><span id="selftest_delta">-</span> mV</div>
+<div class="k" id="lab_measure_state">Measurements</div><div class="v"><span class="badge off" id="measureState">STOPPED</span></div>
+</div>
+<div class="btn-pair" style="margin-top:12px">
+<button class="btn" id="startMeasureBtn" type="button">Start measurement</button>
+<button class="btn" id="stopMeasureBtn" type="button">Stop measurement</button>
 </div>
 <div class="hr"></div>
 <div class="kv">
 <div class="k" id="lab_dms_raw">DMS raw</div><div class="v" id="dms_raw">-</div>
-<div class="k" id="lab_dms_mvv">DMS mV/V</div><div class="v" id="dms_mvv">-</div>
+<div class="k" id="lab_dms_value">DMS value</div><div class="v"><span id="dms_value">-</span> <span id="dms_value_unit">mV/V</span></div>
 <div class="k" id="lab_dms_mv">DMS est. mV</div><div class="v" id="dms_mv">-</div>
 <div class="k" id="lab_dms_actual">DMS actual</div><div class="v"><span id="dms_actual">-</span> Hz</div>
 </div>
@@ -204,6 +256,8 @@ button{cursor:pointer}
 <label class="switch"><input id="dmsOn" type="checkbox"/><span class="switch-ui"></span><span id="sw_on_off_dms">On</span></label>
 </div>
 <div class="field"><label for="dmsHz" id="lab_dms_hz">Frequency, Hz</label><select id="dmsHz"><option value="5">5</option><option value="11.25">11.25</option><option value="20">20</option><option value="22.5">22.5</option><option value="40">40</option><option value="44">44</option><option value="45">45</option><option value="82.5">82.5</option><option value="90">90</option><option value="150">150</option><option value="175">175</option><option value="180">180</option><option value="250">250</option><option value="330">330</option><option value="350">350</option><option value="600">600</option><option value="660">660</option><option value="1000">1000</option><option value="1200">1200</option><option value="2000">2000</option></select></div>
+<div class="field"><label for="dmsKFactor" id="lab_dms_kfactor">K-factor</label><input id="dmsKFactor" min="0" step="0.0001" type="number"/></div>
+<div class="note" id="dms_kfactor_note">If K-factor is 0, DMS stays in mV/V. If K-factor is greater than 0, the value is calculated in um/m.</div>
 </div>
 <div class="sensor-box">
 <div class="sensor-head">
@@ -216,7 +270,7 @@ button{cursor:pointer}
 <div class="field"><label for="ain2Hz" id="lab_ain2_hz">Frequency, Hz</label><select id="ain2Hz"><option value="5">5</option><option value="11.25">11.25</option><option value="20">20</option><option value="22.5">22.5</option><option value="40">40</option><option value="44">44</option><option value="45">45</option><option value="82.5">82.5</option><option value="90">90</option><option value="150">150</option><option value="175">175</option><option value="180">180</option><option value="250">250</option><option value="330">330</option><option value="350">350</option><option value="600">600</option><option value="660">660</option><option value="1000">1000</option><option value="1200">1200</option><option value="2000">2000</option></select></div>
 <div class="field"><label for="ain2Mode" id="lab_ain2_type">AIN2 type</label>
 <select id="ain2Mode">
-<option id="opt_ain2_pot" value="pot">Potentiometer / Wegsensor</option>
+<option id="opt_ain2_pot" value="pot">Wegsensor</option>
 <option id="opt_ain2_volt" value="volt">0-10 V input</option>
 </select>
 </div>
@@ -231,16 +285,11 @@ button{cursor:pointer}
 <option value="100">100 mm</option>
 <option value="150">150 mm</option>
 <option value="200">200 mm</option>
-<option id="opt_custom" value="custom">Custom</option>
 </select>
 </div>
-<div class="field"><label for="ain2Len" id="lab_length">Length, mm</label><input id="ain2Len" min="0.01" step="0.01" type="number"/></div>
+<input id="ain2Len" type="hidden"/>
 </div>
-<div class="stack hidden" id="voltBlock">
-<div class="field"><label for="adcFs" id="lab_adc_fs">ADC full-scale, V</label><input id="adcFs" min="0.1" step="0.001" type="number"/></div>
-<div class="field"><label for="inputFs" id="lab_input_fs">Input full-scale, V</label><input id="inputFs" min="0.1" step="0.1" type="number"/></div>
-<div class="note" id="volt_note">Example: if the adapter maps 0-10 V to 0-3.123 V, keep 3.123 and 10.0.</div>
-</div>
+<div class="stack hidden" id="voltBlock"><input id="adcFs" type="hidden"/><input id="inputFs" type="hidden"/></div>
 </div>
 <div class="sensor-box">
 <div class="sensor-head">
@@ -260,8 +309,8 @@ button{cursor:pointer}
 <label class="switch"><input id="sdOn" type="checkbox"/><span class="switch-ui"></span><span id="sw_on_off_sd">On</span></label>
 </div>
 <div class="field"><label for="sdBase" id="lab_sd_base">Base filename</label><input id="sdBase" maxlength="24"/></div>
-<div class="field"><label for="sdRotateKB" id="lab_sd_rotate">Rotate at, KB</label><input id="sdRotateKB" min="64" step="64" type="number"/></div>
-<div class="note" id="sd_note">Files with suffix _001, _002, ... are created automatically when the size limit is reached.</div>
+<input id="sdRotateKB" type="hidden"/>
+<div class="note hidden" id="sd_note">Files with suffix _001, _002, ... are created automatically when the size limit is reached.</div>
 <div class="kv" style="margin-top:8px">
 <div class="k" id="lab_sd_file">Current file</div><div class="v mono" id="sdfile">-</div>
 </div>
@@ -292,6 +341,10 @@ button{cursor:pointer}
 <div class="hr"></div>
 <div aria-live="polite" class="status" id="statusMsg" role="status"></div>
 <div class="status" id="ctrlMsg"></div>
+<div class="btn-pair" style="margin-top:12px">
+<button class="btn" id="runSelftestBtn" type="button">Run self-test</button>
+<button class="btn" id="toggleOledBtn" type="button">OLED ON/OFF</button>
+</div>
 <button class="btn btn-block" id="resetBtn" type="button">Reboot</button>
 </section></div><div class="tabs-stack"><section class="card">
 <h3 id="h_lora">LoRa</h3>
@@ -319,16 +372,16 @@ button{cursor:pointer}
 <div class="status" id="loraMsg" style="margin-top:8px"></div>
 <button class="btn btn-block" id="saveLoRaBtn" type="button">Save LoRa settings</button>
 </section></div></div></section><section aria-labelledby="tabBtn-stream" class="tab-panel" data-tab="stream" id="tabPanel-stream" role="tabpanel"><div class="tabs-inner-grid system-grid"><div class="tabs-stack"><section class="card">
-<h3>PC Stream mode</h3>
-<div class="summary">This mode disables SD logging and keeps the controller focused on acquisition plus direct transfer to a PC over the AP. Use it to reach the highest stable measurement speed with the least interference on the shared SPI bus.</div>
+<h3 id="streamHeading">PC Stream mode</h3>
+<div class="summary" id="streamSummary">This mode disables SD logging and keeps the controller focused on acquisition plus direct transfer to a PC over the AP. Use it to reach the highest stable measurement speed with the least interference on the shared SPI bus.</div>
 <div class="hr"></div>
 <div class="kv">
-<div class="k">Mode</div><div class="v" id="streamModeState">-</div>
-<div class="k">Status</div><div class="v" id="streamStatus">-</div>
+<div class="k" id="streamModeLabel">Mode</div><div class="v" id="streamModeState">-</div>
+<div class="k" id="streamStatusLabel">Status</div><div class="v" id="streamStatus">-</div>
 <div class="k">AP SSID</div><div class="v mono" id="streamSsid">-</div>
 <div class="k">IP</div><div class="v mono" id="streamIp">-</div>
-<div class="k">TCP port</div><div class="v mono" id="streamPort">-</div>
-<div class="k">Client</div><div class="v" id="streamClient">-</div>
+<div class="k" id="streamPortLabel">TCP port</div><div class="v mono" id="streamPort">-</div>
+<div class="k" id="streamClientLabel">Client</div><div class="v" id="streamClient">-</div>
 </div>
 <div class="hr"></div>
 <div class="btn-pair">
@@ -337,23 +390,23 @@ button{cursor:pointer}
 </div>
 <div class="status" id="streamMsg"></div>
 </section></div><div class="tabs-stack"><section class="card">
-<h3>Desktop app</h3>
+<h3 id="desktopAppHeading">Desktop app</h3>
 <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;min-height:240px;border:1px dashed var(--line);border-radius:18px;background:rgba(84,184,230,.05);padding:20px">
 
   <img src="/lorasense_qr.png" alt="Download QR"
        style="width:200px;height:200px;border-radius:12px;background:#fff;padding:6px">
 
   <div style="font-weight:800;text-align:center;font-size:16px">
-    Для завантаження<br/>скануйте QR або натисніть
+    <span id="desktopDownloadHint">Для завантаження<br/>скануйте QR або натисніть</span>
   </div>
 
   <a href="https://github.com/mkp-sliusar/entwicklungsprojekte/releases/download/v1.0.1/LoRaSense_v1.0.1.exe"
      style="display:inline-block;padding:12px 20px;border-radius:12px;background:var(--btn);border:1px solid var(--line);font-weight:800;text-decoration:none">
-    ⬇ Завантажити LoRaSense
+    <span id="desktopDownloadText">⬇ Завантажити LoRaSense</span>
   </a>
 
 </div>
-<div class="note" style="margin-top:12px">Planned workflow: connect the PC to the controller AP, start the desktop receiver, then enable PC Stream mode here. The controller will push compact binary frames directly to the computer. Visualization, saving, filtering and analysis move to the PC side.</div>
+<div class="note" id="desktopWorkflow" style="margin-top:12px">Planned workflow: connect the PC to the controller AP, start the desktop receiver, then enable PC Stream mode here. The controller will push compact binary frames directly to the computer. Visualization, saving, filtering and analysis move to the PC side.</div>
 </section></div></div></section></div></div>
 </main>
 <div class="hidden" id="sdModal" style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;padding:18px;">
@@ -389,6 +442,7 @@ button{cursor:pointer}
 <a href="mailto:evgenij.koloda@marxkrontal.com">KOE</a>
 <a href="mailto:Bernd.Schinkoethe@marxkrontal.com">SCE</a>
 </footer>
+</div>
 <script>
 var THEME_KEY = 'lora_theme';
 var LANG_KEY = 'lora_lang';
@@ -401,11 +455,21 @@ var configLoaded = false;
 var plotValues = [];
 var ain2PlotValues = [];
 var PLOT_MAX = 160;
+var bootReady = false;
+var bootProgress = 4;
+var bootChecksPassed = 0;
+var bootStage = { reachable:false, config:false, state:false, assets:false };
+var liveTimer = null;
+var metaTimer = null;
+var currentTab = 'measure';
+var pcStreamHandoffActive = false;
+var bootDetectedPcStream = false;
 window.__lastCfg = null;
 
 function $(id){ return document.getElementById(id); }
 function setText(id, value){ var el = $(id); if (el) el.textContent = value; }
 function setMsg(id, value){ var el = $(id); if (el) el.textContent = value || ''; }
+function setBadgeState(id, onText, isOn){ var el = $(id); if (!el) return; el.textContent = onText; el.className = 'badge ' + (isOn ? 'ok' : 'off'); }
 function num(v, d){ return (typeof v === 'number' && isFinite(v)) ? Number(v).toFixed(d) : '-'; }
 function intNum(v){ return (typeof v === 'number' && isFinite(v)) ? String(Math.round(v)) : '-'; }
 function fmtTime(){ var d = new Date(); var p = function(n){ return String(n).padStart(2,'0'); }; return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()); }
@@ -421,6 +485,180 @@ function setSelectValue(id, value, fallback){
 }
 function tr(key, fallback){ var pack = I18N && I18N[currentLang]; return (pack && pack[key]) || fallback || key; }
 
+function setLoadingProgress(value){
+  bootProgress = Math.max(0, Math.min(100, Number(value || 0)));
+  var el = $('loadingFill');
+  if (el) el.style.width = bootProgress.toFixed(0) + '%';
+}
+function setLoadingStatus(text){
+  var el = $('loadingStatus');
+  if (el) el.textContent = text || '';
+}
+function setLoadingHint(text){
+  var el = $('loadingHint');
+  if (el) el.textContent = text || '';
+}
+function setBootPcStreamUi(){
+  bootDetectedPcStream = true;
+  setLoadingProgress(100);
+  setLoadingStatus(tr('loading_pcstream','PC Stream mode active'));
+  setLoadingHint(tr('loading_pcstream_hint','Open the PC Stream tab for connection details.'));
+}
+function refreshBootProgress(){
+  var score = 8;
+  if (bootStage.reachable) score = 30;
+  if (bootStage.reachable && bootStage.config) score = 55;
+  if (bootStage.reachable && bootStage.config && bootStage.state) score = 80;
+  if (bootStage.reachable && bootStage.config && bootStage.state && bootStage.assets) score = 100;
+  setLoadingProgress(score);
+}
+function updateBootText(){
+  if (bootDetectedPcStream) {
+    setBootPcStreamUi();
+    return;
+  }
+  setLoadingHint('');
+  if (!bootStage.reachable) {
+    setLoadingStatus(tr('loading_connecting','Connecting to controller...'));
+    return;
+  }
+  if (!bootStage.config) {
+    setLoadingStatus(tr('loading_reachable','Controller reachable · loading config...'));
+    return;
+  }
+  if (!bootStage.state) {
+    setLoadingStatus(tr('loading_state','Config loaded · loading state...'));
+    return;
+  }
+  if (!bootStage.assets) {
+    setLoadingStatus(tr('loading_preparing','State loaded · preparing interface...'));
+    return;
+  }
+  setLoadingStatus(tr('loading_ready','Controller ready. Opening interface...'));
+}
+function showApp(){
+  bootReady = true;
+  refreshBootProgress();
+  updateBootText();
+  var shell = $('appShell');
+  var overlay = $('loadingOverlay');
+  setTimeout(function(){
+    if (shell) shell.classList.remove('booting');
+    if (overlay) overlay.classList.add('hidden');
+  }, 180);
+}
+async function apiWithTimeout(url, opt, timeoutMs){
+  return await Promise.race([
+    api(url, opt),
+    new Promise(function(_, reject){
+      setTimeout(function(){ reject(new Error('timeout')); }, timeoutMs || 1800);
+    })
+  ]);
+}
+function markAssetsReady(){
+  if (bootStage.assets) return;
+  bootStage.assets = true;
+  refreshBootProgress();
+  updateBootText();
+}
+async function waitForControllerReady(){
+  setLoadingProgress(8);
+  updateBootText();
+  while (!bootReady) {
+    try {
+      var stateOnly = null;
+      try {
+        stateOnly = await apiWithTimeout('/api/state', null, 1400);
+      } catch (stateErr) {}
+
+      if (stateOnly) {
+        bootStage.reachable = true;
+        updateMeta(stateOnly);
+        if (!configLoaded && stateOnly.cfg) {
+          fillConfig(stateOnly.cfg);
+          configLoaded = true;
+          bootStage.config = true;
+        }
+        bootStage.state = true;
+        var streamEnabledState = !!((stateOnly.controller && stateOnly.controller.stream_mode_enabled) || (stateOnly.cfg && stateOnly.cfg.stream_mode_enabled) || stateOnly.stream_mode_enabled);
+        if (streamEnabledState) {
+          markAssetsReady();
+          showPcStreamHandoff();
+          activateTab('stream');
+          setBootPcStreamUi();
+          showApp();
+          return;
+        }
+      }
+
+      var live = await apiWithTimeout('/api/live', null, 1500);
+      bootStage.reachable = true;
+      updateLive(live);
+      refreshBootProgress();
+      updateBootText();
+    } catch (e) {
+      bootStage.reachable = false;
+      bootStage.config = false;
+      bootStage.state = false;
+      refreshBootProgress();
+      updateBootText();
+      await new Promise(function(resolve){ setTimeout(resolve, 450); });
+      continue;
+    }
+
+    if (!bootStage.config) {
+      try {
+        var cfg = await apiWithTimeout('/api/config', null, 1500);
+        fillConfig(cfg);
+        configLoaded = true;
+        bootStage.config = true;
+        refreshBootProgress();
+        updateBootText();
+      } catch (e) {
+        await new Promise(function(resolve){ setTimeout(resolve, 350); });
+        continue;
+      }
+    }
+
+    if (!bootStage.state) {
+      try {
+        var state = await apiWithTimeout('/api/state', null, 1500);
+        updateMeta(state);
+        if (!configLoaded && state.cfg) {
+          fillConfig(state.cfg);
+          configLoaded = true;
+          bootStage.config = true;
+        }
+        bootStage.state = true;
+        var streamEnabledNow = !!((state.controller && state.controller.stream_mode_enabled) || (state.cfg && state.cfg.stream_mode_enabled) || state.stream_mode_enabled);
+        if (streamEnabledNow) {
+          markAssetsReady();
+          showPcStreamHandoff();
+          activateTab('stream');
+          setBootPcStreamUi();
+          showApp();
+          return;
+        }
+        refreshBootProgress();
+        updateBootText();
+      } catch (e) {
+        await new Promise(function(resolve){ setTimeout(resolve, 350); });
+        continue;
+      }
+    }
+
+    if (bootStage.reachable && bootStage.config && bootStage.state) {
+      if (!bootStage.assets) {
+        await new Promise(function(resolve){ requestAnimationFrame(resolve); });
+        await new Promise(function(resolve){ setTimeout(resolve, 120); });
+        markAssetsReady();
+      }
+      await new Promise(function(resolve){ setTimeout(resolve, 180); });
+      showApp();
+      return;
+    }
+  }
+}
 async function api(url, opt){
   var r = await fetch(url, opt || {});
   var txt = await r.text();
@@ -429,6 +667,19 @@ async function api(url, opt){
   catch (e) { throw new Error(txt || ('HTTP ' + r.status)); }
   if (!r.ok || data.ok === false) throw new Error(data.error || ('HTTP ' + r.status));
   return data;
+}
+
+async function syncControllerTime(){
+  try {
+    await api('/api/time', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        epoch_ms: Date.now(),
+        tz_offset_min: -new Date().getTimezoneOffset()
+      })
+    });
+  } catch (e) {}
 }
 
 function setTheme(t){
@@ -450,16 +701,26 @@ function applyLang(){
   $('langBtn').textContent = currentLang.toUpperCase();
   setText('i_title', tr('title','MKP LoRaSense File Node'));
   setText('sub_title', tr('subtitle','AP live measurement / BIN logging / PC stream / FIELD LoRa snapshot'));
+  setText('loadingTitle', tr('loading_title','LoRaSense is starting'));
+  setText('loadingSubtitle', tr('loading_subtitle','controller reachable · config loaded · state loaded · assets ready'));
+  setText('pcStreamBannerTitle', tr('pcstream_banner_title','PC Stream mode active'));
+  setText('pcStreamBannerText', tr('pcstream_banner_text','The controller is now intended for direct PC streaming. Open the PC Stream tab for connection details.'));
+  setText('pcStreamBannerOpenBtn', tr('pcstream_open_tab','Open PC Stream tab'));
+  setText('tabBtn-measure', tr('tab_measure','Measurements & settings'));
+  setText('tabBtn-system', tr('tab_system','LoRa & controller'));
+  setText('tabBtn-stream', tr('tab_stream','PC Stream'));
+  setText('lab_measure_state', tr('measure_state','Measurements'));
   setText('lab_fw', tr('firmware','Firmware'));
   setText('h_measurements', tr('measurements','Measurements'));
   setText('lab_time', tr('time','Time'));
   setText('lab_selftest', tr('selftest','Self-test'));
   setText('lab_delta', tr('delta','Delta'));
   setText('lab_dms_raw', tr('dms_raw','DMS raw'));
-  setText('lab_dms_mvv', tr('dms_mvv','DMS mV/V'));
+  setText('lab_dms_value', tr('dms_value','DMS value'));
   setText('lab_dms_mv', tr('dms_mv','DMS est. mV'));
   setText('lab_dms_actual', tr('dms_actual','DMS actual'));
-  setText('plot_caption', tr('plot_caption','Live trend: DMS mV/V'));
+  setText('plot_caption', tr('plot_caption','Live trend: DMS'));
+  updateDmsUi(window.__lastCfg || null, window.__lastLive || null);
   setText('plot_caption_ain2', tr('plot_caption_ain2','Live trend: AIN2 scaled'));
   setText('lab_ain2_raw', tr('ain2_raw','AIN2 raw'));
   setText('lab_ain2_adc', tr('ain2_adc','AIN2 ADC'));
@@ -481,6 +742,8 @@ function applyLang(){
   setText('lab_sdst', tr('sd_state','SD'));
   setText('lab_chipmac', tr('chip_mac','Chip MAC'));
   setText('lab_chipeui', tr('chip_eui','Chip DevEUI'));
+  setText('runSelftestBtn', tr('run_selftest','Run self-test'));
+  setText('toggleOledBtn', tr('toggle_oled','OLED ON/OFF'));
   setText('resetBtn', tr('reboot','Reboot'));
 
   setText('h_lora', tr('lora','LoRa'));
@@ -499,19 +762,16 @@ function applyLang(){
   setText('dms_hint', tr('dms_hint','Fast differential channel'));
   setText('sw_on_off_dms', tr('on','On'));
   setText('lab_dms_hz', tr('dms_hz','Frequency, Hz'));
+  setText('lab_dms_kfactor', tr('dms_kfactor','K-factor'));
+  setText('dms_kfactor_note', tr('dms_kfactor_note','If K-factor is 0, DMS stays in mV/V. If K-factor is greater than 0, the value is calculated in um/m.'));
   setText('tit_ain2', tr('tit_ain2','AIN2'));
-  setText('ain2_hint', tr('ain2_hint','Potentiometer or 0-10 V input'));
+  setText('ain2_hint', tr('ain2_hint','Wegsensor or 0-10 V input'));
   setText('sw_on_off_ain2', tr('on','On'));
   setText('lab_ain2_hz', tr('ain2_hz','Frequency, Hz'));
   setText('lab_ain2_type', tr('ain2_type','AIN2 type'));
-  setText('opt_ain2_pot', tr('ain2_pot','Potentiometer / Wegsensor'));
+  setText('opt_ain2_pot', tr('ain2_pot','Wegsensor'));
   setText('opt_ain2_volt', tr('ain2_volt','0-10 V input'));
   setText('lab_preset', tr('preset','Sensor length preset'));
-  setText('lab_length', tr('length','Length, mm'));
-  setText('opt_custom', tr('custom','Custom'));
-  setText('lab_adc_fs', tr('adc_fs','ADC full-scale, V'));
-  setText('lab_input_fs', tr('input_fs','Input full-scale, V'));
-  setText('volt_note', tr('volt_note','Example: if the adapter maps 0-10 V to 0-3.123 V, keep 3.123 and 10.0.'));
   setText('tit_temp', tr('tit_temp','Temperature'));
   setText('temp_hint', tr('temp_hint','DS18B20 fixed rate'));
   setText('sw_on_off_temp', tr('on','On'));
@@ -519,8 +779,6 @@ function applyLang(){
   setText('sd_hint', tr('sd_hint','AP mode only, BIN / DAT / CSV / UDBF rotation'));
   setText('sw_on_off_sd', tr('on','On'));
   setText('lab_sd_base', tr('sd_base','Base filename'));
-  setText('lab_sd_rotate', tr('sd_rotate','Rotate at, KB'));
-  setText('sd_note', tr('sd_note','Files with suffix _001, _002, ... are created automatically when the size limit is reached. CSV export uses only real time.'));
   setText('lab_sd_file', tr('sd_file','Current file'));
   setText('browseDatBtn', tr('browse_dat','Browse / download files'));
   setText('deleteSelectedDatBtn', tr('delete_selected','Delete selected'));
@@ -533,7 +791,19 @@ function applyLang(){
   setText('convertBinCsvBtn', tr('convert_bin_csv','Convert BIN to CSV'));
   setText('sdModalHint', tr('sd_modal_hint','Choose one file to download it directly. Choose multiple files to download them as one real ZIP file without compression. The active current log file cannot be deleted.'));
   setText('saveMeasBtn', tr('save_meas','Save measurement settings'));
-  setText('footer_by', tr('footer_by','developed by'));
+  setText('streamHeading', tr('stream_heading','PC Stream mode'));
+  setText('streamSummary', tr('stream_summary','This mode disables SD logging and keeps the controller focused on acquisition plus direct transfer to a PC over the AP. Use it to reach the highest stable measurement speed with the least interference on the shared SPI bus.'));
+  setText('streamModeLabel', tr('stream_mode_label','Mode'));
+  setText('streamStatusLabel', tr('stream_status_label','Status'));
+  setText('streamPortLabel', tr('stream_port_label','TCP port'));
+  setText('streamClientLabel', tr('stream_client_label','Client'));
+  setText('enableStreamBtn', tr('enable_stream','Enable stream mode'));
+  setText('disableStreamBtn', tr('disable_stream','Disable stream mode'));
+  setText('desktopAppHeading', tr('desktop_app','Desktop app'));
+  var desktopHint = $('desktopDownloadHint'); if (desktopHint) desktopHint.innerHTML = tr('desktop_download_hint','To download, scan the QR code or click below').replace(/\n/g,'<br/>');
+  var desktopDownloadText = $('desktopDownloadText'); if (desktopDownloadText) desktopDownloadText.textContent = '⬇ ' + tr('desktop_download','Download LoRaSense');
+  setText('desktopWorkflow', tr('desktop_workflow','Planned workflow: connect the PC to the controller AP, start the desktop receiver, then enable PC Stream mode here. The controller will push compact binary frames directly to the computer. Visualization, saving, filtering and analysis move to the PC side.'));
+  setText('i_footer_by', tr('footer_by','developed by'));
 
   $('devEui').placeholder = tr('ph_deveui','DevEUI');
   $('appEui').placeholder = tr('ph_appeui','AppEUI');
@@ -547,17 +817,41 @@ function applyLang(){
 }
 
 function syncPreset(){
-  var len = Number($('ain2Len').value);
   var preset = $('potPreset');
+  var len = Number(($('ain2Len') && $('ain2Len').value) || 100);
   var opts = ['5','10','25','50','75','100','150','200'];
   var match = opts.find(function(v){ return Math.abs(Number(v) - len) < 0.001; });
-  preset.value = match || 'custom';
+  preset.value = match || '100';
 }
 
 function updateAin2Mode(){
   var isVolt = $('ain2Mode').value === 'volt';
   $('voltBlock').classList.toggle('hidden', !isVolt);
   $('potBlock').classList.toggle('hidden', isVolt);
+}
+
+function getDmsKFactor(cfg, live){
+  if (live && live.dms_k_factor != null && isFinite(Number(live.dms_k_factor))) return Number(live.dms_k_factor);
+  if (cfg && cfg.dms_k_factor != null && isFinite(Number(cfg.dms_k_factor))) return Number(cfg.dms_k_factor);
+  var el = $('dmsKFactor');
+  if (el && isFinite(Number(el.value))) return Number(el.value);
+  return 0;
+}
+
+function updateDmsUi(cfg, live){
+  var kf = getDmsKFactor(cfg, live);
+  var useUm = kf > 0;
+  setText('lab_dms_value', useUm ? tr('dms_value_um','DMS value') : tr('dms_value_mv','DMS value'));
+  setText('dms_value_unit', useUm ? 'um/m' : 'mV/V');
+  setText('plot_caption', useUm ? tr('plot_caption_um','Live trend: DMS um/m') : tr('plot_caption_mv','Live trend: DMS mV/V'));
+}
+
+function calcDmsDisplayValue(s, cfg){
+  var raw = Number(s && s.dms_mV_per_V);
+  if (!(isFinite(raw))) return null;
+  var kf = getDmsKFactor(cfg, s);
+  if (kf > 0) return raw * 1000.0 / kf;
+  return raw;
 }
 
 function fillConfig(cfg){
@@ -568,10 +862,11 @@ function fillConfig(cfg){
   $('minutes').value = cfg.minutes != null ? cfg.minutes : 15;
   $('dmsOn').checked = boolNum(cfg.dms_enabled);
   setSelectValue('dmsHz', cfg.dms_hz != null ? cfg.dms_hz : 2000, 2000);
+  $('dmsKFactor').value = Number(cfg.dms_k_factor != null ? cfg.dms_k_factor : 0).toFixed(4);
   $('ain2On').checked = boolNum(cfg.ain2_enabled);
   setSelectValue('ain2Hz', cfg.ain2_hz != null ? cfg.ain2_hz : 20, 20);
   $('ain2Mode').value = cfg.ain2_mode || 'pot';
-  $('ain2Len').value = Number(cfg.ain2_length_mm != null ? cfg.ain2_length_mm : 10).toFixed(2);
+  $('ain2Len').value = Number(cfg.ain2_length_mm != null ? cfg.ain2_length_mm : 100).toFixed(2);
   $('adcFs').value = Number(cfg.ain2_adc_fullscale_v != null ? cfg.ain2_adc_fullscale_v : 3.123).toFixed(3);
   $('inputFs').value = Number(cfg.ain2_input_fullscale_v != null ? cfg.ain2_input_fullscale_v : 10).toFixed(1);
   $('tempOn').checked = boolNum(cfg.temp_enabled);
@@ -581,6 +876,7 @@ function fillConfig(cfg){
   $('drMode').value = boolNum(cfg.adr) ? 'auto' : String(cfg.dr != null ? cfg.dr : 5);
   syncPreset();
   updateAin2Mode();
+  updateDmsUi(cfg, window.__lastLive || null);
   updatePerfBox(window.__lastLive || null, cfg);
 }
 
@@ -589,12 +885,16 @@ function updateLive(s){
   setText('time', fmtTime());
   $('selftest').textContent = s.selftest_ok ? tr('ok','OK') : tr('fail','FAIL');
   $('selftest').className = 'badge ' + (s.selftest_ok ? 'ok' : 'bad');
+  setBadgeState('measureState', boolNum(s.measurements_running) ? 'RUNNING' : 'STOPPED', boolNum(s.measurements_running));
   setText('selftest_delta', num(s.selftest_delta_mV, 6));
 
   setText('dms_raw', boolNum(s.dms_enabled) ? intNum(s.dms_raw) : tr('off','OFF'));
-  setText('dms_mvv', boolNum(s.dms_enabled) ? (boolNum(s.dms_valid) ? num(s.dms_mV_per_V, 6) : '-') : tr('off','OFF'));
+  var dmsDisplay = calcDmsDisplayValue(s, window.__lastCfg || null);
+  var dmsUseUm = getDmsKFactor(window.__lastCfg || null, s) > 0;
+  setText('dms_value', boolNum(s.dms_enabled) ? (boolNum(s.dms_valid) && dmsDisplay != null ? num(dmsDisplay, dmsUseUm ? 2 : 6) : '-') : tr('off','OFF'));
   setText('dms_mv', boolNum(s.dms_enabled) ? (boolNum(s.dms_valid) ? num(s.dms_mV, 6) : '-') : tr('off','OFF'));
   setText('dms_actual', boolNum(s.dms_enabled) ? num(s.dms_rate_hz_actual, 0) : tr('off','OFF'));
+  updateDmsUi(window.__lastCfg || null, s);
 
   setText('ain2_raw', boolNum(s.ain2_enabled) ? intNum(s.ain2_raw) : tr('off','OFF'));
   setText('ain2_mv', boolNum(s.ain2_enabled) ? (boolNum(s.ain2_valid) ? num(s.ain2_mV, 3) : '-') : tr('off','OFF'));
@@ -605,8 +905,13 @@ function updateLive(s){
   setText('temp', boolNum(s.temp_enabled) ? (boolNum(s.temp_valid) ? num(s.temp_C, 2) : '-') : tr('off','OFF'));
   setText('total_actual', num(s.total_rate_hz_actual, 0));
   setText('sdstate', s.sd_status || '-');
+  if ($('toggleOledBtn')) {
+    var oledActive = boolNum(s.oled_active);
+    $('toggleOledBtn').textContent = oledActive ? tr('oled_off','OLED OFF') : tr('oled_on','OLED ON');
+  }
 
-  pushPlot(boolNum(s.dms_enabled) && boolNum(s.dms_valid) ? Number(s.dms_mV_per_V) : null);
+  var dmsPlotValue = boolNum(s.dms_enabled) && boolNum(s.dms_valid) ? calcDmsDisplayValue(s, window.__lastCfg || null) : null;
+  pushPlot(dmsPlotValue);
   pushAin2Plot(boolNum(s.ain2_enabled) && boolNum(s.ain2_valid) ? Number(s.ain2_value) : null);
   updatePerfBox(s, window.__lastCfg || null);
 }
@@ -660,12 +965,17 @@ function updateMeta(s){
   setText('chipeui', c.chip_eui64 || s.chip_eui64 || '-');
 
   var streamEnabled = !!(c.stream_mode_enabled || (s.cfg && s.cfg.stream_mode_enabled) || s.stream_mode_enabled);
-  setText('streamModeState', streamEnabled ? 'Enabled' : 'Disabled');
+  setText('streamModeState', streamEnabled ? tr('stream_enabled','Enabled') : tr('stream_disabled','Disabled'));
   setText('streamStatus', c.stream_status || s.stream_status || '-');
   setText('streamSsid', c.ap_ssid || s.ap_ssid || '-');
   setText('streamIp', ipVal || '-');
   setText('streamPort', String(c.stream_port || s.stream_port || 3333));
-  setText('streamClient', (c.stream_client_connected || s.stream_client_connected) ? 'Connected' : 'Waiting');
+  setText('streamClient', (c.stream_client_connected || s.stream_client_connected) ? tr('stream_connected','Connected') : tr('stream_waiting','Waiting'));
+  setBadgeState('measureState', boolNum(s.measurements_running || c.measurements_running) ? 'RUNNING' : 'STOPPED', boolNum(s.measurements_running || c.measurements_running));
+
+  var streamEnabledNow = !!(c.stream_mode_enabled || (s.cfg && s.cfg.stream_mode_enabled) || s.stream_mode_enabled);
+  if (streamEnabledNow) showPcStreamHandoff();
+  else hidePcStreamHandoff();
 
   updateStatusText(modeVal || 'CONFIG');
 }
@@ -682,6 +992,10 @@ function updatePerfBox(live, cfg){
 }
 
 function updateStatusText(mode){
+  if (pcStreamHandoffActive) {
+    setMsg('statusMsg', tr('pcstream_status_long','PC Stream mode active. Open the PC Stream tab for connection details.'));
+    return;
+  }
   var m = mode || 'CONFIG';
   var text = (m === 'FIELD')
     ? tr('status_field','FIELD mode active. Device sends one fresh snapshot per LoRa interval and then returns to LoRaWAN sleep.')
@@ -903,6 +1217,31 @@ async function pollMeta(){
   metaBusy = false;
 }
 
+async function runSelftest(){
+  var r = await api('/api/selftest', { method:'POST' });
+  setMsg('ctrlMsg', tr('selftest_done','Self-test completed.') + ' Δ=' + (r.selftest_delta_mV != null ? num(r.selftest_delta_mV, 6) : '-'));
+  try { await loadStateOnce(); } catch (e) {}
+}
+
+async function toggleOled(){
+  var r = await api('/api/oled', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action:'toggle' }) });
+  var active = boolNum(r.active);
+  setMsg('ctrlMsg', active ? tr('oled_enabled','OLED enabled.') : tr('oled_disabled','OLED disabled.'));
+  if ($('toggleOledBtn')) $('toggleOledBtn').textContent = active ? tr('oled_off','OLED OFF') : tr('oled_on','OLED ON');
+  try { await loadStateOnce(); } catch (e) {}
+}
+
+async function setMeasurementsRunning(action){
+  var r = await api('/api/measure', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ action: action })
+  });
+  setMsg('measMsg', action === 'start' ? tr('measure_started','Measurement started.') : tr('measure_stopped','Measurement stopped.'));
+  try { await loadStateOnce(); } catch (e) {}
+  return r;
+}
+
 async function saveLoRa(){
   var devEui = normalizeHex($('devEui').value);
   var appEui = normalizeHex($('appEui').value);
@@ -929,12 +1268,13 @@ async function saveMeas(){
   var payload = {
     dms_enabled: $('dmsOn').checked ? 1 : 0,
     dms_hz: Number($('dmsHz').value || 200),
+    dms_k_factor: Number($('dmsKFactor').value || 0),
     ain2_enabled: $('ain2On').checked ? 1 : 0,
     ain2_hz: Number($('ain2Hz').value || 1),
     ain2_mode: $('ain2Mode').value,
-    ain2_length_mm: Number($('ain2Len').value || 10),
-    ain2_adc_fullscale_v: Number($('adcFs').value || 3.123),
-    ain2_input_fullscale_v: Number($('inputFs').value || 10),
+    ain2_length_mm: Number(($('potPreset') && $('potPreset').value) || $('ain2Len').value || 100),
+    ain2_adc_fullscale_v: 3.123,
+    ain2_input_fullscale_v: 10,
     temp_enabled: $('tempOn').checked ? 1 : 0,
     sd_log_enabled: $('sdOn').checked ? 1 : 0,
     sd_base: $('sdBase').value || 'lorasense',
@@ -945,11 +1285,18 @@ async function saveMeas(){
   setMsg('measMsg', tr('meas_saved','Measurement settings saved to controller.'));
 }
 
-
 async function saveStreamMode(enabled){
   var r = await api('/api/stream', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ enabled: enabled ? 1 : 0 }) });
-  setMsg('streamMsg', enabled ? 'PC Stream mode enabled.' : 'PC Stream mode disabled.');
-  try { await loadStateOnce(); } catch (e) {}
+  setMsg('streamMsg', enabled ? tr('stream_enabled_msg','PC Stream mode enabled.') : tr('stream_disabled_msg','PC Stream mode disabled.'));
+  if (enabled) {
+    activateTab('stream');
+    showPcStreamHandoff();
+  } else {
+    hidePcStreamHandoff();
+  }
+  try { await loadStateOnce(); } catch (e) {
+    if (!enabled) throw e;
+  }
   return r;
 }
 
@@ -989,6 +1336,22 @@ $('useChipBtn').addEventListener('click', async function(){
   }
 });
 
+if ($('runSelftestBtn')) $('runSelftestBtn').addEventListener('click', async function(){
+  try { await runSelftest(); }
+  catch (e) { setMsg('ctrlMsg', tr('save_error','Save error') + ': ' + e.message); }
+});
+if ($('toggleOledBtn')) $('toggleOledBtn').addEventListener('click', async function(){
+  try { await toggleOled(); }
+  catch (e) { setMsg('ctrlMsg', tr('save_error','Save error') + ': ' + e.message); }
+});
+if ($('startMeasureBtn')) $('startMeasureBtn').addEventListener('click', async function(){
+  try { await setMeasurementsRunning('start'); }
+  catch (e) { setMsg('measMsg', tr('save_error','Save error') + ': ' + e.message); }
+});
+if ($('stopMeasureBtn')) $('stopMeasureBtn').addEventListener('click', async function(){
+  try { await setMeasurementsRunning('stop'); }
+  catch (e) { setMsg('measMsg', tr('save_error','Save error') + ': ' + e.message); }
+});
 $('resetBtn').addEventListener('click', async function(){
   try {
     await api('/api/reset', { method:'POST' });
@@ -997,7 +1360,6 @@ $('resetBtn').addEventListener('click', async function(){
     setMsg('ctrlMsg', tr('save_error','Save error') + ': ' + e.message);
   }
 });
-
 
 $('browseDatBtn').addEventListener('click', async function(){
   openSdModal();
@@ -1023,20 +1385,19 @@ $('deleteSelectedDatBtn').addEventListener('click', function(){
 $('sdModal').addEventListener('click', function(ev){ if (ev.target === $('sdModal')) closeSdModal(); });
 
 $('potPreset').addEventListener('change', function(){
-  if ($('potPreset').value !== 'custom') $('ain2Len').value = Number($('potPreset').value).toFixed(2);
+  $('ain2Len').value = Number($('potPreset').value || 100).toFixed(2);
 });
-$('ain2Len').addEventListener('input', syncPreset);
 $('ain2Mode').addEventListener('change', updateAin2Mode);
 $('themeBtn').addEventListener('click', function(){
   setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
 });
 if ($('enableStreamBtn')) $('enableStreamBtn').addEventListener('click', async function(){
   try { await saveStreamMode(true); }
-  catch (e) { setMsg('streamMsg', 'Save error: ' + e.message); }
+  catch (e) { setMsg('streamMsg', tr('save_error','Save error') + ': ' + e.message); }
 });
 if ($('disableStreamBtn')) $('disableStreamBtn').addEventListener('click', async function(){
   try { await saveStreamMode(false); }
-  catch (e) { setMsg('streamMsg', 'Save error: ' + e.message); }
+  catch (e) { setMsg('streamMsg', tr('save_error','Save error') + ': ' + e.message); }
 });
 $('langBtn').addEventListener('click', function(){
   var idx = LANGS.indexOf(currentLang);
@@ -1044,27 +1405,59 @@ $('langBtn').addEventListener('click', function(){
   localStorage.setItem(LANG_KEY, currentLang);
   applyLang();
 });
-window.addEventListener('resize', drawPlots);
 
+if ($('pcStreamBannerOpenBtn')) $('pcStreamBannerOpenBtn').addEventListener('click', function(){ activateTab('stream'); });
+
+window.addEventListener('resize', drawPlots);
+document.addEventListener('visibilitychange', function(){
+  if (document.visibilityState === 'visible') syncControllerTime();
+});
+
+function activateTab(name){
+  if (!name) name = 'measure';
+  currentTab = name;
+  var btns = Array.prototype.slice.call(document.querySelectorAll('.tab-btn'));
+  var panels = Array.prototype.slice.call(document.querySelectorAll('.tab-panel'));
+  btns.forEach(function(btn){
+    var active = btn.dataset.tab === name;
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-selected', active ? 'true' : 'false');
+  });
+  panels.forEach(function(panel){
+    panel.classList.toggle('active', panel.dataset.tab === name);
+  });
+  if (location.hash !== '#' + name) {
+    try { history.replaceState(null, '', '#' + name); } catch (e) { location.hash = name; }
+  }
+}
+function stopPolling(){
+  if (liveTimer) { clearInterval(liveTimer); liveTimer = null; }
+  if (metaTimer) { clearInterval(metaTimer); metaTimer = null; }
+}
+function setPcStreamBanner(show){
+  var el = $('pcStreamBanner');
+  if (el) el.classList.toggle('show', !!show);
+}
+function showPcStreamHandoff(){
+  pcStreamHandoffActive = true;
+  stopPolling();
+  setPcStreamBanner(true);
+  setMsg('statusMsg', tr('pcstream_status','PC Stream mode active.'));
+  setMsg('streamMsg', tr('pcstream_status','PC Stream mode active.'));
+}
+function hidePcStreamHandoff(){
+  pcStreamHandoffActive = false;
+  setPcStreamBanner(false);
+}
 
 function initTabs(){
   var btns = Array.prototype.slice.call(document.querySelectorAll('.tab-btn'));
   var panels = Array.prototype.slice.call(document.querySelectorAll('.tab-panel'));
   if (!btns.length || !panels.length) return;
-  function activate(name){
-    btns.forEach(function(btn){
-      var active = btn.dataset.tab === name;
-      btn.classList.toggle('active', active);
-      btn.setAttribute('aria-selected', active ? 'true' : 'false');
-    });
-    panels.forEach(function(panel){
-      panel.classList.toggle('active', panel.dataset.tab === name);
-    });
-  }
   btns.forEach(function(btn){
-    btn.addEventListener('click', function(){ activate(btn.dataset.tab); });
+    btn.addEventListener('click', function(){ activateTab(btn.dataset.tab); });
   });
-  activate((location.hash || '#measure').replace('#','') || 'measure');
+  activateTab((location.hash || '#measure').replace('#','') || 'measure');
 }
 
 async function boot(){
@@ -1076,10 +1469,30 @@ async function boot(){
   applyLang();
   initTabs();
   updateAin2Mode();
-  try { await loadConfig(); } catch (e) { setMsg('loraMsg', tr('save_error','Save error') + ': ' + e.message); }
-  try { await loadStateOnce(); } catch (e) { setMsg('ctrlMsg', tr('save_error','Save error') + ': ' + e.message); }
-  setInterval(pollLive, 250);
-  setInterval(pollMeta, 5000);
+  try {
+    await waitForControllerReady();
+    await syncControllerTime();
+  } catch (e) {
+    setLoadingStatus(tr('loading_retry','Still waiting for controller... retrying'));
+    setTimeout(function(){ waitForControllerReady(); }, 500);
+    return;
+  }
+
+  setTimeout(function(){
+    if (pcStreamHandoffActive) return;
+    pollLive();
+    liveTimer = setInterval(function(){
+      if (!pcStreamHandoffActive) pollLive();
+    }, 250);
+  }, 250);
+
+  setTimeout(function(){
+    if (pcStreamHandoffActive) return;
+    pollMeta();
+    metaTimer = setInterval(function(){
+      if (!pcStreamHandoffActive) pollMeta();
+    }, 10000);
+  }, 1200);
 }
 
 boot();
