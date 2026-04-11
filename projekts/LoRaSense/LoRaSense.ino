@@ -40,7 +40,7 @@ static constexpr int PIN_ADS_DRDY = 4;
 static constexpr int PIN_MOSFET   = 5;
 static constexpr int PIN_DS18B20  = 6;
 static constexpr int PIN_AP_MODE  = 46;  // jumper to GND => CONFIG / AP mode
-static constexpr const char* FW_VERSION = "1.9.1-integrated-retained-field";
+static constexpr const char* FW_VERSION = "1.9.2";
 static constexpr const char* BOARD_NAME = "Heltec WiFi LoRa 32 V3";
 static constexpr uint8_t AIN2_MODE_POT  = 0;
 static constexpr uint8_t AIN2_MODE_VOLT = 1;
@@ -3312,22 +3312,32 @@ static void redirectToRoot() {
   logHttpEvent("REDIR", server.uri(), startedMs, String("to=") + target);
 }
 
-static void handleWindowsConnectTest() {
+static void serveCaptivePortalBootstrap() {
   const uint32_t startedMs = millis();
+  const String target = String("http://") + g_apIp.toString() + "/";
+  String html;
+  html.reserve(512);
+  html += F("<!doctype html><html><head><meta charset='utf-8'>");
+  html += F("<meta name='viewport' content='width=device-width,initial-scale=1'>");
+  html += F("<meta http-equiv='Cache-Control' content='no-cache, no-store, must-revalidate'>");
+  html += F("<meta http-equiv='Pragma' content='no-cache'>");
+  html += F("<meta http-equiv='Expires' content='-1'>");
+  html += F("<meta http-equiv='refresh' content='0; url=");
+  html += target;
+  html += F("'>");
+  html += F("<title>LoRaSense</title>");
+  html += F("<script>location.replace('");
+  html += target;
+  html += F("');</script></head><body>");
+  html += F("<a href='");
+  html += target;
+  html += F("'>Open LoRaSense</a></body></html>");
   server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
   server.sendHeader("Pragma", "no-cache");
   server.sendHeader("Expires", "-1");
-  server.send(200, "text/plain", "Microsoft Connect Test");
-  logHttpEvent("WIN", server.uri(), startedMs, "probe=connecttest");
-}
-
-static void handleWindowsNcsi() {
-  const uint32_t startedMs = millis();
-  server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-  server.sendHeader("Pragma", "no-cache");
-  server.sendHeader("Expires", "-1");
-  server.send(200, "text/plain", "Microsoft NCSI");
-  logHttpEvent("WIN", server.uri(), startedMs, "probe=ncsi");
+  server.sendHeader("Connection", "close");
+  server.send(200, "text/html", html);
+  logHttpEvent("CAPTIVE", server.uri(), startedMs, String("to=") + target + " host=" + server.hostHeader());
 }
 
 static void handleNotFound() {
@@ -3344,11 +3354,11 @@ static void handleNotFound() {
   }
   const String host = server.hostHeader();
   if (g_mode == RunMode::CONFIG && (uri == "/connecttest.txt" || uri == "/msftconnecttest.txt")) {
-    redirectToRoot();
+    serveCaptivePortalBootstrap();
     return;
   }
   if (g_mode == RunMode::CONFIG && uri == "/ncsi.txt") {
-    redirectToRoot();
+    serveCaptivePortalBootstrap();
     return;
   }
   if (g_mode == RunMode::CONFIG && uri == "/wpad.dat") {
@@ -3370,11 +3380,13 @@ static void handleNotFound() {
       uri == "/library/test/success.html" ||
       uri == "/success.txt" ||
       uri == "/redirect" ||
+      uri.startsWith("/redirect") ||
       uri == "/fwlink/" ||
+      uri.startsWith("/fwlink") ||
       uri == "/canonical.html" ||
       (!host.isEmpty() && !isIpv4Host(host) && host != g_apIp.toString() && host != "lorasense.local");
   if (g_mode == RunMode::CONFIG && captiveProbe) {
-    redirectToRoot();
+    serveCaptivePortalBootstrap();
     return;
   }
   if (g_mode == RunMode::CONFIG) {
@@ -3422,13 +3434,13 @@ static void startApAndWeb() {
   server.collectHeaders(headerKeys, 2);
   server.on("/", HTTP_GET, handleRoot);
   server.on("/index.html", HTTP_GET, handleRoot);
-  server.on("/generate_204", HTTP_GET, redirectToRoot);
-  server.on("/gen_204", HTTP_GET, redirectToRoot);
-  server.on("/hotspot-detect.html", HTTP_GET, redirectToRoot);
-  server.on("/library/test/success.html", HTTP_GET, redirectToRoot);
-  server.on("/connecttest.txt", HTTP_GET, redirectToRoot);
-  server.on("/msftconnecttest.txt", HTTP_GET, redirectToRoot);
-  server.on("/ncsi.txt", HTTP_GET, redirectToRoot);
+  server.on("/generate_204", HTTP_GET, serveCaptivePortalBootstrap);
+  server.on("/gen_204", HTTP_GET, serveCaptivePortalBootstrap);
+  server.on("/hotspot-detect.html", HTTP_GET, serveCaptivePortalBootstrap);
+  server.on("/library/test/success.html", HTTP_GET, serveCaptivePortalBootstrap);
+  server.on("/connecttest.txt", HTTP_GET, serveCaptivePortalBootstrap);
+  server.on("/msftconnecttest.txt", HTTP_GET, serveCaptivePortalBootstrap);
+  server.on("/ncsi.txt", HTTP_GET, serveCaptivePortalBootstrap);
   server.on("/wpad.dat", HTTP_GET, []() {
     static const char pac[] =
         "function FindProxyForURL(url, host) { return \"DIRECT\"; }\r\n";
@@ -3437,10 +3449,10 @@ static void startApAndWeb() {
   server.on("/cname.aspx", HTTP_GET, []() {
     server.send(204, "text/plain", "");
   });
-  server.on("/success.txt", HTTP_GET, redirectToRoot);
-  server.on("/redirect", HTTP_GET, redirectToRoot);
-  server.on("/fwlink/", HTTP_GET, redirectToRoot);
-  server.on("/canonical.html", HTTP_GET, redirectToRoot);
+  server.on("/success.txt", HTTP_GET, serveCaptivePortalBootstrap);
+  server.on("/redirect", HTTP_GET, serveCaptivePortalBootstrap);
+  server.on("/fwlink/", HTTP_GET, serveCaptivePortalBootstrap);
+  server.on("/canonical.html", HTTP_GET, serveCaptivePortalBootstrap);
 
   server.on("/i18n.json", HTTP_GET, []() {
     if (!serveFile("/i18n.json", "application/json")) server.send(404, "text/plain", "not found");
