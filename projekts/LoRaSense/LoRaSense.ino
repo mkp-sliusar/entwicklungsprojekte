@@ -9,6 +9,7 @@
 #include <ArduinoJson.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
+#include <esp_sleep.h>
 #include <Wire.h>
 #include "HT_SSD1306Wire.h"
 #include "logoMKP.h"
@@ -39,7 +40,7 @@ static constexpr int PIN_ADS_DRDY = 4;
 static constexpr int PIN_MOSFET   = 5;
 static constexpr int PIN_DS18B20  = 6;
 static constexpr int PIN_AP_MODE  = 46;  // jumper to GND => CONFIG / AP mode
-static constexpr const char* FW_VERSION = "1.8.0";
+static constexpr const char* FW_VERSION = "1.9.1-integrated-retained-field";
 static constexpr const char* BOARD_NAME = "Heltec WiFi LoRa 32 V3";
 static constexpr uint8_t AIN2_MODE_POT  = 0;
 static constexpr uint8_t AIN2_MODE_VOLT = 1;
@@ -92,6 +93,36 @@ static volatile uint32_t g_lastStreamedSampleSeq = 0;
 static String g_streamStatus = "idle";
 static uint32_t g_streamClientCount = 0;
 static constexpr uint16_t STREAM_TCP_PORT = 3333;
+static constexpr uint8_t FIELD_DS18B20_RESOLUTION_BITS = 11;
+static constexpr uint32_t FIELD_RTC_MAGIC = 0x4D4B5032; // "MKP2"
+static constexpr uint32_t FIELD_DUPLICATE_SEND_WINDOW_MS = 5000;
+static constexpr uint32_t FIELD_INVALID_U32 = 0xFFFFFFFFUL;
+static constexpr int16_t FIELD_INVALID_I16 = INT16_MIN;
+static constexpr int64_t FIELD_INVALID_I64 = INT64_MIN;
+
+RTC_DATA_ATTR static uint32_t g_fieldRtcMagic = 0;
+RTC_DATA_ATTR static uint32_t g_fieldColdBootCount = 0;
+RTC_DATA_ATTR static uint32_t g_fieldSleepWakeCount = 0;
+RTC_DATA_ATTR static bool g_fieldSessionEstablished = false;
+RTC_DATA_ATTR static bool g_fieldSensorBufferValid = false;
+RTC_DATA_ATTR static bool g_fieldDmsValid = false;
+RTC_DATA_ATTR static bool g_fieldAin2Valid = false;
+RTC_DATA_ATTR static bool g_fieldTempValid = false;
+RTC_DATA_ATTR static bool g_fieldCaptureOnNextWake = false;
+RTC_DATA_ATTR static float g_fieldLastDmsMvPerV = 0.0f;
+RTC_DATA_ATTR static float g_fieldLastAin2MilliVolts = 0.0f;
+RTC_DATA_ATTR static float g_fieldLastTempC = 0.0f;
+RTC_DATA_ATTR static int32_t g_fieldLastDmsRaw = 0;
+RTC_DATA_ATTR static int32_t g_fieldLastAin2Raw = 0;
+
+static bool g_fieldBootFromDeepSleep = false;
+static bool g_fieldRetainedSnapshotValid = false;
+static bool g_fieldSuppressNextImmediateSend = false;
+static uint32_t g_fieldLastUplinkMs = 0;
+static bool g_fieldPeriodicCycleArmed = false;
+static uint32_t g_fieldPeriodicCycleStartMs = 0;
+static uint32_t g_fieldPeriodicCycleDelayMs = 0;
+static uint32_t g_fieldLastAliveMs = 0;
 // ---------------- ADS1220 ----------------
 namespace ADS1220 {
   static constexpr uint8_t CMD_RESET = 0x06;
@@ -1175,16 +1206,20 @@ static void applyLoraConfig() {
   appTxDutyCycle = (uint32_t)cfg.intervalMin * 60UL * 1000UL;
   loraWanAdr = cfg.adr;
 }
-static float ain2DerivedValue() {
-  if (!ain2_valid || isnan(ain2_mV)) return NAN;
+static float ain2DerivedValueFromMilli(float ain2_mV_local) {
+  if (!isfinite(ain2_mV_local)) return NAN;
   if (cfg.ain2Mode == AIN2_MODE_VOLT) {
     if (cfg.ain2AdcFullscaleV <= 0.001f) return NAN;
-    float v = (ain2_mV / 1000.0f) * (cfg.ain2InputFullscaleV / cfg.ain2AdcFullscaleV);
+    float v = (ain2_mV_local / 1000.0f) * (cfg.ain2InputFullscaleV / cfg.ain2AdcFullscaleV);
     return clampf(v, 0.0f, cfg.ain2InputFullscaleV);
   }
   if (cfg.ain2AdcFullscaleV <= 0.001f) return NAN;
-  float ratio = (ain2_mV / 1000.0f) / cfg.ain2AdcFullscaleV;
+  float ratio = (ain2_mV_local / 1000.0f) / cfg.ain2AdcFullscaleV;
   return clampf(ratio, 0.0f, 1.0f) * cfg.ain2LengthMm;
+}
+static float ain2DerivedValue() {
+  if (!ain2_valid || isnan(ain2_mV)) return NAN;
+  return ain2DerivedValueFromMilli(ain2_mV);
 }
 static const char* ain2DerivedUnit() {
   return (cfg.ain2Mode == AIN2_MODE_VOLT) ? "V" : "mm";
@@ -1287,6 +1322,7 @@ static bool applyDownSpikeFilter(int32_t candidate, int32_t& lastRaw, bool& have
   return true;
 }
 static void prepareTxFrame(uint8_t port);
+static uint8_t fieldPayloadStatusCode();
 static void syncSdLogger(bool forceReopen);
 static bool startMeasurementsManual();
 static void stopMeasurementsManual();
@@ -2657,6 +2693,7 @@ static void appendConfig(JsonObject obj) {
   obj["ain2_scale_min"] = cfg.ain2ScaleMin;
   obj["ain2_scale_max"] = cfg.ain2ScaleMax;
   obj["temp_enabled"] = cfg.tempEnabled ? 1 : 0;
+  obj["field_status_code"] = fieldPayloadStatusCode();
   obj["temp_hz"] = TEMP_FIXED_HZ;
   obj["sd_log_enabled"] = cfg.sdLogEnabled ? 1 : 0;
   obj["stream_mode_enabled"] = cfg.streamModeEnabled ? 1 : 0;
@@ -2695,6 +2732,7 @@ static void appendLive(JsonObject obj) {
   obj["ain2_rate_hz_actual"] = ain2FramesPerSecond;
   obj["ain2_age_ms"] = g_ain2LastOkUs ? (uint32_t)((micros() - g_ain2LastOkUs) / 1000UL) : 0U;
   obj["temp_enabled"] = cfg.tempEnabled ? 1 : 0;
+  obj["field_status_code"] = fieldPayloadStatusCode();
   obj["temp_valid"] = temp_valid ? 1 : 0;
   obj["temp_C"] = temp_valid ? ds_temp_c : 0.0f;
   obj["temp_rate_hz_actual"] = tempFramesPerSecond;
@@ -3417,170 +3455,565 @@ static void startApAndWeb() {
 // ============================================================
 // LoRa
 // ============================================================
+static void adsBusReleaseForLoRa() {
+  Serial.println("[ADS] RELEASE BUS FOR LORA");
+  adsCS(false);
+  pinMode(PIN_ADS_CS, OUTPUT);
+  digitalWrite(PIN_ADS_CS, HIGH);
+  digitalWrite(PIN_SD_CS, HIGH);
+  SPI.endTransaction();
+  SPI.begin(PIN_SPI_SCK, PIN_SPI_MISO, PIN_SPI_MOSI, PIN_SD_CS);
+}
+
+static bool fieldIsDeviceStateValid(eDeviceState_LoraWan state) {
+  return (state == DEVICE_STATE_INIT) ||
+         (state == DEVICE_STATE_JOIN) ||
+         (state == DEVICE_STATE_SEND) ||
+         (state == DEVICE_STATE_CYCLE) ||
+         (state == DEVICE_STATE_SLEEP);
+}
+
+static void resetFieldRetainedState() {
+  g_fieldRtcMagic = FIELD_RTC_MAGIC;
+  g_fieldSessionEstablished = false;
+  g_fieldSensorBufferValid = false;
+  g_fieldDmsValid = false;
+  g_fieldAin2Valid = false;
+  g_fieldTempValid = false;
+  g_fieldCaptureOnNextWake = false;
+  g_fieldLastDmsMvPerV = 0.0f;
+  g_fieldLastAin2MilliVolts = 0.0f;
+  g_fieldLastTempC = 0.0f;
+  g_fieldLastDmsRaw = 0;
+  g_fieldLastAin2Raw = 0;
+}
+
+static void resetFieldRuntimeState() {
+  g_fieldSuppressNextImmediateSend = false;
+  g_fieldLastUplinkMs = 0;
+  g_fieldPeriodicCycleArmed = false;
+  g_fieldPeriodicCycleStartMs = 0;
+  g_fieldPeriodicCycleDelayMs = 0;
+  g_fieldLastAliveMs = 0;
+}
+
+static uint8_t fieldDmsModeCode() {
+  if (!cfg.dmsEnabled) return 0;
+  return (cfg.dmsKFactor > 0.0f) ? 2 : 1;
+}
+
+static uint8_t fieldAin2ModeCode() {
+  if (!cfg.ain2Enabled) return 0;
+  return (cfg.ain2Mode == AIN2_MODE_VOLT) ? 2 : 1;
+}
+
+static uint8_t fieldTempModeCode() {
+  return cfg.tempEnabled ? 1 : 0;
+}
+
+static uint8_t fieldPayloadStatusCode() {
+  return (uint8_t)(fieldDmsModeCode() * 100u + fieldAin2ModeCode() * 10u + fieldTempModeCode());
+}
+
+static uint32_t fieldDs18b20ConversionTimeMs() {
+  switch (FIELD_DS18B20_RESOLUTION_BITS) {
+    case 9:  return 94;
+    case 10: return 188;
+    case 11: return 375;
+    default: return 750;
+  }
+}
+
+static void fieldReleaseAdsBus() {
+  pinMode(PIN_ADS_CS, OUTPUT);
+  digitalWrite(PIN_ADS_CS, HIGH);
+  pinMode(PIN_SD_CS, OUTPUT);
+  digitalWrite(PIN_SD_CS, HIGH);
+  adsCS(false);
+  SPI.end();
+  g_adsConfigSettled = false;
+}
+
+static void fieldApplyRetainedValuesToRuntime() {
+  if (cfg.dmsEnabled && g_fieldDmsValid) {
+    dms_valid = true;
+    dms_mV_per_V = g_fieldLastDmsMvPerV;
+    dms_mV = dms_mV_per_V * ADS_VREF_VOLTS;
+    lastDmsRaw = g_fieldLastDmsRaw;
+    lastDmsRawSeen = true;
+    g_dmsFailStreak = 0;
+    g_dmsLastOkUs = micros();
+  } else {
+    invalidateDms();
+  }
+
+  if (cfg.ain2Enabled && g_fieldAin2Valid) {
+    ain2_valid = true;
+    ain2_mV = g_fieldLastAin2MilliVolts;
+    lastAin2Raw = g_fieldLastAin2Raw;
+    lastAin2RawSeen = true;
+    g_ain2FailStreak = 0;
+    g_ain2LastOkUs = micros();
+  } else {
+    invalidateAin2();
+  }
+
+  if (cfg.tempEnabled && g_fieldTempValid) {
+    temp_valid = true;
+    ds_temp_c = g_fieldLastTempC;
+    ds_pending = false;
+    g_tempFailStreak = 0;
+    g_tempLastOkMs = millis();
+  } else {
+    invalidateTemp();
+  }
+
+  dmsFramesPerSecond = 0;
+  ain2FramesPerSecond = 0;
+  tempFramesPerSecond = 0;
+  totalFramesPerSecond = 0;
+  framesPerSecond = 0;
+}
+
+static bool captureFieldSensorsToRetainedBuffer() {
+  const bool needAds = cfg.dmsEnabled || cfg.ain2Enabled;
+  const bool needTemp = cfg.tempEnabled;
+
+  refreshAdsChannelConfigs();
+
+  bool adsReady = true;
+  if (needAds) {
+    adsInit();
+    delay(50);
+  }
+
+  dsSensor.begin();
+  dsSensor.setWaitForConversion(false);
+  dsSensor.setResolution(FIELD_DS18B20_RESOLUTION_BITS);
+
+  uint32_t tempReqMs = 0;
+  if (needTemp) {
+    tempReqMs = millis();
+    dsSensor.requestTemperatures();
+  }
+
+  float nextDmsMv = NAN;
+  float nextDmsMvPerV = NAN;
+  float nextAin2Milli = NAN;
+  float nextTempC = NAN;
+  int32_t nextDmsRaw = g_fieldLastDmsRaw;
+  int32_t nextAin2Raw = g_fieldLastAin2Raw;
+
+  bool dmsOk = !cfg.dmsEnabled;
+  bool ain2Ok = !cfg.ain2Enabled;
+  bool tempOk = !cfg.tempEnabled;
+
+  if (needAds && cfg.dmsEnabled) {
+    if (readDmsFast(nextDmsMv, &nextDmsRaw)) {
+      nextDmsMvPerV = dmsTo_mV_per_V(nextDmsMv);
+      dmsOk = true;
+    } else {
+      dmsOk = false;
+    }
+  }
+
+  if (needAds && cfg.ain2Enabled) {
+    if (readChannelRaw(g_adsAin2Cfg, nextAin2Milli, &nextAin2Raw)) {
+      ain2Ok = true;
+    } else {
+      ain2Ok = false;
+    }
+  }
+
+  if (needTemp) {
+    const uint32_t convMs = fieldDs18b20ConversionTimeMs();
+    const uint32_t elapsedMs = millis() - tempReqMs;
+    if (elapsedMs < convMs) {
+      delay(convMs - elapsedMs);
+    }
+    nextTempC = dsSensor.getTempCByIndex(0);
+    tempOk = (nextTempC != DEVICE_DISCONNECTED_C) && (nextTempC >= -55.0f) && (nextTempC <= 125.0f);
+  }
+
+  if (needAds) {
+    fieldReleaseAdsBus();
+  }
+
+  const bool captureOk = dmsOk && ain2Ok && tempOk;
+
+  if (!cfg.dmsEnabled) {
+    g_fieldDmsValid = false;
+    g_fieldLastDmsMvPerV = 0.0f;
+    g_fieldLastDmsRaw = 0;
+  } else if (dmsOk) {
+    g_fieldDmsValid = true;
+    g_fieldLastDmsMvPerV = nextDmsMvPerV;
+    g_fieldLastDmsRaw = nextDmsRaw;
+  }
+
+  if (!cfg.ain2Enabled) {
+    g_fieldAin2Valid = false;
+    g_fieldLastAin2MilliVolts = 0.0f;
+    g_fieldLastAin2Raw = 0;
+  } else if (ain2Ok) {
+    g_fieldAin2Valid = true;
+    g_fieldLastAin2MilliVolts = nextAin2Milli;
+    g_fieldLastAin2Raw = nextAin2Raw;
+  }
+
+  if (!cfg.tempEnabled) {
+    g_fieldTempValid = false;
+    g_fieldLastTempC = 0.0f;
+  } else if (tempOk) {
+    g_fieldTempValid = true;
+    g_fieldLastTempC = nextTempC;
+  }
+
+  g_fieldSensorBufferValid = (cfg.dmsEnabled ? g_fieldDmsValid : true) &&
+                             (cfg.ain2Enabled ? g_fieldAin2Valid : true) &&
+                             (cfg.tempEnabled ? g_fieldTempValid : true);
+
+  fieldApplyRetainedValuesToRuntime();
+  return captureOk;
+}
+
+static void rearmFieldPeriodicCycleAfterSuppressedImmediateSend(uint32_t nowMs) {
+  if (!g_fieldPeriodicCycleArmed || g_fieldPeriodicCycleDelayMs == 0) {
+    g_fieldPeriodicCycleDelayMs = appTxDutyCycle;
+    g_fieldPeriodicCycleStartMs = nowMs;
+    g_fieldPeriodicCycleArmed = true;
+    LoRaWAN.cycle(g_fieldPeriodicCycleDelayMs);
+    return;
+  }
+
+  uint32_t elapsedMs = nowMs - g_fieldPeriodicCycleStartMs;
+  uint32_t remainingMs = 1;
+  if (elapsedMs < g_fieldPeriodicCycleDelayMs) {
+    remainingMs = g_fieldPeriodicCycleDelayMs - elapsedMs;
+  }
+
+  g_fieldPeriodicCycleStartMs = nowMs;
+  g_fieldPeriodicCycleDelayMs = remainingMs;
+  g_fieldPeriodicCycleArmed = true;
+  LoRaWAN.cycle(remainingMs);
+}
+
+static uint32_t encodeUnsignedScaled32(double value, double scale) {
+  if (!isfinite(value) || !isfinite(scale) || scale <= 0.0) return 0;
+  double scaled = value * scale;
+  if (scaled < 0.0) scaled = 0.0;
+  if (scaled > 4294967295.0) scaled = 4294967295.0;
+  return (uint32_t)llround(scaled);
+}
+
+static int16_t encodeSignedScaled16(double value, double scale) {
+  if (!isfinite(value) || !isfinite(scale) || scale <= 0.0) return 0;
+  double scaled = value * scale;
+  if (scaled > 32767.0) scaled = 32767.0;
+  if (scaled < -32768.0) scaled = -32768.0;
+  return (int16_t)lround(scaled);
+}
+
+static int64_t encodeSignedScaled64(double value, double scale) {
+  if (!isfinite(value) || !isfinite(scale) || scale <= 0.0) return 0;
+  long double scaled = (long double)value * (long double)scale;
+  if (scaled > (long double)INT64_MAX) scaled = (long double)INT64_MAX;
+  if (scaled < (long double)INT64_MIN) scaled = (long double)INT64_MIN;
+  return (int64_t)llround((double)scaled);
+}
+
+static void appendU16BE(uint16_t value) {
+  appData[appDataSize++] = (uint8_t)((value >> 8) & 0xFF);
+  appData[appDataSize++] = (uint8_t)(value & 0xFF);
+}
+
+static void appendI16BE(int16_t value) {
+  appendU16BE((uint16_t)value);
+}
+
+static void appendU32BE(uint32_t value) {
+  appData[appDataSize++] = (uint8_t)((value >> 24) & 0xFF);
+  appData[appDataSize++] = (uint8_t)((value >> 16) & 0xFF);
+  appData[appDataSize++] = (uint8_t)((value >> 8) & 0xFF);
+  appData[appDataSize++] = (uint8_t)(value & 0xFF);
+}
+
+static void appendI64BE(int64_t value) {
+  uint64_t raw = (uint64_t)value;
+  for (int shift = 56; shift >= 0; shift -= 8) {
+    appData[appDataSize++] = (uint8_t)((raw >> shift) & 0xFFu);
+  }
+}
+
 static void prepareTxFrame(uint8_t port) {
   (void)port;
-  StaticJsonDocument<384> doc;
-  doc["dms_mV"] = dms_valid ? dms_mV : 0.0f;
-  doc["dms_mV_per_V"] = dms_valid ? dms_mV_per_V : 0.0f;
-  doc["ain2_mV"] = ain2_valid ? ain2_mV : 0.0f;
-  if (cfg.ain2Mode == AIN2_MODE_VOLT) doc["ain2_V"] = ain2_valid ? ain2DerivedValue() : 0.0f;
-  else doc["ain2_mm"] = ain2_valid ? ain2DerivedValue() : 0.0f;
-  doc["temp_C"] = temp_valid ? ds_temp_c : 0.0f;
-  doc["frames_s"] = framesPerSecond;
-  doc["selftest_ok"] = selfTestOk ? 1 : 0;
-  appDataSize = (uint8_t)serializeJson(doc, appData, LORAWAN_APP_DATA_MAX_SIZE);
+
+  appDataSize = 0;
+
+  const uint8_t statusCode = fieldPayloadStatusCode();
+  const uint8_t dmsCode = fieldDmsModeCode();
+  const uint8_t ain2Code = fieldAin2ModeCode();
+  const uint8_t tempCode = fieldTempModeCode();
+
+  appData[appDataSize++] = statusCode;
+
+  if (dmsCode != 0u) {
+    if (g_fieldDmsValid) {
+      const double dmsValue = (dmsCode == 2u)
+        ? (double)dmsScaledValueFromMvPerV(g_fieldLastDmsMvPerV)
+        : (double)g_fieldLastDmsMvPerV;
+      appendI64BE(encodeSignedScaled64(dmsValue, 1000000000.0));
+    } else {
+      appendI64BE(FIELD_INVALID_I64);
+    }
+  }
+
+  if (ain2Code != 0u) {
+    if (g_fieldAin2Valid) {
+      const double ain2Value = (double)ain2DerivedValueFromMilli(g_fieldLastAin2MilliVolts);
+      appendU32BE(encodeUnsignedScaled32(ain2Value, 100000.0));
+    } else {
+      appendU32BE(FIELD_INVALID_U32);
+    }
+  }
+
+  if (tempCode != 0u) {
+    if (g_fieldTempValid) {
+      appendI16BE(encodeSignedScaled16(g_fieldLastTempC, 100.0));
+    } else {
+      appendI16BE(FIELD_INVALID_I16);
+    }
+  }
 }
+
+static const char* loraStateName(uint8_t state) {
+  switch (state) {
+    case DEVICE_STATE_INIT:  return "INIT";
+    case DEVICE_STATE_JOIN:  return "JOIN";
+    case DEVICE_STATE_SEND:  return "SEND";
+    case DEVICE_STATE_CYCLE: return "CYCLE";
+    case DEVICE_STATE_SLEEP: return "SLEEP";
+    default:                 return "UNKNOWN";
+  }
+}
+
 static void loraLoop() {
   if (!g_loraEnabled) return;
+
   switch (deviceState) {
     case DEVICE_STATE_INIT:
-      Serial.println("[LORA] INIT");
+      loraWanAdr = cfg.adr;
+      isTxConfirmed = false;
+      confirmedNbTrials = 1;
       syncLoraCompatAliases();
-      dumpLoraBuffers("buffers before LoRaWAN.init");
       LoRaWAN.init(loraWanClass, loraWanRegion);
-      LoRaWAN.setDefaultDR(3);
+      LoRaWAN.setDefaultDR(cfg.dr);
       g_loraInitDone = true;
       deviceState = DEVICE_STATE_JOIN;
       break;
+
     case DEVICE_STATE_JOIN:
-      Serial.println("[LORA] JOIN");
-      g_radioQuietUntilMs = millis() + 7000UL;
       LoRaWAN.join();
-      break;
-    case DEVICE_STATE_SEND:
-      if (!g_fieldJoinPassed) {
-        Serial.println("[LORA] JOIN SUCCESS");
-        g_fieldJoinPassed = true;
-      }
-      if (!g_fieldAdsReady) {
-        Serial.println("[ADS] INIT AFTER JOIN");
-        adsInit();
-        dsInit();
-        if (cfg.dmsEnabled) {
-          runSelfTest();
-          restoreDmsRunMode();
-        } else {
-          selfTestOk = false;
-          selfTestDelta_mV = NAN;
-        }
-        g_fieldAdsReady = true;
-        g_measurementsInitialized = true;
-      }
-      g_measurementsRunning = true;
-      Serial.println("[LORA] MEASURE");
-      captureFieldSnapshot();
-      oledUpdateLive(true);
-      prepareTxFrame(appPort);
-      Serial.println("[ADS] OFF BEFORE TX");
-      adsCS(false);
-      digitalWrite(PIN_SD_CS, HIGH);
-      g_radioQuietUntilMs = millis() + 3000UL;
-      Serial.println("[LORA] SEND");
-      LoRaWAN.send();
-      g_measurementsRunning = false;
-      deviceState = DEVICE_STATE_CYCLE;
-      break;
-    case DEVICE_STATE_CYCLE:
-      Serial.println("[LORA] CYCLE");
-      LoRaWAN.cycle(appTxDutyCycle);
       deviceState = DEVICE_STATE_SLEEP;
       break;
+
+    case DEVICE_STATE_SEND: {
+      const uint32_t nowMs = millis();
+      const bool firstSendAfterJoin = !g_fieldSessionEstablished;
+
+      if (firstSendAfterJoin) {
+        g_fieldSessionEstablished = true;
+        g_fieldJoinPassed = true;
+      }
+
+      if (g_fieldSuppressNextImmediateSend) {
+        if ((nowMs - g_fieldLastUplinkMs) < FIELD_DUPLICATE_SEND_WINDOW_MS) {
+          g_fieldSuppressNextImmediateSend = false;
+          rearmFieldPeriodicCycleAfterSuppressedImmediateSend(nowMs);
+          deviceState = DEVICE_STATE_SLEEP;
+          break;
+        }
+        g_fieldSuppressNextImmediateSend = false;
+      }
+
+      prepareTxFrame(appPort);
+      LoRaWAN.send();
+
+      g_fieldLastUplinkMs = nowMs;
+      g_fieldPeriodicCycleArmed = false;
+      g_fieldPeriodicCycleStartMs = 0;
+      g_fieldPeriodicCycleDelayMs = 0;
+
+      if (firstSendAfterJoin) {
+        g_fieldSuppressNextImmediateSend = true;
+      }
+
+      deviceState = DEVICE_STATE_CYCLE;
+      break;
+    }
+
+    case DEVICE_STATE_CYCLE:
+      txDutyCycleTime = appTxDutyCycle + randr(0, APP_TX_DUTYCYCLE_RND);
+      LoRaWAN.cycle(txDutyCycleTime);
+      g_fieldPeriodicCycleArmed = true;
+      g_fieldPeriodicCycleStartMs = millis();
+      g_fieldPeriodicCycleDelayMs = txDutyCycleTime;
+      g_fieldCaptureOnNextWake = cfg.dmsEnabled || cfg.ain2Enabled || cfg.tempEnabled;
+      deviceState = DEVICE_STATE_SLEEP;
+      break;
+
     case DEVICE_STATE_SLEEP:
       LoRaWAN.sleep(loraWanClass);
       break;
+
     default:
       deviceState = DEVICE_STATE_INIT;
       break;
   }
 }
-// ============================================================
-// Setup / loop
-// ============================================================
-void setup() {
-  Serial.begin(115200);
-  delay(300);
+
+static void setupCommonState() {
   g_diagBootMs = millis();
   g_spiBusMutex = xSemaphoreCreateMutex();
   loadCfg();
   applyLoraConfig();
   g_mode = isApModeRequested() ? RunMode::CONFIG : RunMode::FIELD;
   if (!oledIsActiveNow()) oledSleep();
-  if (g_mode == RunMode::CONFIG) {
-    g_loraEnabled = false;
-    g_sdStatus = cfg.sdLogEnabled ? "ready" : "disabled";
-    oledShowBootLogo();
-    delay(1500);
-    startApAndWeb();
-    if (g_oledEnabled && oledAllowedInCurrentMode()) {
-      startMeasurementsManual();
-      oledEnsureInit();
-      oledUpdateLive(true);
-    } else {
-      oledShowBanner("CONFIG MODE", "Manual measurement start");
-      oledShowBanner("CONFIG MODE", g_apSsid);
-    }
-  } else {
-    g_fieldJoinPassed = false;
-    g_fieldAdsReady = false;
-    g_measurementsInitialized = false;
-    g_measurementsRunning = false;
-    invalidateDms();
-    invalidateAin2();
-    invalidateTemp();
-    selfTestOk = false;
-    selfTestDelta_mV = NAN;
-  }
-  if (g_mode == RunMode::FIELD) {
-    oledSleep();
-  }
   last_dms_read_us = micros();
   last_ain2_read_us = micros();
-  Serial.print("FW ");
-  Serial.print(FW_VERSION);
-  Serial.print(" build ");
-  Serial.print(__DATE__);
-  Serial.print(" ");
-  Serial.println(__TIME__);
-  Serial.print("Mode: ");
-  Serial.println(modeToString());
-  Serial.print("DevEUI=");
-  Serial.print(cfg.devEui);
-  Serial.print(" AppEUI=");
-  Serial.print(cfg.appEui);
-  Serial.print(" AppKey=");
-  Serial.println(cfg.appKey);
-  Serial.print("LoRa interval: ");
-  Serial.print(appTxDutyCycle);
-  Serial.println(" ms");
-  Serial.println("[ADS] software SPI on fixed PCB pins; LoRa SPI isolated");
-  dumpLoraBuffers("buffers before Mcu.begin");
-  if (g_mode == RunMode::FIELD) {
-    WiFi.persistent(false);
-    WiFi.disconnect(true, true);
-    WiFi.mode(WIFI_OFF);
-    delay(20);
-    Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
-    g_loraEnabled = true;
-    g_sdStatus = "field_disabled";
-  } else {
-    ensureMeasurementTasksStarted();
-    if (g_oledEnabled && oledAllowedInCurrentMode()) {
-      g_measurementsRunning = true;
-      oledUpdateLive(true);
-    } else {
-      g_measurementsRunning = false;
-      oledUpdateLive(true);
-    }
+
+  if (g_mode == RunMode::CONFIG) {
+    Serial.print("FW ");
+    Serial.print(FW_VERSION);
+    Serial.print(" build ");
+    Serial.print(__DATE__);
+    Serial.print(" ");
+    Serial.println(__TIME__);
+    Serial.print("Mode: ");
+    Serial.println(modeToString());
+    Serial.print("DevEUI=");
+    Serial.print(cfg.devEui);
+    Serial.print(" AppEUI=");
+    Serial.print(cfg.appEui);
+    Serial.print(" AppKey=");
+    Serial.println(cfg.appKey);
+    Serial.print("LoRa interval: ");
+    Serial.print(appTxDutyCycle);
+    Serial.println(" ms");
+    Serial.println("[ADS] software SPI on fixed PCB pins; LoRa SPI isolated");
   }
 }
+
+static void setupConfigMode() {
+  g_loraEnabled = false;
+  g_sdStatus = cfg.sdLogEnabled ? "ready" : "disabled";
+
+  oledShowBootLogo();
+  delay(1500);
+  startApAndWeb();
+  ensureMeasurementTasksStarted();
+
+  if (g_oledEnabled && oledAllowedInCurrentMode()) {
+    startMeasurementsManual();
+    oledEnsureInit();
+    g_measurementsRunning = true;
+    oledUpdateLive(true);
+  } else {
+    g_measurementsRunning = false;
+    oledShowBanner("CONFIG MODE", "Manual measurement start");
+    oledShowBanner("CONFIG MODE", g_apSsid);
+    oledUpdateLive(true);
+  }
+}
+
+static void setupFieldMode() {
+  g_fieldJoinPassed = false;
+  g_fieldAdsReady = false;
+  g_measurementsInitialized = false;
+  g_measurementsRunning = false;
+  selfTestOk = false;
+  selfTestDelta_mV = NAN;
+  g_sdStatus = "field_disabled";
+  oledSleep();
+
+  WiFi.persistent(false);
+  WiFi.disconnect(true, true);
+  WiFi.mode(WIFI_OFF);
+  delay(20);
+
+  pinMode(PIN_ADS_CS, OUTPUT);
+  digitalWrite(PIN_ADS_CS, HIGH);
+  pinMode(PIN_SD_CS, OUTPUT);
+  digitalWrite(PIN_SD_CS, HIGH);
+  pinMode(PIN_MOSFET, OUTPUT);
+  digitalWrite(PIN_MOSFET, LOW);
+
+  g_fieldBootFromDeepSleep = (esp_sleep_get_wakeup_cause() != ESP_SLEEP_WAKEUP_UNDEFINED);
+  g_fieldRetainedSnapshotValid = (g_fieldRtcMagic == FIELD_RTC_MAGIC) && fieldIsDeviceStateValid(deviceState);
+  const bool coldBoot = !g_fieldBootFromDeepSleep || !g_fieldRetainedSnapshotValid;
+
+  resetFieldRuntimeState();
+
+  if (coldBoot) {
+    ++g_fieldColdBootCount;
+    resetFieldRetainedState();
+    captureFieldSensorsToRetainedBuffer();
+    g_fieldCaptureOnNextWake = false;
+  } else {
+    ++g_fieldSleepWakeCount;
+    if (g_fieldCaptureOnNextWake) {
+      captureFieldSensorsToRetainedBuffer();
+      g_fieldCaptureOnNextWake = false;
+    }
+  }
+
+  fieldApplyRetainedValuesToRuntime();
+  fieldReleaseAdsBus();
+
+  Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
+  g_loraEnabled = true;
+  g_loraInitDone = false;
+  g_fieldJoinPassed = g_fieldSessionEstablished;
+
+  if (coldBoot) {
+    deviceState = DEVICE_STATE_INIT;
+  } else if (g_fieldSessionEstablished && esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER) {
+    deviceState = DEVICE_STATE_SEND;
+  }
+}
+
+static void loopConfigMode() {
+  dnsServer.processNextRequest();
+  server.handleClient();
+  logLoopStatsIfNeeded();
+  delay(cfg.streamModeEnabled ? 5 : 1);
+}
+
+static void loopFieldMode() {
+  loraLoop();
+  delay(2);
+}
+
+// ============================================================
+// Setup / loop
+// ============================================================
+void setup() {
+  Serial.begin(115200);
+  delay(50);
+
+  setupCommonState();
+
+  if (g_mode == RunMode::CONFIG) {
+    setupConfigMode();
+  } else {
+    setupFieldMode();
+  }
+}
+
 void loop() {
   if (g_mode == RunMode::CONFIG) {
-    dnsServer.processNextRequest();
-    server.handleClient();
-    logLoopStatsIfNeeded();
-    delay(cfg.streamModeEnabled ? 5 : 1);
+    loopConfigMode();
   } else {
-    loraLoop();
-    delay(2);
+    loopFieldMode();
   }
 }
