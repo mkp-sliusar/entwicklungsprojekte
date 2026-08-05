@@ -2,12 +2,18 @@
 #include <SPI.h>
 #include <SD.h>
 #include <WiFi.h>
+#include <DNSServer.h>
 #include <WebServer.h>
 #include <Preferences.h>
 #include <LittleFS.h>
 #include <ArduinoJson.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
+#include <esp_sleep.h>
+#include <Wire.h>
+#include "HT_SSD1306Wire.h"
+#include "logoMKP.h"
+#include "HT_DisplayFonts.h"
 #include <ctype.h>
 #include <math.h>
 #include "LoRaWan_APP.h"
@@ -34,7 +40,7 @@ static constexpr int PIN_ADS_DRDY = 4;
 static constexpr int PIN_MOSFET   = 5;
 static constexpr int PIN_DS18B20  = 6;
 static constexpr int PIN_AP_MODE  = 46;  // jumper to GND => CONFIG / AP mode
-static constexpr const char* FW_VERSION = "1.8.0-apfield-sd-hispeed-task";
+static constexpr const char* FW_VERSION = "1.9.2";
 static constexpr const char* BOARD_NAME = "Heltec WiFi LoRa 32 V3";
 static constexpr uint8_t AIN2_MODE_POT  = 0;
 static constexpr uint8_t AIN2_MODE_VOLT = 1;
@@ -48,17 +54,37 @@ static constexpr size_t DEV_EUI_HEX_LEN = 16;
 static constexpr size_t APP_EUI_HEX_LEN = 16;
 static constexpr size_t APP_KEY_HEX_LEN = 32;
 static constexpr size_t LOG_BASENAME_LEN = 24;
+static constexpr size_t AIN2_VOLT_DISPLAY_LEN = 12;
+static constexpr size_t AIN2_SCALING_UNIT_LEN = 12;
 static WebServer server(80);
+
+static constexpr uint16_t DNS_PORT = 53;
+static DNSServer dnsServer;
 static Preferences prefs;
 static OneWire oneWire(PIN_DS18B20);
 static DallasTemperature dsSensor(&oneWire);
+static SSD1306Wire OLED_Display(0x3c, 500000, SDA_OLED, SCL_OLED, GEOMETRY_128_64, RST_OLED);
+static bool g_oledSupported = true;
+static bool g_oledEnabled = true;
+static bool g_oledInitDone = false;
+static uint32_t g_oledLastDrawMs = 0;
 enum class RunMode : uint8_t { FIELD = 0, CONFIG = 1 };
 static RunMode g_mode = RunMode::FIELD;
 static bool g_loraEnabled = false;
 static bool g_loraInitDone = false;
+static bool g_fieldJoinPassed = false;
+static bool g_fieldAdsReady = false;
 static uint32_t g_radioQuietUntilMs = 0;
 static IPAddress g_apIp(0, 0, 0, 0);
 static String g_apSsid;
+static uint32_t g_diagBootMs = 0;
+static uint32_t g_diagLastLoopStatsMs = 0;
+static uint32_t g_httpReqCount = 0;
+static uint32_t g_httpReqWindowCount = 0;
+static uint32_t g_httpReqWindowStartedMs = 0;
+static uint32_t g_httpSlowReqCount = 0;
+static uint32_t g_httpMaxDurationMs = 0;
+static String g_httpMaxDurationUri;
 static WiFiServer g_streamServer(3333);
 static WiFiClient g_streamClient;
 static TaskHandle_t g_streamTaskHandle = nullptr;
@@ -67,6 +93,36 @@ static volatile uint32_t g_lastStreamedSampleSeq = 0;
 static String g_streamStatus = "idle";
 static uint32_t g_streamClientCount = 0;
 static constexpr uint16_t STREAM_TCP_PORT = 3333;
+static constexpr uint8_t FIELD_DS18B20_RESOLUTION_BITS = 11;
+static constexpr uint32_t FIELD_RTC_MAGIC = 0x4D4B5032; // "MKP2"
+static constexpr uint32_t FIELD_DUPLICATE_SEND_WINDOW_MS = 5000;
+static constexpr uint32_t FIELD_INVALID_U32 = 0xFFFFFFFFUL;
+static constexpr int16_t FIELD_INVALID_I16 = INT16_MIN;
+static constexpr int64_t FIELD_INVALID_I64 = INT64_MIN;
+
+RTC_DATA_ATTR static uint32_t g_fieldRtcMagic = 0;
+RTC_DATA_ATTR static uint32_t g_fieldColdBootCount = 0;
+RTC_DATA_ATTR static uint32_t g_fieldSleepWakeCount = 0;
+RTC_DATA_ATTR static bool g_fieldSessionEstablished = false;
+RTC_DATA_ATTR static bool g_fieldSensorBufferValid = false;
+RTC_DATA_ATTR static bool g_fieldDmsValid = false;
+RTC_DATA_ATTR static bool g_fieldAin2Valid = false;
+RTC_DATA_ATTR static bool g_fieldTempValid = false;
+RTC_DATA_ATTR static bool g_fieldCaptureOnNextWake = false;
+RTC_DATA_ATTR static float g_fieldLastDmsMvPerV = 0.0f;
+RTC_DATA_ATTR static float g_fieldLastAin2MilliVolts = 0.0f;
+RTC_DATA_ATTR static float g_fieldLastTempC = 0.0f;
+RTC_DATA_ATTR static int32_t g_fieldLastDmsRaw = 0;
+RTC_DATA_ATTR static int32_t g_fieldLastAin2Raw = 0;
+
+static bool g_fieldBootFromDeepSleep = false;
+static bool g_fieldRetainedSnapshotValid = false;
+static bool g_fieldSuppressNextImmediateSend = false;
+static uint32_t g_fieldLastUplinkMs = 0;
+static bool g_fieldPeriodicCycleArmed = false;
+static uint32_t g_fieldPeriodicCycleStartMs = 0;
+static uint32_t g_fieldPeriodicCycleDelayMs = 0;
+static uint32_t g_fieldLastAliveMs = 0;
 // ---------------- ADS1220 ----------------
 namespace ADS1220 {
   static constexpr uint8_t CMD_RESET = 0x06;
@@ -97,12 +153,17 @@ struct Cfg {
   uint8_t dr;
   bool dmsEnabled;
   float dmsHz;
+  float dmsKFactor;
   bool ain2Enabled;
   float ain2Hz;
   uint8_t ain2Mode;
   float ain2LengthMm;
   float ain2AdcFullscaleV;
   float ain2InputFullscaleV;
+  char ain2VoltDisplay[AIN2_VOLT_DISPLAY_LEN + 1];
+  char ain2ScalingUnit[AIN2_SCALING_UNIT_LEN + 1];
+  float ain2ScaleMin;
+  float ain2ScaleMax;
   bool tempEnabled;
   bool sdLogEnabled;
   bool streamModeEnabled;
@@ -117,12 +178,17 @@ static Cfg cfg = {
   true,
   5,
   true,
-  200.0f,
+  40.0f,
+  0.0f,
   true,
   1.0f,
   AIN2_MODE_POT,
   10.0f,
   3.123f,
+  10.0f,
+  "volts",
+  "mm",
+  0.0f,
   10.0f,
   true,
   false,
@@ -204,7 +270,7 @@ static uint32_t g_lastLoggedSampleSeq = 0;
 static volatile bool g_sdBusy = false;
 static uint32_t g_lastLogWriteMs = 0;
 static uint32_t g_logPeriodMs = 0;   // 0 = log every captured sample (use real sample timestamps)
-static uint32_t g_logFlushPeriodMs = 5000; // flush раз на 5 секунд
+static uint32_t g_logFlushPeriodMs = 10000; // optimized: rarer flush to reduce logging stalls
 struct LogSample {
   uint32_t t_ms;
   uint32_t t_us;
@@ -226,7 +292,7 @@ struct LogSample {
 };
 #pragma pack(push,1)
 struct BinLogHeader {
-  char magic[8];      // MKPBIN2\0
+  char magic[8];      // MKPBIN3\0
   uint16_t version;
   uint16_t headerSize;
   uint16_t recordSize;
@@ -267,11 +333,12 @@ static constexpr uint16_t BIN_FLAG_DMS_ENABLED       = 0x0001;
 static constexpr uint16_t BIN_FLAG_AIN2_ENABLED      = 0x0002;
 static constexpr uint16_t BIN_FLAG_TEMP_ENABLED      = 0x0004;
 static constexpr uint16_t BIN_FLAG_AIN2_MODE_VOLT    = 0x0008;
+static constexpr uint16_t BIN_FLAG_DMS_UNIT_UM_M     = 0x0010;
 static_assert(sizeof(BinLogHeader) == 20, "BinLogHeader size");
 static_assert(sizeof(BinLogRecordV1) == 18, "BinLogRecordV1 size");
 static uint32_t g_udbfFileStartUs = 0;
 enum class UdbfSignalKind : uint8_t {
-  DmsMvPerV = 0,
+  DmsScaled = 0,
   Ain2Volt = 1,
   Ain2WayMm = 2,
   TempC = 3,
@@ -291,32 +358,31 @@ static uint16_t currentBinFlags() {
   if (cfg.ain2Enabled) flags |= BIN_FLAG_AIN2_ENABLED;
   if (cfg.tempEnabled) flags |= BIN_FLAG_TEMP_ENABLED;
   if (cfg.ain2Mode == AIN2_MODE_VOLT) flags |= BIN_FLAG_AIN2_MODE_VOLT;
+  if (cfg.dmsKFactor > 0.0f) flags |= BIN_FLAG_DMS_UNIT_UM_M;
   return flags;
 }
 static uint16_t currentBinRecordSize() {
   uint16_t size = sizeof(uint32_t); // TimeCounter in microseconds
-  if (cfg.dmsEnabled) size += sizeof(int32_t);
-  if (cfg.ain2Enabled) size += sizeof(int32_t);
-  if (cfg.tempEnabled) size += sizeof(int16_t);
+  if (cfg.dmsEnabled) size += sizeof(float);
+  if (cfg.ain2Enabled) size += sizeof(float);
+  if (cfg.tempEnabled) size += sizeof(float);
   return size;
 }
 static bool writeBinHeader(File& f) {
   BinLogHeader h{};
-  memcpy(h.magic, "MKPBIN2", 7);
+  memcpy(h.magic, "MKPBIN3", 7);
   h.magic[7] = 0;
-  h.version = 2;
+  h.version = 3;
   h.headerSize = (uint16_t)sizeof(BinLogHeader);
   h.recordSize = currentBinRecordSize();
   h.flags = currentBinFlags();
   h.sampleHzNominal = nominalLogHz();
   return f.write((const uint8_t*)&h, sizeof(h)) == sizeof(h);
 }
-static uint16_t quantizeTempC100(float t) {
-  if (!isfinite(t)) return 0;
-  long v = lroundf(t * 100.0f);
-  if (v < -32768L) v = -32768L;
-  if (v > 32767L) v = 32767L;
-  return (uint16_t)(int16_t)v;
+static float dmsScaledValueFromMvPerV(float dmsMvPerV) {
+  if (!isfinite(dmsMvPerV)) return NAN;
+  if (cfg.dmsKFactor > 0.0f) return dmsMvPerV * 1000.0f / cfg.dmsKFactor;
+  return dmsMvPerV;
 }
 static bool writeBinRecord(File& f, const LogSample& s) {
   if (g_udbfFileStartUs == 0) g_udbfFileStartUs = s.t_us;
@@ -325,15 +391,15 @@ static bool writeBinRecord(File& f, const LogSample& s) {
     : 0U;
   if (f.write((const uint8_t*)&timeCounterUs, sizeof(timeCounterUs)) != sizeof(timeCounterUs)) return false;
   if (cfg.dmsEnabled) {
-    const int32_t v = s.dms_on ? s.dms_raw : 0;
+    const float v = (s.dms_on && s.dms_valid) ? dmsScaledValueFromMvPerV(s.dms_mV_per_V) : NAN;
     if (f.write((const uint8_t*)&v, sizeof(v)) != sizeof(v)) return false;
   }
   if (cfg.ain2Enabled) {
-    const int32_t v = s.ain2_on ? s.ain2_raw : 0;
+    const float v = (s.ain2_on && s.ain2_valid) ? s.ain2_value : NAN;
     if (f.write((const uint8_t*)&v, sizeof(v)) != sizeof(v)) return false;
   }
   if (cfg.tempEnabled) {
-    const int16_t v = (int16_t)quantizeTempC100(s.temp_C);
+    const float v = (s.temp_on && s.temp_valid) ? s.temp_C : NAN;
     if (f.write((const uint8_t*)&v, sizeof(v)) != sizeof(v)) return false;
   }
   return true;
@@ -406,7 +472,7 @@ static double compileTimeOleDate() {
 static void rebuildUdbfLayout() {
   g_udbfVarCount = 0;
   if (cfg.dmsEnabled) {
-    g_udbfVars[g_udbfVarCount++] = {"DMS", "mV/V", 3, UdbfSignalKind::DmsMvPerV};
+    g_udbfVars[g_udbfVarCount++] = {"DMS", (cfg.dmsKFactor > 0.0f) ? "um/m" : "mV/V", 3, UdbfSignalKind::DmsScaled};
   }
   if (cfg.ain2Enabled) {
     if (cfg.ain2Mode == AIN2_MODE_VOLT) {
@@ -603,8 +669,8 @@ static bool writeUdbfHeader(File& f) {
 }
 static float udbfValueFor(const LogSample& s, UdbfSignalKind kind) {
   switch (kind) {
-    case UdbfSignalKind::DmsMvPerV:
-      return (s.dms_on && s.dms_valid && isfinite(s.dms_mV_per_V)) ? s.dms_mV_per_V : 0.0f;
+    case UdbfSignalKind::DmsScaled:
+      return (s.dms_on && s.dms_valid && isfinite(s.dms_mV_per_V)) ? dmsScaledValueFromMvPerV(s.dms_mV_per_V) : 0.0f;
     case UdbfSignalKind::Ain2Volt:
       return (s.ain2_on && s.ain2_valid && s.ain2_mode == AIN2_MODE_VOLT && isfinite(s.ain2_value)) ? s.ain2_value : 0.0f;
     case UdbfSignalKind::Ain2WayMm:
@@ -614,9 +680,9 @@ static float udbfValueFor(const LogSample& s, UdbfSignalKind kind) {
   }
   return 0.0f;
 }
-static constexpr uint16_t LOG_BUF_SIZE = 1024;
-static constexpr uint16_t LOG_BATCH_SIZE = 64;
-static constexpr uint32_t LOG_FORCE_FLUSH_MS = 250;
+static constexpr uint16_t LOG_BUF_SIZE = 512;
+static constexpr uint16_t LOG_BATCH_SIZE = 64; // best result in tests with buffered logging
+static constexpr uint32_t LOG_FORCE_FLUSH_MS = 250; // keep short drain latency without write_every_sample flush cost
 static LogSample g_logBuf[LOG_BUF_SIZE];
 static uint16_t g_logBufHead = 0;
 static uint16_t g_logBufTail = 0;
@@ -625,8 +691,8 @@ static uint16_t g_logBufMax = 0;
 static uint32_t g_logDropped = 0;
 static uint32_t g_logLastDrainMs = 0;
 
-static constexpr uint16_t STREAM_BUF_SIZE = 1024;
-static constexpr uint16_t STREAM_BATCH_SIZE = 16;
+static constexpr uint16_t STREAM_BUF_SIZE = 512;
+static constexpr uint16_t STREAM_BATCH_SIZE = 64;
 static StreamPacketV1 g_streamBuf[STREAM_BUF_SIZE];
 static uint16_t g_streamBufHead = 0;
 static uint16_t g_streamBufTail = 0;
@@ -664,6 +730,9 @@ DeviceClass_t loraWanClass = CLASS_A;
 static TaskHandle_t g_sensorTaskHandle = nullptr;
 static TaskHandle_t g_sdTaskHandle = nullptr;
 static volatile bool g_sensorTaskRunning = false;
+static volatile bool g_measurementsRunning = false;
+static bool g_measurementsInitialized = false;
+static bool g_measurementTasksStarted = false;
 static SPISettings g_adsSpiSettings(4000000, MSBFIRST, SPI_MODE1);
 static SemaphoreHandle_t g_spiBusMutex = nullptr;
 static portMUX_TYPE g_logBufMux = portMUX_INITIALIZER_UNLOCKED;
@@ -679,10 +748,14 @@ static void spiBusUnlock() {
   if (g_spiBusMutex) xSemaphoreGive(g_spiBusMutex);
 }
 static inline void adsCS(bool en) { digitalWrite(PIN_ADS_CS, en ? LOW : HIGH); }
+static inline bool adsRawLooksSaturated(int32_t raw) {
+  return (raw >= 0x7F0000L) || (raw <= (int32_t)0xFF810000L);
+}
 static void restoreAdsBusAfterSd() {
   digitalWrite(PIN_SD_CS, HIGH);
   adsCS(false);
   SPI.begin(PIN_SPI_SCK, PIN_SPI_MISO, PIN_SPI_MOSI, PIN_SD_CS);
+  g_adsConfigSettled = false;
   if (cfg.dmsEnabled) {
     restoreDmsRunMode();
   }
@@ -778,6 +851,26 @@ static void sanitizeFileStem(char* dst, size_t dstLen, const char* src) {
   }
   dst[j] = '\0';
 }
+static void sanitizeLowerToken(char* dst, size_t dstLen, const char* src, const char* fallback) {
+  if (dstLen == 0) return;
+  size_t j = 0;
+  for (size_t i = 0; src && src[i] != '\0'; ++i) {
+    unsigned char c = (unsigned char)src[i];
+    if (isspace(c)) continue;
+    if (j + 1 < dstLen) dst[j++] = (char)tolower(c);
+  }
+  dst[j] = '\0';
+  if (j == 0 && fallback) strlcpy(dst, fallback, dstLen);
+}
+static bool strEqIgnoreCase(const char* a, const char* b) {
+  if (!a || !b) return false;
+  while (*a && *b) {
+    if (tolower((unsigned char)*a) != tolower((unsigned char)*b)) return false;
+    ++a;
+    ++b;
+  }
+  return *a == '\0' && *b == '\0';
+}
 static bool isExactHex(const char* s, size_t len) {
   if (!s || strlen(s) != len) return false;
   for (size_t i = 0; i < len; ++i) {
@@ -861,10 +954,105 @@ static void chipMac48Hex(char out[13]) {
   getChipMac48(mac);
   bytesToHex(mac, 6, out);
 }
+static String modeToString();
+static bool oledAllowedInCurrentMode() { return g_oledSupported && g_mode == RunMode::CONFIG; }
+static bool oledIsActiveNow() { return oledAllowedInCurrentMode() && g_oledEnabled; }
+static float ain2DerivedValue();
+static const char* ain2DerivedUnit();
 static void chipDevEuiHex(char out[17]) {
   uint8_t eui[8];
   makeChipDevEui(eui);
   bytesToHex(eui, 8, out);
+}
+static void VextON(void) {
+  pinMode(Vext, OUTPUT);
+  digitalWrite(Vext, LOW);
+}
+static void VextOFF(void) {
+  pinMode(Vext, OUTPUT);
+  digitalWrite(Vext, HIGH);
+}
+static bool oledEnsureInit() {
+  if (!oledAllowedInCurrentMode() || !g_oledEnabled) return false;
+  if (g_oledInitDone) return true;
+  VextON();
+  delay(50);
+  Wire.begin(SDA_OLED, SCL_OLED);
+  OLED_Display.init();
+  OLED_Display.clear();
+  OLED_Display.display();
+  g_oledInitDone = true;
+  return true;
+}
+static void oledSleep() {
+  if (!g_oledSupported) return;
+  if (g_oledInitDone) {
+    OLED_Display.clear();
+    OLED_Display.display();
+  }
+  VextOFF();
+  g_oledInitDone = false;
+}
+static void oledShowBootLogo() {
+  if (!oledEnsureInit()) return;
+  OLED_Display.clear();
+  OLED_Display.drawXbm(0, 10, logoMKP_width, logoMKP_height, (const unsigned char*)logoMKP_bits);
+  OLED_Display.setFont(DejaVu_Serif_8);
+  OLED_Display.setTextAlignment(TEXT_ALIGN_LEFT);
+  OLED_Display.drawString(0, 50, "MARX KRONTAL PARTNER");
+  OLED_Display.display();
+}
+static void oledShowBanner(const String& l1, const String& l2) {
+  if (!oledEnsureInit()) return;
+  OLED_Display.clear();
+  OLED_Display.setFont(ArialMT_Plain_10);
+  OLED_Display.setTextAlignment(TEXT_ALIGN_LEFT);
+  OLED_Display.drawString(0, 2, l1);
+  OLED_Display.drawString(0, 20, l2);
+  OLED_Display.display();
+}
+static String oledAin2String() {
+  if (!cfg.ain2Enabled) return String("OFF");
+  if (!ain2_valid) return String("--");
+  return String(ain2DerivedValue(), 2) + " " + String(ain2DerivedUnit());
+}
+static String oledTempString() {
+  if (!cfg.tempEnabled) return String("OFF");
+  if (!temp_valid) return String("--");
+  return String(ds_temp_c, 2) + " C";
+}
+static String oledDmsString() {
+  if (!cfg.dmsEnabled) return String("OFF");
+  if (!dms_valid) return String("--");
+  return String(dms_mV_per_V, 3) + " mV/V";
+}
+static void oledUpdateLive(bool force = false) {
+  if (!oledIsActiveNow()) return;
+  uint32_t now = millis();
+  if (!force && (uint32_t)(now - g_oledLastDrawMs) < 250UL) return;
+  if (!oledEnsureInit()) return;
+  OLED_Display.clear();
+  OLED_Display.setFont(ArialMT_Plain_10);
+  OLED_Display.setTextAlignment(TEXT_ALIGN_CENTER);
+  OLED_Display.drawString(64, 0, String("LoRaSense ") + modeToString());
+  OLED_Display.setTextAlignment(TEXT_ALIGN_LEFT);
+  OLED_Display.drawString(0, 12, "DMS");
+  OLED_Display.setTextAlignment(TEXT_ALIGN_RIGHT);
+  OLED_Display.drawString(128, 12, oledDmsString());
+  OLED_Display.setTextAlignment(TEXT_ALIGN_LEFT);
+  OLED_Display.drawString(0, 24, "AIN2");
+  OLED_Display.setTextAlignment(TEXT_ALIGN_RIGHT);
+  OLED_Display.drawString(128, 24, oledAin2String());
+  OLED_Display.setTextAlignment(TEXT_ALIGN_LEFT);
+  OLED_Display.drawString(0, 36, "Temp");
+  OLED_Display.setTextAlignment(TEXT_ALIGN_RIGHT);
+  OLED_Display.drawString(128, 36, oledTempString());
+  OLED_Display.setTextAlignment(TEXT_ALIGN_LEFT);
+  OLED_Display.drawString(0, 48, "AP");
+  OLED_Display.setTextAlignment(TEXT_ALIGN_RIGHT);
+  OLED_Display.drawString(128, 48, (g_mode == RunMode::CONFIG) ? g_apIp.toString() : String("FIELD"));
+  OLED_Display.display();
+  g_oledLastDrawMs = now;
 }
 static void normalizeCfg(Cfg& c) {
   copyUpperNoSpace(c.devEui, sizeof(c.devEui), c.devEui);
@@ -875,11 +1063,20 @@ static void normalizeCfg(Cfg& c) {
   if (c.intervalMin > 1440) c.intervalMin = 1440;
   if (c.dr > 5) c.dr = 5;
   c.dmsHz = clampf(c.dmsHz, DMS_MIN_HZ, DMS_MAX_HZ);
+  if (!(c.dmsKFactor >= 0.0f)) c.dmsKFactor = 0.0f;
   c.ain2Hz = clampf(c.ain2Hz, AIN2_MIN_HZ, AIN2_MAX_HZ);
   if (c.ain2Mode != AIN2_MODE_POT && c.ain2Mode != AIN2_MODE_VOLT) c.ain2Mode = AIN2_MODE_POT;
   if (!(c.ain2LengthMm > 0.0f)) c.ain2LengthMm = 10.0f;
   if (!(c.ain2AdcFullscaleV > 0.05f)) c.ain2AdcFullscaleV = 3.123f;
   if (!(c.ain2InputFullscaleV > 0.05f)) c.ain2InputFullscaleV = 10.0f;
+  sanitizeLowerToken(c.ain2VoltDisplay, sizeof(c.ain2VoltDisplay), c.ain2VoltDisplay, "volts");
+  if (!strEqIgnoreCase(c.ain2VoltDisplay, "volts") && !strEqIgnoreCase(c.ain2VoltDisplay, "scaled")) {
+    strlcpy(c.ain2VoltDisplay, "volts", sizeof(c.ain2VoltDisplay));
+  }
+  sanitizeLowerToken(c.ain2ScalingUnit, sizeof(c.ain2ScalingUnit), c.ain2ScalingUnit, "mm");
+  if (strlen(c.ain2ScalingUnit) == 0) strlcpy(c.ain2ScalingUnit, "mm", sizeof(c.ain2ScalingUnit));
+  if (!isfinite(c.ain2ScaleMin)) c.ain2ScaleMin = 0.0f;
+  if (!isfinite(c.ain2ScaleMax)) c.ain2ScaleMax = 10.0f;
   if (c.logRotateKB < 64) c.logRotateKB = 64;
   if (c.logRotateKB > 1024UL * 1024UL) c.logRotateKB = 1024UL * 1024UL;
   if (c.streamModeEnabled) c.sdLogEnabled = false;
@@ -928,21 +1125,29 @@ static void loadCfg() {
   uint32_t oldAin2Per = prefs.getUInt("aper", hzToPeriodMsClamped(defaults.ain2Hz, 1, 600000UL));
   cfg.dmsEnabled = prefs.getBool("dmson", defaults.dmsEnabled);
   cfg.dmsHz = prefs.getFloat("dmsHz", oldDmsPerUs ? periodUsToHz(oldDmsPerUs) : periodMsToHz(oldDmsPer));
+  cfg.dmsKFactor = prefs.getFloat("dmsKFac", defaults.dmsKFactor);
   cfg.ain2Enabled = prefs.getBool("a2on", defaults.ain2Enabled);
   cfg.ain2Hz = prefs.getFloat("a2Hz", oldAin2PerUs ? periodUsToHz(oldAin2PerUs) : periodMsToHz(oldAin2Per));
   cfg.ain2Mode = prefs.getUChar("a2mode", defaults.ain2Mode);
   cfg.ain2LengthMm = prefs.getFloat("a2len", defaults.ain2LengthMm);
   cfg.ain2AdcFullscaleV = prefs.getFloat("a2adcfs", defaults.ain2AdcFullscaleV);
   cfg.ain2InputFullscaleV = prefs.getFloat("a2infs", defaults.ain2InputFullscaleV);
+  String a2vdisp = prefs.getString("a2vdisp", defaults.ain2VoltDisplay);
+  String a2unit = prefs.getString("a2unit", defaults.ain2ScalingUnit);
+  cfg.ain2ScaleMin = prefs.getFloat("a2smin", defaults.ain2ScaleMin);
+  cfg.ain2ScaleMax = prefs.getFloat("a2smax", defaults.ain2ScaleMax);
   cfg.tempEnabled = prefs.getBool("tmpon", defaults.tempEnabled);
   cfg.sdLogEnabled = prefs.getBool("sdon", defaults.sdLogEnabled);
   cfg.streamModeEnabled = prefs.getBool("streamon", defaults.streamModeEnabled);
   String base = prefs.getString("sdbase", defaults.logBaseName);
   cfg.logRotateKB = prefs.getUInt("sdkb", defaults.logRotateKB);
+  g_oledEnabled = prefs.getBool("oledon", true);
   prefs.end();
   strlcpy(cfg.devEui, dE.c_str(), sizeof(cfg.devEui));
   strlcpy(cfg.appEui, aE.c_str(), sizeof(cfg.appEui));
   strlcpy(cfg.appKey, aK.c_str(), sizeof(cfg.appKey));
+  strlcpy(cfg.ain2VoltDisplay, a2vdisp.c_str(), sizeof(cfg.ain2VoltDisplay));
+  strlcpy(cfg.ain2ScalingUnit, a2unit.c_str(), sizeof(cfg.ain2ScalingUnit));
   strlcpy(cfg.logBaseName, base.c_str(), sizeof(cfg.logBaseName));
   normalizeCfg(cfg);
   String err;
@@ -964,6 +1169,7 @@ static void saveCfg() {
   prefs.putUChar("dr", cfg.dr);
   prefs.putBool("dmson", cfg.dmsEnabled);
   prefs.putFloat("dmsHz", cfg.dmsHz);
+  prefs.putFloat("dmsKFac", cfg.dmsKFactor);
   prefs.putUInt("dmsper", hzToPeriodMsClamped(cfg.dmsHz, 1, 600000UL));
   prefs.putUInt("dmsperus", hzToPeriodUsClamped(cfg.dmsHz, 500, 600000000UL));
   prefs.putBool("a2on", cfg.ain2Enabled);
@@ -974,11 +1180,16 @@ static void saveCfg() {
   prefs.putFloat("a2len", cfg.ain2LengthMm);
   prefs.putFloat("a2adcfs", cfg.ain2AdcFullscaleV);
   prefs.putFloat("a2infs", cfg.ain2InputFullscaleV);
+  prefs.putString("a2vdisp", cfg.ain2VoltDisplay);
+  prefs.putString("a2unit", cfg.ain2ScalingUnit);
+  prefs.putFloat("a2smin", cfg.ain2ScaleMin);
+  prefs.putFloat("a2smax", cfg.ain2ScaleMax);
   prefs.putBool("tmpon", cfg.tempEnabled);
   prefs.putBool("sdon", cfg.sdLogEnabled);
   prefs.putBool("streamon", cfg.streamModeEnabled);
   prefs.putString("sdbase", cfg.logBaseName);
   prefs.putUInt("sdkb", cfg.logRotateKB);
+  prefs.putBool("oledon", g_oledEnabled);
   prefs.end();
 }
 static void applyLoraConfig() {
@@ -995,16 +1206,20 @@ static void applyLoraConfig() {
   appTxDutyCycle = (uint32_t)cfg.intervalMin * 60UL * 1000UL;
   loraWanAdr = cfg.adr;
 }
-static float ain2DerivedValue() {
-  if (!ain2_valid || isnan(ain2_mV)) return NAN;
+static float ain2DerivedValueFromMilli(float ain2_mV_local) {
+  if (!isfinite(ain2_mV_local)) return NAN;
   if (cfg.ain2Mode == AIN2_MODE_VOLT) {
     if (cfg.ain2AdcFullscaleV <= 0.001f) return NAN;
-    float v = (ain2_mV / 1000.0f) * (cfg.ain2InputFullscaleV / cfg.ain2AdcFullscaleV);
+    float v = (ain2_mV_local / 1000.0f) * (cfg.ain2InputFullscaleV / cfg.ain2AdcFullscaleV);
     return clampf(v, 0.0f, cfg.ain2InputFullscaleV);
   }
   if (cfg.ain2AdcFullscaleV <= 0.001f) return NAN;
-  float ratio = (ain2_mV / 1000.0f) / cfg.ain2AdcFullscaleV;
+  float ratio = (ain2_mV_local / 1000.0f) / cfg.ain2AdcFullscaleV;
   return clampf(ratio, 0.0f, 1.0f) * cfg.ain2LengthMm;
+}
+static float ain2DerivedValue() {
+  if (!ain2_valid || isnan(ain2_mV)) return NAN;
+  return ain2DerivedValueFromMilli(ain2_mV);
 }
 static const char* ain2DerivedUnit() {
   return (cfg.ain2Mode == AIN2_MODE_VOLT) ? "V" : "mm";
@@ -1107,7 +1322,11 @@ static bool applyDownSpikeFilter(int32_t candidate, int32_t& lastRaw, bool& have
   return true;
 }
 static void prepareTxFrame(uint8_t port);
+static uint8_t fieldPayloadStatusCode();
 static void syncSdLogger(bool forceReopen);
+static bool startMeasurementsManual();
+static void stopMeasurementsManual();
+static void ensureMeasurementTasksStarted();
 // ============================================================
 // ADS low-level
 // ============================================================
@@ -1155,6 +1374,7 @@ static bool adsWaitDrdyLow(uint32_t timeout_us) {
   uint32_t start = micros();
   uint32_t spins = 0;
   while (digitalRead(PIN_ADS_DRDY) == HIGH) {
+    if (g_sdBusy) return false;
     if ((uint32_t)(micros() - start) >= timeout_us) return false;
     // Let the scheduler breathe often enough to avoid task watchdog resets,
     // but keep the wait mostly tight for high-speed sampling.
@@ -1176,6 +1396,10 @@ static int32_t readSingleShot_DRDY(uint32_t timeoutUs) {
   return ADS_FAIL;
 }
 static bool readChannelRaw(const AdsChanCfg& chan, float& out_mV, int32_t* rawOut) {
+  if (g_sdBusy) {
+    out_mV = NAN;
+    return false;
+  }
   adsApplyConfig(chan);
   if (!g_adsConfigSettled) {
     if (readSingleShot_DRDY(chan.timeoutUs) == ADS_FAIL) {
@@ -1185,7 +1409,7 @@ static bool readChannelRaw(const AdsChanCfg& chan, float& out_mV, int32_t* rawOu
     g_adsConfigSettled = true;
   }
   int32_t raw = readSingleShot_DRDY(chan.timeoutUs);
-  if (raw == ADS_FAIL) {
+  if (raw == ADS_FAIL || adsRawLooksSaturated(raw)) {
     out_mV = NAN;
     return false;
   }
@@ -1333,9 +1557,8 @@ static void sensorLoopAp() {
         float tmpAin2 = NAN;
         int32_t rawAin2 = lastAin2Raw;
         if (readChannelRaw(g_adsAin2Cfg, tmpAin2, &rawAin2)) {
-          if (!applyDownSpikeFilter(rawAin2, lastAin2Raw, lastAin2RawSeen, 80, 0.75f)) {
-            tmpAin2 = rawTo_mV_gain(lastAin2Raw, g_adsAin2Cfg.gain);
-          }
+          lastAin2Raw = rawAin2;
+          lastAin2RawSeen = true;
           ain2_mV = tmpAin2;
           ain2_valid = true;
           g_ain2FailStreak = 0;
@@ -1400,7 +1623,9 @@ static void sensorLoopAp() {
     captureStreamSample(g_lastSampleSeq, now, nowUs);
     captureLogSample(now);
   }
+  oledUpdateLive(false);
 }
+
 static void sensorTask(void* /*arg*/) {
   // Give Wi-Fi / system tasks time to settle after boot.
   vTaskDelay(pdMS_TO_TICKS(50));
@@ -1408,7 +1633,7 @@ static void sensorTask(void* /*arg*/) {
   uint32_t nextWakeUs = micros();
   uint32_t lastYieldMs = millis();
   for (;;) {
-    if (g_mode != RunMode::CONFIG) {
+    if (g_mode != RunMode::CONFIG || !g_measurementsRunning) {
       vTaskDelay(pdMS_TO_TICKS(20));
       continue;
     }
@@ -1455,9 +1680,8 @@ static void captureFieldSnapshot() {
     float tmpAin2 = NAN;
     int32_t rawAin2 = lastAin2Raw;
     if (readChannelRaw(g_adsAin2Cfg, tmpAin2, &rawAin2)) {
-      if (!applyDownSpikeFilter(rawAin2, lastAin2Raw, lastAin2RawSeen, 80, 0.75f)) {
-        tmpAin2 = rawTo_mV_gain(lastAin2Raw, g_adsAin2Cfg.gain);
-      }
+      lastAin2Raw = rawAin2;
+      lastAin2RawSeen = true;
       ain2_mV = tmpAin2;
       ain2_valid = true;
     } else {
@@ -1724,6 +1948,24 @@ static void syncSdLogger(bool forceReopen) {
     g_sdStatus = "disabled";
     return;
   }
+
+  uint16_t bufCountSnapshot = 0;
+  portENTER_CRITICAL(&g_logBufMux);
+  bufCountSnapshot = g_logBufCount;
+  portEXIT_CRITICAL(&g_logBufMux);
+  const bool loggingActive = g_measurementsRunning || (bufCountSnapshot != 0);
+
+  // Keep SD ready in AP mode, but do not create a fresh BIN file until
+  // measurements actually start producing data. This avoids empty 001/002
+  // file pairs after boot or after saving config before logging begins.
+  if (!loggingActive) {
+    if (g_logFile) {
+      closeLogFile();
+    }
+    g_sdStatus = "ready";
+    return;
+  }
+
   if (!sdMountIfNeeded()) return;
   if (forceReopen || !g_logFile) {
     (void)openNextLogFile();
@@ -1775,7 +2017,7 @@ static void loggerLoop() {
 static void sdTask(void* /*arg*/) {
   vTaskDelay(pdMS_TO_TICKS(200));
   for (;;) {
-    if (g_mode == RunMode::CONFIG && cfg.sdLogEnabled) {
+    if (g_mode == RunMode::CONFIG && g_measurementsRunning && cfg.sdLogEnabled) {
       loggerLoop();
       vTaskDelay(pdMS_TO_TICKS(20));
     } else {
@@ -1928,20 +2170,24 @@ static void handleApiSdConvertBinCsv() {
   }
   const bool isV1 = (strncmp(h.magic, "MKPBIN1", 7) == 0);
   const bool isV2 = (strncmp(h.magic, "MKPBIN2", 7) == 0);
-  if (!isV1 && !isV2) {
+  const bool isV3 = (strncmp(h.magic, "MKPBIN3", 7) == 0);
+  if (!isV1 && !isV2 && !isV3) {
     f.close();
     sdSpiEnd();
     g_sdBusy = false;
     sendJsonError(400, "invalid_bin_format");
     return;
   }
-  const bool dmsEnabled = isV2 ? ((h.flags & BIN_FLAG_DMS_ENABLED) != 0) : true;
-  const bool ain2Enabled = isV2 ? ((h.flags & BIN_FLAG_AIN2_ENABLED) != 0) : true;
-  const bool tempEnabled = isV2 ? ((h.flags & BIN_FLAG_TEMP_ENABLED) != 0) : true;
-  const bool ain2VoltMode = isV2 ? ((h.flags & BIN_FLAG_AIN2_MODE_VOLT) != 0) : (cfg.ain2Mode == AIN2_MODE_VOLT);
-  const uint16_t expectedRecordSize = isV2
-    ? (uint16_t)(sizeof(uint32_t) + (dmsEnabled ? sizeof(int32_t) : 0) + (ain2Enabled ? sizeof(int32_t) : 0) + (tempEnabled ? sizeof(int16_t) : 0))
-    : (uint16_t)sizeof(BinLogRecordV1);
+  const bool dmsEnabled = (isV2 || isV3) ? ((h.flags & BIN_FLAG_DMS_ENABLED) != 0) : true;
+  const bool ain2Enabled = (isV2 || isV3) ? ((h.flags & BIN_FLAG_AIN2_ENABLED) != 0) : true;
+  const bool tempEnabled = (isV2 || isV3) ? ((h.flags & BIN_FLAG_TEMP_ENABLED) != 0) : true;
+  const bool ain2VoltMode = (isV2 || isV3) ? ((h.flags & BIN_FLAG_AIN2_MODE_VOLT) != 0) : (cfg.ain2Mode == AIN2_MODE_VOLT);
+  const bool dmsUmMode = isV3 ? ((h.flags & BIN_FLAG_DMS_UNIT_UM_M) != 0) : (cfg.dmsKFactor > 0.0f);
+  const uint16_t expectedRecordSize = isV3
+    ? (uint16_t)(sizeof(uint32_t) + (dmsEnabled ? sizeof(float) : 0) + (ain2Enabled ? sizeof(float) : 0) + (tempEnabled ? sizeof(float) : 0))
+    : (isV2
+      ? (uint16_t)(sizeof(uint32_t) + (dmsEnabled ? sizeof(int32_t) : 0) + (ain2Enabled ? sizeof(int32_t) : 0) + (tempEnabled ? sizeof(int16_t) : 0))
+      : (uint16_t)sizeof(BinLogRecordV1));
   if (h.recordSize != expectedRecordSize) {
     f.close();
     sdSpiEnd();
@@ -1958,9 +2204,9 @@ static void handleApiSdConvertBinCsv() {
     sendJsonError(500, "csv_create_failed");
     return;
   }
-  String header = "TimeCounter";
-  if (dmsEnabled) header += ",DMS_RAW,DMS_MV,DMS_MV_V,DMS,DMS_uM_M";
-  if (ain2Enabled) header += ain2VoltMode ? ",AIN2_RAW,AIN2_V" : ",AIN2_RAW,AIN2_mm";
+  String header = "TimeCounter_us";
+  if (dmsEnabled) header += dmsUmMode ? ",DMS_uM_m" : ",DMS_mV_V";
+  if (ain2Enabled) header += ain2VoltMode ? ",AIN2_V" : ",AIN2_mm";
   if (tempEnabled) header += ",TEMP_C";
   header += "\r\n";
   out.print(header);
@@ -1970,6 +2216,9 @@ static void handleApiSdConvertBinCsv() {
     int32_t dmsRaw = 0;
     int32_t ain2Raw = 0;
     int16_t tempC100 = 0;
+    float dmsScaled = NAN;
+    float ain2Scaled = NAN;
+    float tempC = NAN;
     bool rowOk = true;
     if (f.read((uint8_t*)&timeCounterUs, sizeof(timeCounterUs)) != (int)sizeof(timeCounterUs)) break;
     if (isV1) {
@@ -1979,38 +2228,53 @@ static void handleApiSdConvertBinCsv() {
       dmsRaw = r.dms_raw;
       ain2Raw = r.ain2_raw;
       tempC100 = r.temp_c_x100;
-    } else {
-      if (dmsEnabled && f.read((uint8_t*)&dmsRaw, sizeof(dmsRaw)) != (int)sizeof(dmsRaw)) { rowOk = false; }
-      if (rowOk && ain2Enabled && f.read((uint8_t*)&ain2Raw, sizeof(ain2Raw)) != (int)sizeof(ain2Raw)) { rowOk = false; }
-      if (rowOk && tempEnabled && f.read((uint8_t*)&tempC100, sizeof(tempC100)) != (int)sizeof(tempC100)) { rowOk = false; }
-      if (!rowOk) break;
-    }
-    String row = String(timeCounterUs);
-    if (dmsEnabled) {
-      const float dmsMv = rawTo_mV_gain(dmsRaw, GAIN_DMS);
-      const float dmsMvPerV = dmsTo_mV_per_V(dmsMv);
-      row += "," + String(dmsRaw);
-      row += "," + String(dmsMv, 4);
-      row += "," + String(dmsMvPerV, 4);
-      row += ",";        // DMS engineering value placeholder
-      row += ",";        // DMS_uM_M placeholder until gauge factor / bridge type is configured
-    }
-    if (ain2Enabled) {
-      row += "," + String(ain2Raw);
+      dmsScaled = dmsTo_mV_per_V(rawTo_mV_gain(dmsRaw, GAIN_DMS));
       const float ain2MvLocal = rawTo_mV_gain(ain2Raw, GAIN_AIN2);
       if (ain2VoltMode) {
         const float adcV = ain2MvLocal / 1000.0f;
         const float fullscale = (cfg.ain2AdcFullscaleV > 0.001f) ? cfg.ain2AdcFullscaleV : 1.0f;
         const float inputScale = (cfg.ain2InputFullscaleV > 0.0f) ? cfg.ain2InputFullscaleV : fullscale;
-        const float v = clampf(adcV / fullscale, 0.0f, 1.0f) * inputScale;
-        row += "," + String(v, 4);
+        ain2Scaled = clampf(adcV / fullscale, 0.0f, 1.0f) * inputScale;
       } else {
-        const float mm = clampf((ain2MvLocal / 3300.0f), 0.0f, 1.0f) * cfg.ain2LengthMm;
-        row += "," + String(mm, 4);
+        ain2Scaled = clampf((ain2MvLocal / 3300.0f), 0.0f, 1.0f) * cfg.ain2LengthMm;
       }
+      tempC = ((float)tempC100) / 100.0f;
+    } else if (isV2) {
+      if (dmsEnabled && f.read((uint8_t*)&dmsRaw, sizeof(dmsRaw)) != (int)sizeof(dmsRaw)) { rowOk = false; }
+      if (rowOk && ain2Enabled && f.read((uint8_t*)&ain2Raw, sizeof(ain2Raw)) != (int)sizeof(ain2Raw)) { rowOk = false; }
+      if (rowOk && tempEnabled && f.read((uint8_t*)&tempC100, sizeof(tempC100)) != (int)sizeof(tempC100)) { rowOk = false; }
+      if (!rowOk) break;
+      if (dmsEnabled) dmsScaled = dmsTo_mV_per_V(rawTo_mV_gain(dmsRaw, GAIN_DMS));
+      if (ain2Enabled) {
+        const float ain2MvLocal = rawTo_mV_gain(ain2Raw, GAIN_AIN2);
+        if (ain2VoltMode) {
+          const float adcV = ain2MvLocal / 1000.0f;
+          const float fullscale = (cfg.ain2AdcFullscaleV > 0.001f) ? cfg.ain2AdcFullscaleV : 1.0f;
+          const float inputScale = (cfg.ain2InputFullscaleV > 0.0f) ? cfg.ain2InputFullscaleV : fullscale;
+          ain2Scaled = clampf(adcV / fullscale, 0.0f, 1.0f) * inputScale;
+        } else {
+          ain2Scaled = clampf((ain2MvLocal / 3300.0f), 0.0f, 1.0f) * cfg.ain2LengthMm;
+        }
+      }
+      if (tempEnabled) tempC = ((float)tempC100) / 100.0f;
+    } else {
+      if (dmsEnabled && f.read((uint8_t*)&dmsScaled, sizeof(dmsScaled)) != (int)sizeof(dmsScaled)) { rowOk = false; }
+      if (rowOk && ain2Enabled && f.read((uint8_t*)&ain2Scaled, sizeof(ain2Scaled)) != (int)sizeof(ain2Scaled)) { rowOk = false; }
+      if (rowOk && tempEnabled && f.read((uint8_t*)&tempC, sizeof(tempC)) != (int)sizeof(tempC)) { rowOk = false; }
+      if (!rowOk) break;
+    }
+    String row = String(timeCounterUs);
+    if (dmsEnabled) {
+      if (isfinite(dmsScaled)) row += "," + String(dmsScaled, dmsUmMode ? 2 : 6);
+      else row += ",";
+    }
+    if (ain2Enabled) {
+      if (isfinite(ain2Scaled)) row += "," + String(ain2Scaled, ain2VoltMode ? 4 : 2);
+      else row += ",";
     }
     if (tempEnabled) {
-      row += "," + String(((float)tempC100) / 100.0f, 2);
+      if (isfinite(tempC)) row += "," + String(tempC, 2);
+      else row += ",";
     }
     row += "\n";
     out.print(row);
@@ -2435,24 +2699,40 @@ static void appendConfig(JsonObject obj) {
   obj["dr"] = cfg.dr;
   obj["dms_enabled"] = cfg.dmsEnabled ? 1 : 0;
   obj["dms_hz"] = cfg.dmsHz;
+  obj["dms_k_factor"] = cfg.dmsKFactor;
   obj["ain2_enabled"] = cfg.ain2Enabled ? 1 : 0;
   obj["ain2_hz"] = cfg.ain2Hz;
   obj["ain2_mode"] = ain2ModeName();
   obj["ain2_length_mm"] = cfg.ain2LengthMm;
   obj["ain2_adc_fullscale_v"] = cfg.ain2AdcFullscaleV;
   obj["ain2_input_fullscale_v"] = cfg.ain2InputFullscaleV;
+  obj["ain2_volt_display"] = cfg.ain2VoltDisplay;
+  obj["ain2_scaling_unit"] = cfg.ain2ScalingUnit;
+  obj["ain2_scale_min"] = cfg.ain2ScaleMin;
+  obj["ain2_scale_max"] = cfg.ain2ScaleMax;
   obj["temp_enabled"] = cfg.tempEnabled ? 1 : 0;
+  obj["field_status_code"] = fieldPayloadStatusCode();
   obj["temp_hz"] = TEMP_FIXED_HZ;
   obj["sd_log_enabled"] = cfg.sdLogEnabled ? 1 : 0;
   obj["stream_mode_enabled"] = cfg.streamModeEnabled ? 1 : 0;
   obj["sd_base"] = cfg.logBaseName;
   obj["sd_rotate_kb"] = cfg.logRotateKB;
+  obj["measurements_running"] = g_measurementsRunning ? 1 : 0;
+  obj["measurements_initialized"] = g_measurementsInitialized ? 1 : 0;
   JsonObject perfObj = obj["perf"].to<JsonObject>();
   appendPerf(perfObj);
 }
 static void appendLive(JsonObject obj) {
   obj["selftest_ok"] = selfTestOk ? 1 : 0;
   obj["selftest_delta_mV"] = selfTestDelta_mV;
+  obj["selftest_value"] = selfTestDelta_mV;
+  obj["selftest_supported"] = 1;
+  obj["selftest_run_supported"] = 1;
+  obj["oled_supported"] = oledAllowedInCurrentMode() ? 1 : 0;
+  obj["oled_activate_supported"] = oledAllowedInCurrentMode() ? 1 : 0;
+  obj["oled_active"] = oledIsActiveNow() ? 1 : 0;
+  obj["measurements_running"] = g_measurementsRunning ? 1 : 0;
+  obj["measurements_initialized"] = g_measurementsInitialized ? 1 : 0;
   obj["dms_enabled"] = cfg.dmsEnabled ? 1 : 0;
   obj["dms_valid"] = dms_valid ? 1 : 0;
   obj["dms_raw"] = lastDmsRaw;
@@ -2470,6 +2750,7 @@ static void appendLive(JsonObject obj) {
   obj["ain2_rate_hz_actual"] = ain2FramesPerSecond;
   obj["ain2_age_ms"] = g_ain2LastOkUs ? (uint32_t)((micros() - g_ain2LastOkUs) / 1000UL) : 0U;
   obj["temp_enabled"] = cfg.tempEnabled ? 1 : 0;
+  obj["field_status_code"] = fieldPayloadStatusCode();
   obj["temp_valid"] = temp_valid ? 1 : 0;
   obj["temp_C"] = temp_valid ? ds_temp_c : 0.0f;
   obj["temp_rate_hz_actual"] = tempFramesPerSecond;
@@ -2521,7 +2802,100 @@ static void appendController(JsonObject obj) {
   obj["stream_dropped"] = g_streamDropped;
   obj["stream_buffered"] = g_streamBufCount;
   obj["stream_buffered_max"] = g_streamBufMax;
+  obj["selftest_supported"] = 1;
+  obj["selftest_run_supported"] = 1;
+  obj["selftest_value"] = selfTestDelta_mV;
+  obj["oled_supported"] = oledAllowedInCurrentMode() ? 1 : 0;
+  obj["oled_activate_supported"] = oledAllowedInCurrentMode() ? 1 : 0;
+  obj["oled_active"] = oledIsActiveNow() ? 1 : 0;
 }
+
+static void ensureMeasurementTasksStarted() {
+  if (g_measurementTasksStarted) return;
+  xTaskCreatePinnedToCore(sensorTask, "sensorTask", 8192, nullptr, 1, &g_sensorTaskHandle, 1);
+  xTaskCreatePinnedToCore(sdTask, "sdTask", 8192, nullptr, 1, &g_sdTaskHandle, 1);
+  xTaskCreatePinnedToCore(streamTask, "streamTask", 6144, nullptr, 1, &g_streamTaskHandle, 0);
+  g_measurementTasksStarted = true;
+}
+
+static void stopMeasurementsManual() {
+  g_measurementsRunning = false;
+  digitalWrite(PIN_MOSFET, LOW);
+  closeLogFile();
+  resetLogBuffer();
+  invalidateDms();
+  invalidateAin2();
+  invalidateTemp();
+  dmsFramesPerSecond = 0;
+  ain2FramesPerSecond = 0;
+  tempFramesPerSecond = 0;
+  totalFramesPerSecond = 0;
+  framesPerSecond = 0;
+  g_lastSampleSeq = 0;
+  if (g_mode == RunMode::CONFIG) {
+    g_sdStatus = cfg.sdLogEnabled ? "ready" : "disabled";
+    oledShowBanner("CONFIG MODE", "Measurements stopped");
+  }
+}
+
+static bool startMeasurementsManual() {
+  if (g_mode != RunMode::CONFIG) return false;
+  if (!g_measurementsInitialized) {
+    adsInit();
+    dsInit();
+    if (cfg.dmsEnabled) runSelfTest();
+    else {
+      selfTestOk = false;
+      selfTestDelta_mV = NAN;
+    }
+    if (cfg.dmsEnabled) restoreDmsRunMode();
+    g_measurementsInitialized = true;
+  }
+  ensureMeasurementTasksStarted();
+  last_dms_read_us = micros();
+  last_ain2_read_us = micros();
+  g_lastSampleSeq = 0;
+  g_lastLoggedSampleSeq = 0;
+  g_lastStreamedSampleSeq = 0;
+  syncSdLogger(true);
+  g_measurementsRunning = true;
+  if (g_mode == RunMode::CONFIG) {
+    oledShowBanner("CONFIG MODE", "Measurements running");
+  }
+  return true;
+}
+
+static void handleApiMeasureControlPost() {
+  if (!server.hasArg("plain")) {
+    server.send(400, "application/json", "{\"ok\":false,\"error\":\"missing body\"}");
+    return;
+  }
+  StaticJsonDocument<256> req;
+  DeserializationError err = deserializeJson(req, server.arg("plain"));
+  if (err) {
+    server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid json\"}");
+    return;
+  }
+  const String action = String((const char*)(req["action"] | ""));
+  bool ok = false;
+  if (action == "start") {
+    ok = startMeasurementsManual();
+  } else if (action == "stop") {
+    stopMeasurementsManual();
+    ok = true;
+  } else {
+    server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid action\"}");
+    return;
+  }
+  StaticJsonDocument<384> doc;
+  doc["ok"] = ok;
+  doc["measurements_running"] = g_measurementsRunning ? 1 : 0;
+  doc["measurements_initialized"] = g_measurementsInitialized ? 1 : 0;
+  String out;
+  serializeJson(doc, out);
+  server.send(200, "application/json", out);
+}
+
 static void handleApiLive() {
   if (cfg.streamModeEnabled) {
     sendJsonError(409, "stream_mode_active");
@@ -2544,6 +2918,12 @@ static void handleApiState() {
     doc["ip"] = (g_mode == RunMode::CONFIG) ? g_apIp.toString() : String("-");
     doc["uptime_s"] = millis() / 1000UL;
     doc["heap_free"] = ESP.getFreeHeap();
+    doc["selftest_supported"] = 1;
+    doc["selftest_run_supported"] = 1;
+    doc["selftest_value"] = selfTestDelta_mV;
+    doc["oled_supported"] = oledAllowedInCurrentMode() ? 1 : 0;
+    doc["oled_activate_supported"] = oledAllowedInCurrentMode() ? 1 : 0;
+  doc["oled_active"] = oledIsActiveNow() ? 1 : 0;
     appendConfig(doc["cfg"].to<JsonObject>());
     appendController(doc["controller"].to<JsonObject>());
     String out;
@@ -2559,6 +2939,12 @@ static void handleApiState() {
   doc["ip"] = (g_mode == RunMode::CONFIG) ? g_apIp.toString() : String("-");
   doc["uptime_s"] = millis() / 1000UL;
   doc["heap_free"] = ESP.getFreeHeap();
+  doc["selftest_supported"] = 1;
+  doc["selftest_run_supported"] = 1;
+  doc["selftest_value"] = selfTestDelta_mV;
+  doc["oled_supported"] = oledAllowedInCurrentMode() ? 1 : 0;
+  doc["oled_activate_supported"] = oledAllowedInCurrentMode() ? 1 : 0;
+  doc["oled_active"] = oledIsActiveNow() ? 1 : 0;
   doc["lora_enabled"] = g_loraEnabled ? 1 : 0;
   doc["lora_init_done"] = g_loraInitDone ? 1 : 0;
   appendLive(doc.to<JsonObject>());
@@ -2595,6 +2981,7 @@ static void handleApiConfigPost() {
   if (!doc["dr"].isNull()) next.dr = doc["dr"].as<uint8_t>();
   if (!doc["dms_enabled"].isNull()) next.dmsEnabled = doc["dms_enabled"].as<int>() != 0;
   if (!doc["dms_hz"].isNull()) next.dmsHz = doc["dms_hz"].as<float>();
+  if (!doc["dms_k_factor"].isNull()) next.dmsKFactor = doc["dms_k_factor"].as<float>();
   if (!doc["ain2_enabled"].isNull()) next.ain2Enabled = doc["ain2_enabled"].as<int>() != 0;
   if (!doc["ain2_hz"].isNull()) next.ain2Hz = doc["ain2_hz"].as<float>();
   if (!doc["ain2_mode"].isNull()) {
@@ -2604,6 +2991,16 @@ static void handleApiConfigPost() {
   if (!doc["ain2_length_mm"].isNull()) next.ain2LengthMm = doc["ain2_length_mm"].as<float>();
   if (!doc["ain2_adc_fullscale_v"].isNull()) next.ain2AdcFullscaleV = doc["ain2_adc_fullscale_v"].as<float>();
   if (!doc["ain2_input_fullscale_v"].isNull()) next.ain2InputFullscaleV = doc["ain2_input_fullscale_v"].as<float>();
+  if (!doc["ain2_volt_display"].isNull()) {
+    const char* s = doc["ain2_volt_display"].as<const char*>();
+    if (s) strlcpy(next.ain2VoltDisplay, s, sizeof(next.ain2VoltDisplay));
+  }
+  if (!doc["ain2_scaling_unit"].isNull()) {
+    const char* s = doc["ain2_scaling_unit"].as<const char*>();
+    if (s) strlcpy(next.ain2ScalingUnit, s, sizeof(next.ain2ScalingUnit));
+  }
+  if (!doc["ain2_scale_min"].isNull()) next.ain2ScaleMin = doc["ain2_scale_min"].as<float>();
+  if (!doc["ain2_scale_max"].isNull()) next.ain2ScaleMax = doc["ain2_scale_max"].as<float>();
   if (!doc["temp_enabled"].isNull()) next.tempEnabled = doc["temp_enabled"].as<int>() != 0;
   if (!doc["sd_log_enabled"].isNull()) next.sdLogEnabled = doc["sd_log_enabled"].as<int>() != 0;
   if (!doc["stream_mode_enabled"].isNull()) next.streamModeEnabled = doc["stream_mode_enabled"].as<int>() != 0;
@@ -2619,10 +3016,23 @@ static void handleApiConfigPost() {
     server.send(400, "application/json", out);
     return;
   }
-  bool reopenSd = (strcmp(next.logBaseName, cfg.logBaseName) != 0) || (next.sdLogEnabled != cfg.sdLogEnabled) || (next.logRotateKB != cfg.logRotateKB) || (next.streamModeEnabled != cfg.streamModeEnabled);
+  bool reopenSd =
+      (strcmp(next.logBaseName, cfg.logBaseName) != 0) ||
+      (next.sdLogEnabled != cfg.sdLogEnabled) ||
+      (next.logRotateKB != cfg.logRotateKB) ||
+      (next.dmsEnabled != cfg.dmsEnabled) ||
+      (next.ain2Enabled != cfg.ain2Enabled) ||
+      (next.tempEnabled != cfg.tempEnabled) ||
+      (next.ain2Mode != cfg.ain2Mode) ||
+      (fabsf(next.dmsKFactor - cfg.dmsKFactor) > 0.000001f) ||
+      (fabsf(next.ain2LengthMm - cfg.ain2LengthMm) > 0.000001f) ||
+      (fabsf(next.ain2AdcFullscaleV - cfg.ain2AdcFullscaleV) > 0.000001f) ||
+      (fabsf(next.ain2InputFullscaleV - cfg.ain2InputFullscaleV) > 0.000001f) ||
+      (next.streamModeEnabled != cfg.streamModeEnabled);
   cfg = next;
   saveCfg();
   applyLoraConfig();
+  if (g_measurementsInitialized && cfg.dmsEnabled) restoreDmsRunMode();
   if (!cfg.dmsEnabled) invalidateDms();
   if (!cfg.ain2Enabled) invalidateAin2();
   if (!cfg.tempEnabled) invalidateTemp();
@@ -2632,6 +3042,70 @@ static void handleApiConfigPost() {
   appendConfig(resp["cfg"].to<JsonObject>());
   String out;
   serializeJson(resp, out);
+  server.send(200, "application/json", out);
+}
+static void handleApiSelftestPost() {
+  if (g_mode == RunMode::CONFIG && !g_measurementsInitialized) {
+    adsInit();
+    dsInit();
+    g_measurementsInitialized = true;
+  }
+  bool resultOk = runSelfTest();
+  StaticJsonDocument<512> doc;
+  doc["ok"] = true;
+  doc["result_ok"] = resultOk ? 1 : 0;
+  doc["selftest_ok"] = selfTestOk ? 1 : 0;
+  doc["selftest_value"] = selfTestDelta_mV;
+  doc["selftest_delta_mV"] = selfTestDelta_mV;
+  String out;
+  serializeJson(doc, out);
+  server.send(200, "application/json", out);
+}
+static void handleApiOledPost() {
+  StaticJsonDocument<384> req;
+  bool wantEnabled = !g_oledEnabled;
+  if (server.hasArg("plain")) {
+    String body = server.arg("plain");
+    if (body.length() > 0) {
+      DeserializationError err = deserializeJson(req, body);
+      if (!err) {
+        if (!req["enabled"].isNull()) wantEnabled = req["enabled"].as<int>() != 0;
+        else if (!req["on"].isNull()) wantEnabled = req["on"].as<int>() != 0;
+        else if (!req["active"].isNull()) wantEnabled = req["active"].as<int>() != 0;
+        else if (!req["action"].isNull()) {
+          const char* action = req["action"].as<const char*>();
+          if (action && strcmp(action, "toggle") == 0) wantEnabled = !g_oledEnabled;
+          else if (action && (strcmp(action, "on") == 0 || strcmp(action, "enable") == 0 || strcmp(action, "show") == 0)) wantEnabled = true;
+          else if (action && (strcmp(action, "off") == 0 || strcmp(action, "disable") == 0 || strcmp(action, "hide") == 0)) wantEnabled = false;
+        }
+      }
+    }
+  }
+
+  g_oledEnabled = wantEnabled;
+  saveCfg();
+  bool startedNow = false;
+
+  if (!oledAllowedInCurrentMode()) {
+    oledSleep();
+  } else if (g_oledEnabled) {
+    startedNow = startMeasurementsManual();
+    oledEnsureInit();
+    oledUpdateLive(true);
+  } else {
+    oledSleep();
+  }
+
+  StaticJsonDocument<256> doc;
+  doc["ok"] = true;
+  doc["supported"] = oledAllowedInCurrentMode() ? 1 : 0;
+  doc["enabled"] = g_oledEnabled ? 1 : 0;
+  doc["active"] = oledIsActiveNow() ? 1 : 0;
+  doc["measurements_running"] = g_measurementsRunning ? 1 : 0;
+  doc["measurements_initialized"] = g_measurementsInitialized ? 1 : 0;
+  doc["started_now"] = startedNow ? 1 : 0;
+  String out;
+  serializeJson(doc, out);
   server.send(200, "application/json", out);
 }
 static void handleApiReset() {
@@ -2719,7 +3193,22 @@ static void handleApiStreamPost() {
   bool streamChanged = (next.streamModeEnabled != cfg.streamModeEnabled);
   cfg = next;
   saveCfg();
-  syncSdLogger(true);
+
+  if (cfg.streamModeEnabled && g_mode == RunMode::CONFIG) {
+    if (!g_measurementsInitialized) {
+      adsInit();
+      dsInit();
+      if (cfg.dmsEnabled) {
+        restoreDmsRunMode();
+      }
+      g_measurementsInitialized = true;
+    }
+    ensureMeasurementTasksStarted();
+    g_measurementsRunning = true;
+  }
+
+  // Streaming toggle should not force creation of a new BIN file.
+  syncSdLogger(false);
   if (streamChanged || cfg.streamModeEnabled) {
     resetStreamBuffer();
   }
@@ -2731,21 +3220,195 @@ static void handleApiStreamPost() {
   }
   handleApiStreamGet();
 }
-static bool serveFile(const char* path, const char* mime) {
-  if (!LittleFS.exists(path)) return false;
+static bool shouldLogHttpVerbose() {
+  if (g_mode != RunMode::CONFIG) return false;
+  const uint32_t now = millis();
+  return (g_diagBootMs != 0 && (now - g_diagBootMs) <= 180000UL);
+}
+
+static void logHttpEvent(const char* tag, const String& uri, uint32_t startedMs, const String& extra = "") {
+  if (!shouldLogHttpVerbose()) return;
+  const uint32_t now = millis();
+  const uint32_t dt = now - startedMs;
+  ++g_httpReqCount;
+  if (g_httpReqWindowStartedMs == 0 || (now - g_httpReqWindowStartedMs) >= 1000UL) {
+    g_httpReqWindowStartedMs = now;
+    g_httpReqWindowCount = 0;
+  }
+  ++g_httpReqWindowCount;
+  if (dt > g_httpMaxDurationMs) {
+    g_httpMaxDurationMs = dt;
+    g_httpMaxDurationUri = uri;
+  }
+  if (dt >= 200UL) ++g_httpSlowReqCount;
+  Serial.printf("[HTTP][%10lu ms][%s] %s dt=%lu ms heap=%u win=%lu host=%s ua=%s%s%s\n",
+                now, tag, uri.c_str(), dt, ESP.getFreeHeap(),
+                g_httpReqWindowCount, server.hostHeader().c_str(),
+                server.header("User-Agent").c_str(),
+                extra.length() ? " " : "", extra.c_str());
+}
+
+static void logLoopStatsIfNeeded() {
+  if (g_mode != RunMode::CONFIG) return;
+  if (!shouldLogHttpVerbose()) return;
+  const uint32_t now = millis();
+  if (g_diagLastLoopStatsMs == 0 || (now - g_diagLastLoopStatsMs) >= 5000UL) {
+    Serial.printf("[DIAG][%10lu ms] heap=%u minHeap=%u wifiClients=%d httpTotal=%lu slow=%lu max=%lu uri=%s stream=%s\n",
+                  now, ESP.getFreeHeap(), ESP.getMinFreeHeap(), WiFi.softAPgetStationNum(),
+                  g_httpReqCount, g_httpSlowReqCount, g_httpMaxDurationMs,
+                  g_httpMaxDurationUri.c_str(), g_streamStatus.c_str());
+    g_diagLastLoopStatsMs = now;
+  }
+}
+
+bool serveFile(const char* path, const char* mime) {
+  const uint32_t startedMs = millis();
+  if (!LittleFS.exists(path)) {
+    logHttpEvent("MISS", String(path), startedMs, "fs=missing");
+    return false;
+  }
   File f = LittleFS.open(path, "r");
-  if (!f) return false;
+  if (!f) {
+    logHttpEvent("MISS", String(path), startedMs, "fs=open_failed");
+    return false;
+  }
+  const size_t size = f.size();
   server.streamFile(f, mime);
   f.close();
+  logHttpEvent("FILE", String(path), startedMs, String("bytes=") + String((uint32_t)size) + " mime=" + String(mime));
   return true;
 }
+
+static bool isIpv4Host(const String& host) {
+  if (!host.length()) return false;
+  for (size_t i = 0; i < host.length(); ++i) {
+    const char c = host[i];
+    if (!((c >= '0' && c <= '9') || c == '.')) return false;
+  }
+  return true;
+}
+static String mimeFromPath(const String& path) {
+  String p = path;
+  p.toLowerCase();
+  if (p.endsWith(".html") || p.endsWith(".htm")) return "text/html";
+  if (p.endsWith(".css")) return "text/css";
+  if (p.endsWith(".js")) return "application/javascript";
+  if (p.endsWith(".json")) return "application/json";
+  if (p.endsWith(".svg")) return "image/svg+xml";
+  if (p.endsWith(".png")) return "image/png";
+  if (p.endsWith(".jpg") || p.endsWith(".jpeg")) return "image/jpeg";
+  if (p.endsWith(".ico")) return "image/x-icon";
+  if (p.endsWith(".txt")) return "text/plain";
+  return "application/octet-stream";
+}
+static void redirectToRoot() {
+  const uint32_t startedMs = millis();
+  String target = String("http://") + g_apIp.toString() + "/";
+  server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  server.sendHeader("Pragma", "no-cache");
+  server.sendHeader("Expires", "-1");
+  server.sendHeader("Location", target, true);
+  server.send(302, "text/plain", "");
+  logHttpEvent("REDIR", server.uri(), startedMs, String("to=") + target);
+}
+
+static void serveCaptivePortalBootstrap() {
+  const uint32_t startedMs = millis();
+  const String target = String("http://") + g_apIp.toString() + "/";
+  String html;
+  html.reserve(512);
+  html += F("<!doctype html><html><head><meta charset='utf-8'>");
+  html += F("<meta name='viewport' content='width=device-width,initial-scale=1'>");
+  html += F("<meta http-equiv='Cache-Control' content='no-cache, no-store, must-revalidate'>");
+  html += F("<meta http-equiv='Pragma' content='no-cache'>");
+  html += F("<meta http-equiv='Expires' content='-1'>");
+  html += F("<meta http-equiv='refresh' content='0; url=");
+  html += target;
+  html += F("'>");
+  html += F("<title>LoRaSense</title>");
+  html += F("<script>location.replace('");
+  html += target;
+  html += F("');</script></head><body>");
+  html += F("<a href='");
+  html += target;
+  html += F("'>Open LoRaSense</a></body></html>");
+  server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  server.sendHeader("Pragma", "no-cache");
+  server.sendHeader("Expires", "-1");
+  server.sendHeader("Connection", "close");
+  server.send(200, "text/html", html);
+  logHttpEvent("CAPTIVE", server.uri(), startedMs, String("to=") + target + " host=" + server.hostHeader());
+}
+
+static void handleNotFound() {
+  const uint32_t startedMs = millis();
+  const String uri = server.uri();
+  if (uri.startsWith("/api/")) {
+    sendJsonError(404, "not_found");
+    logHttpEvent("API404", uri, startedMs);
+    return;
+  }
+  if (LittleFS.exists(uri)) {
+    const String mime = mimeFromPath(uri);
+    if (serveFile(uri.c_str(), mime.c_str())) return;
+  }
+  const String host = server.hostHeader();
+  if (g_mode == RunMode::CONFIG && (uri == "/connecttest.txt" || uri == "/msftconnecttest.txt")) {
+    serveCaptivePortalBootstrap();
+    return;
+  }
+  if (g_mode == RunMode::CONFIG && uri == "/ncsi.txt") {
+    serveCaptivePortalBootstrap();
+    return;
+  }
+  if (g_mode == RunMode::CONFIG && uri == "/wpad.dat") {
+    static const char pac[] =
+        "function FindProxyForURL(url, host) { return \"DIRECT\"; }\r\n";
+    server.send(200, "application/x-ns-proxy-autoconfig", pac);
+    logHttpEvent("WPAD", uri, startedMs, "mode=direct");
+    return;
+  }
+  if (g_mode == RunMode::CONFIG && uri == "/cname.aspx") {
+    server.send(204, "text/plain", "");
+    logHttpEvent("CNAME", uri, startedMs, "mode=204");
+    return;
+  }
+  const bool captiveProbe =
+      uri == "/generate_204" ||
+      uri == "/gen_204" ||
+      uri == "/hotspot-detect.html" ||
+      uri == "/library/test/success.html" ||
+      uri == "/success.txt" ||
+      uri == "/redirect" ||
+      uri.startsWith("/redirect") ||
+      uri == "/fwlink/" ||
+      uri.startsWith("/fwlink") ||
+      uri == "/canonical.html" ||
+      (!host.isEmpty() && !isIpv4Host(host) && host != g_apIp.toString() && host != "lorasense.local");
+  if (g_mode == RunMode::CONFIG && captiveProbe) {
+    serveCaptivePortalBootstrap();
+    return;
+  }
+  if (g_mode == RunMode::CONFIG) {
+    server.send(404, "text/plain", "not found");
+    logHttpEvent("404", uri, startedMs, "config-drop");
+    return;
+  }
+  server.send(404, "text/plain", "not found");
+  logHttpEvent("404", uri, startedMs);
+}
 static void handleRoot() {
-  if (serveFile("/index.html", "text/html")) return;
+  const uint32_t startedMs = millis();
+  if (serveFile("/index.html", "text/html")) {
+    logHttpEvent("ROOT", server.uri(), startedMs, "source=fs");
+    return;
+  }
   server.send(200, "text/html",
               "<html><body><h1>MKP LoRaSense</h1>"
-              "<p><a href=\"/api/state\">/api/state</a></p>"
-              "</body></html>");
+              "<p>Filesystem missing /index.html</p></body></html>");
+  logHttpEvent("ROOT", server.uri(), startedMs, "source=fallback_html");
 }
+
 static void startApAndWeb() {
   if (!LittleFS.begin(true)) {
     Serial.println("[FS] LittleFS mount failed");
@@ -2754,18 +3417,60 @@ static void startApAndWeb() {
   WiFi.mode(WIFI_AP);
   WiFi.softAP(g_apSsid.c_str());
   g_apIp = WiFi.softAPIP();
+  g_diagBootMs = millis();
+  g_diagLastLoopStatsMs = 0;
+  g_httpReqCount = 0;
+  g_httpReqWindowCount = 0;
+  g_httpReqWindowStartedMs = 0;
+  g_httpSlowReqCount = 0;
+  g_httpMaxDurationMs = 0;
+  g_httpMaxDurationUri = "";
+  dnsServer.stop();
+  dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
+  dnsServer.start(DNS_PORT, "*", g_apIp);
+  Serial.printf("[AP] SSID=%s IP=%s heap=%u\n", g_apSsid.c_str(), g_apIp.toString().c_str(), ESP.getFreeHeap());
+
+  const char* headerKeys[] = {"User-Agent", "Host"};
+  server.collectHeaders(headerKeys, 2);
   server.on("/", HTTP_GET, handleRoot);
   server.on("/index.html", HTTP_GET, handleRoot);
+  server.on("/generate_204", HTTP_GET, serveCaptivePortalBootstrap);
+  server.on("/gen_204", HTTP_GET, serveCaptivePortalBootstrap);
+  server.on("/hotspot-detect.html", HTTP_GET, serveCaptivePortalBootstrap);
+  server.on("/library/test/success.html", HTTP_GET, serveCaptivePortalBootstrap);
+  server.on("/connecttest.txt", HTTP_GET, serveCaptivePortalBootstrap);
+  server.on("/msftconnecttest.txt", HTTP_GET, serveCaptivePortalBootstrap);
+  server.on("/ncsi.txt", HTTP_GET, serveCaptivePortalBootstrap);
+  server.on("/wpad.dat", HTTP_GET, []() {
+    static const char pac[] =
+        "function FindProxyForURL(url, host) { return \"DIRECT\"; }\r\n";
+    server.send(200, "application/x-ns-proxy-autoconfig", pac);
+  });
+  server.on("/cname.aspx", HTTP_GET, []() {
+    server.send(204, "text/plain", "");
+  });
+  server.on("/success.txt", HTTP_GET, serveCaptivePortalBootstrap);
+  server.on("/redirect", HTTP_GET, serveCaptivePortalBootstrap);
+  server.on("/fwlink/", HTTP_GET, serveCaptivePortalBootstrap);
+  server.on("/canonical.html", HTTP_GET, serveCaptivePortalBootstrap);
+
   server.on("/i18n.json", HTTP_GET, []() {
     if (!serveFile("/i18n.json", "application/json")) server.send(404, "text/plain", "not found");
   });
   server.on("/logo.svg", HTTP_GET, []() {
     if (!serveFile("/logo.svg", "image/svg+xml")) server.send(404, "text/plain", "not found");
   });
+
+  server.on("/lorasense_qr.png", HTTP_GET, []() {
+    if (!serveFile("/lorasense_qr.png", "image/png")) server.send(404, "text/plain", "not found");
+  });
   server.on("/api/live", HTTP_GET, handleApiLive);
   server.on("/api/state", HTTP_GET, handleApiState);
   server.on("/api/config", HTTP_GET, handleApiConfigGet);
   server.on("/api/config", HTTP_POST, handleApiConfigPost);
+  server.on("/api/selftest", HTTP_POST, handleApiSelftestPost);
+  server.on("/api/measure", HTTP_POST, handleApiMeasureControlPost);
+  server.on("/api/oled", HTTP_POST, handleApiOledPost);
   server.on("/api/reset", HTTP_POST, handleApiReset);
   server.on("/api/deveui", HTTP_GET, handleApiDevEuiGet);
   server.on("/api/deveui", HTTP_POST, handleApiDevEuiPost);
@@ -2776,13 +3481,17 @@ static void startApAndWeb() {
   server.on("/api/sd/archive", HTTP_GET, handleApiSdArchive);
   server.on("/api/sd/convert_bin_csv", HTTP_GET, handleApiSdConvertBinCsv);
   server.on("/api/sd/delete", HTTP_POST, handleApiSdDelete);
+  server.onNotFound(handleNotFound);
   server.begin();
   g_streamServer.begin();
   g_streamServer.setNoDelay(true);
   g_streamServerStarted = true;
   resetStreamBuffer();
   g_streamStatus = cfg.streamModeEnabled ? "waiting_client" : "disabled";
-  syncSdLogger(true);
+  // Do not open a new BIN file during AP startup only to reopen it again
+  // when measurements/logging actually begin. Keep SD in a ready state and
+  // lazily create the file on the first real logging session.
+  g_sdStatus = cfg.sdLogEnabled ? "ready" : "disabled";
   Serial.print("[AP] SSID=");
   Serial.print(g_apSsid);
   Serial.print(" IP=");
@@ -2791,117 +3500,566 @@ static void startApAndWeb() {
 // ============================================================
 // LoRa
 // ============================================================
+static void adsBusReleaseForLoRa() {
+  Serial.println("[ADS] RELEASE BUS FOR LORA");
+  adsCS(false);
+  pinMode(PIN_ADS_CS, OUTPUT);
+  digitalWrite(PIN_ADS_CS, HIGH);
+  digitalWrite(PIN_SD_CS, HIGH);
+  SPI.endTransaction();
+  SPI.begin(PIN_SPI_SCK, PIN_SPI_MISO, PIN_SPI_MOSI, PIN_SD_CS);
+}
+
+static bool fieldIsDeviceStateValid(eDeviceState_LoraWan state) {
+  return (state == DEVICE_STATE_INIT) ||
+         (state == DEVICE_STATE_JOIN) ||
+         (state == DEVICE_STATE_SEND) ||
+         (state == DEVICE_STATE_CYCLE) ||
+         (state == DEVICE_STATE_SLEEP);
+}
+
+static void resetFieldRetainedState() {
+  g_fieldRtcMagic = FIELD_RTC_MAGIC;
+  g_fieldSessionEstablished = false;
+  g_fieldSensorBufferValid = false;
+  g_fieldDmsValid = false;
+  g_fieldAin2Valid = false;
+  g_fieldTempValid = false;
+  g_fieldCaptureOnNextWake = false;
+  g_fieldLastDmsMvPerV = 0.0f;
+  g_fieldLastAin2MilliVolts = 0.0f;
+  g_fieldLastTempC = 0.0f;
+  g_fieldLastDmsRaw = 0;
+  g_fieldLastAin2Raw = 0;
+}
+
+static void resetFieldRuntimeState() {
+  g_fieldSuppressNextImmediateSend = false;
+  g_fieldLastUplinkMs = 0;
+  g_fieldPeriodicCycleArmed = false;
+  g_fieldPeriodicCycleStartMs = 0;
+  g_fieldPeriodicCycleDelayMs = 0;
+  g_fieldLastAliveMs = 0;
+}
+
+static uint8_t fieldDmsModeCode() {
+  if (!cfg.dmsEnabled) return 0;
+  return (cfg.dmsKFactor > 0.0f) ? 2 : 1;
+}
+
+static uint8_t fieldAin2ModeCode() {
+  if (!cfg.ain2Enabled) return 0;
+  return (cfg.ain2Mode == AIN2_MODE_VOLT) ? 2 : 1;
+}
+
+static uint8_t fieldTempModeCode() {
+  return cfg.tempEnabled ? 1 : 0;
+}
+
+static uint8_t fieldPayloadStatusCode() {
+  return (uint8_t)(fieldDmsModeCode() * 100u + fieldAin2ModeCode() * 10u + fieldTempModeCode());
+}
+
+static uint32_t fieldDs18b20ConversionTimeMs() {
+  switch (FIELD_DS18B20_RESOLUTION_BITS) {
+    case 9:  return 94;
+    case 10: return 188;
+    case 11: return 375;
+    default: return 750;
+  }
+}
+
+static void fieldReleaseAdsBus() {
+  pinMode(PIN_ADS_CS, OUTPUT);
+  digitalWrite(PIN_ADS_CS, HIGH);
+  pinMode(PIN_SD_CS, OUTPUT);
+  digitalWrite(PIN_SD_CS, HIGH);
+  adsCS(false);
+  SPI.end();
+  g_adsConfigSettled = false;
+}
+
+static void fieldApplyRetainedValuesToRuntime() {
+  if (cfg.dmsEnabled && g_fieldDmsValid) {
+    dms_valid = true;
+    dms_mV_per_V = g_fieldLastDmsMvPerV;
+    dms_mV = dms_mV_per_V * ADS_VREF_VOLTS;
+    lastDmsRaw = g_fieldLastDmsRaw;
+    lastDmsRawSeen = true;
+    g_dmsFailStreak = 0;
+    g_dmsLastOkUs = micros();
+  } else {
+    invalidateDms();
+  }
+
+  if (cfg.ain2Enabled && g_fieldAin2Valid) {
+    ain2_valid = true;
+    ain2_mV = g_fieldLastAin2MilliVolts;
+    lastAin2Raw = g_fieldLastAin2Raw;
+    lastAin2RawSeen = true;
+    g_ain2FailStreak = 0;
+    g_ain2LastOkUs = micros();
+  } else {
+    invalidateAin2();
+  }
+
+  if (cfg.tempEnabled && g_fieldTempValid) {
+    temp_valid = true;
+    ds_temp_c = g_fieldLastTempC;
+    ds_pending = false;
+    g_tempFailStreak = 0;
+    g_tempLastOkMs = millis();
+  } else {
+    invalidateTemp();
+  }
+
+  dmsFramesPerSecond = 0;
+  ain2FramesPerSecond = 0;
+  tempFramesPerSecond = 0;
+  totalFramesPerSecond = 0;
+  framesPerSecond = 0;
+}
+
+static bool captureFieldSensorsToRetainedBuffer() {
+  const bool needAds = cfg.dmsEnabled || cfg.ain2Enabled;
+  const bool needTemp = cfg.tempEnabled;
+
+  refreshAdsChannelConfigs();
+
+  bool adsReady = true;
+  if (needAds) {
+    adsInit();
+    delay(50);
+  }
+
+  dsSensor.begin();
+  dsSensor.setWaitForConversion(false);
+  dsSensor.setResolution(FIELD_DS18B20_RESOLUTION_BITS);
+
+  uint32_t tempReqMs = 0;
+  if (needTemp) {
+    tempReqMs = millis();
+    dsSensor.requestTemperatures();
+  }
+
+  float nextDmsMv = NAN;
+  float nextDmsMvPerV = NAN;
+  float nextAin2Milli = NAN;
+  float nextTempC = NAN;
+  int32_t nextDmsRaw = g_fieldLastDmsRaw;
+  int32_t nextAin2Raw = g_fieldLastAin2Raw;
+
+  bool dmsOk = !cfg.dmsEnabled;
+  bool ain2Ok = !cfg.ain2Enabled;
+  bool tempOk = !cfg.tempEnabled;
+
+  if (needAds && cfg.dmsEnabled) {
+    if (readDmsFast(nextDmsMv, &nextDmsRaw)) {
+      nextDmsMvPerV = dmsTo_mV_per_V(nextDmsMv);
+      dmsOk = true;
+    } else {
+      dmsOk = false;
+    }
+  }
+
+  if (needAds && cfg.ain2Enabled) {
+    if (readChannelRaw(g_adsAin2Cfg, nextAin2Milli, &nextAin2Raw)) {
+      ain2Ok = true;
+    } else {
+      ain2Ok = false;
+    }
+  }
+
+  if (needTemp) {
+    const uint32_t convMs = fieldDs18b20ConversionTimeMs();
+    const uint32_t elapsedMs = millis() - tempReqMs;
+    if (elapsedMs < convMs) {
+      delay(convMs - elapsedMs);
+    }
+    nextTempC = dsSensor.getTempCByIndex(0);
+    tempOk = (nextTempC != DEVICE_DISCONNECTED_C) && (nextTempC >= -55.0f) && (nextTempC <= 125.0f);
+  }
+
+  if (needAds) {
+    fieldReleaseAdsBus();
+  }
+
+  const bool captureOk = dmsOk && ain2Ok && tempOk;
+
+  if (!cfg.dmsEnabled) {
+    g_fieldDmsValid = false;
+    g_fieldLastDmsMvPerV = 0.0f;
+    g_fieldLastDmsRaw = 0;
+  } else if (dmsOk) {
+    g_fieldDmsValid = true;
+    g_fieldLastDmsMvPerV = nextDmsMvPerV;
+    g_fieldLastDmsRaw = nextDmsRaw;
+  }
+
+  if (!cfg.ain2Enabled) {
+    g_fieldAin2Valid = false;
+    g_fieldLastAin2MilliVolts = 0.0f;
+    g_fieldLastAin2Raw = 0;
+  } else if (ain2Ok) {
+    g_fieldAin2Valid = true;
+    g_fieldLastAin2MilliVolts = nextAin2Milli;
+    g_fieldLastAin2Raw = nextAin2Raw;
+  }
+
+  if (!cfg.tempEnabled) {
+    g_fieldTempValid = false;
+    g_fieldLastTempC = 0.0f;
+  } else if (tempOk) {
+    g_fieldTempValid = true;
+    g_fieldLastTempC = nextTempC;
+  }
+
+  g_fieldSensorBufferValid = (cfg.dmsEnabled ? g_fieldDmsValid : true) &&
+                             (cfg.ain2Enabled ? g_fieldAin2Valid : true) &&
+                             (cfg.tempEnabled ? g_fieldTempValid : true);
+
+  fieldApplyRetainedValuesToRuntime();
+  return captureOk;
+}
+
+static void rearmFieldPeriodicCycleAfterSuppressedImmediateSend(uint32_t nowMs) {
+  if (!g_fieldPeriodicCycleArmed || g_fieldPeriodicCycleDelayMs == 0) {
+    g_fieldPeriodicCycleDelayMs = appTxDutyCycle;
+    g_fieldPeriodicCycleStartMs = nowMs;
+    g_fieldPeriodicCycleArmed = true;
+    LoRaWAN.cycle(g_fieldPeriodicCycleDelayMs);
+    return;
+  }
+
+  uint32_t elapsedMs = nowMs - g_fieldPeriodicCycleStartMs;
+  uint32_t remainingMs = 1;
+  if (elapsedMs < g_fieldPeriodicCycleDelayMs) {
+    remainingMs = g_fieldPeriodicCycleDelayMs - elapsedMs;
+  }
+
+  g_fieldPeriodicCycleStartMs = nowMs;
+  g_fieldPeriodicCycleDelayMs = remainingMs;
+  g_fieldPeriodicCycleArmed = true;
+  LoRaWAN.cycle(remainingMs);
+}
+
+static uint32_t encodeUnsignedScaled32(double value, double scale) {
+  if (!isfinite(value) || !isfinite(scale) || scale <= 0.0) return 0;
+  double scaled = value * scale;
+  if (scaled < 0.0) scaled = 0.0;
+  if (scaled > 4294967295.0) scaled = 4294967295.0;
+  return (uint32_t)llround(scaled);
+}
+
+static int16_t encodeSignedScaled16(double value, double scale) {
+  if (!isfinite(value) || !isfinite(scale) || scale <= 0.0) return 0;
+  double scaled = value * scale;
+  if (scaled > 32767.0) scaled = 32767.0;
+  if (scaled < -32768.0) scaled = -32768.0;
+  return (int16_t)lround(scaled);
+}
+
+static int64_t encodeSignedScaled64(double value, double scale) {
+  if (!isfinite(value) || !isfinite(scale) || scale <= 0.0) return 0;
+  long double scaled = (long double)value * (long double)scale;
+  if (scaled > (long double)INT64_MAX) scaled = (long double)INT64_MAX;
+  if (scaled < (long double)INT64_MIN) scaled = (long double)INT64_MIN;
+  return (int64_t)llround((double)scaled);
+}
+
+static void appendU16BE(uint16_t value) {
+  appData[appDataSize++] = (uint8_t)((value >> 8) & 0xFF);
+  appData[appDataSize++] = (uint8_t)(value & 0xFF);
+}
+
+static void appendI16BE(int16_t value) {
+  appendU16BE((uint16_t)value);
+}
+
+static void appendU32BE(uint32_t value) {
+  appData[appDataSize++] = (uint8_t)((value >> 24) & 0xFF);
+  appData[appDataSize++] = (uint8_t)((value >> 16) & 0xFF);
+  appData[appDataSize++] = (uint8_t)((value >> 8) & 0xFF);
+  appData[appDataSize++] = (uint8_t)(value & 0xFF);
+}
+
+static void appendI64BE(int64_t value) {
+  uint64_t raw = (uint64_t)value;
+  for (int shift = 56; shift >= 0; shift -= 8) {
+    appData[appDataSize++] = (uint8_t)((raw >> shift) & 0xFFu);
+  }
+}
+
 static void prepareTxFrame(uint8_t port) {
   (void)port;
-  StaticJsonDocument<384> doc;
-  doc["dms_mV"] = dms_valid ? dms_mV : 0.0f;
-  doc["dms_mV_per_V"] = dms_valid ? dms_mV_per_V : 0.0f;
-  doc["ain2_mV"] = ain2_valid ? ain2_mV : 0.0f;
-  if (cfg.ain2Mode == AIN2_MODE_VOLT) doc["ain2_V"] = ain2_valid ? ain2DerivedValue() : 0.0f;
-  else doc["ain2_mm"] = ain2_valid ? ain2DerivedValue() : 0.0f;
-  doc["temp_C"] = temp_valid ? ds_temp_c : 0.0f;
-  doc["frames_s"] = framesPerSecond;
-  doc["selftest_ok"] = selfTestOk ? 1 : 0;
-  appDataSize = (uint8_t)serializeJson(doc, appData, LORAWAN_APP_DATA_MAX_SIZE);
+
+  appDataSize = 0;
+
+  const uint8_t statusCode = fieldPayloadStatusCode();
+  const uint8_t dmsCode = fieldDmsModeCode();
+  const uint8_t ain2Code = fieldAin2ModeCode();
+  const uint8_t tempCode = fieldTempModeCode();
+
+  appData[appDataSize++] = statusCode;
+
+  if (dmsCode != 0u) {
+    if (g_fieldDmsValid) {
+      const double dmsValue = (dmsCode == 2u)
+        ? (double)dmsScaledValueFromMvPerV(g_fieldLastDmsMvPerV)
+        : (double)g_fieldLastDmsMvPerV;
+      appendI64BE(encodeSignedScaled64(dmsValue, 1000000000.0));
+    } else {
+      appendI64BE(FIELD_INVALID_I64);
+    }
+  }
+
+  if (ain2Code != 0u) {
+    if (g_fieldAin2Valid) {
+      // Use the same calibrated scaling path as AP/Web and BIN export.
+      const double ain2Value = (double)ain2DerivedValueFromMilli(g_fieldLastAin2MilliVolts);
+      appendU32BE(encodeUnsignedScaled32(ain2Value, 100000.0));
+    } else {
+      appendU32BE(FIELD_INVALID_U32);
+    }
+  }
+
+  if (tempCode != 0u) {
+    if (g_fieldTempValid) {
+      appendI16BE(encodeSignedScaled16(g_fieldLastTempC, 100.0));
+    } else {
+      appendI16BE(FIELD_INVALID_I16);
+    }
+  }
 }
+
+static const char* loraStateName(uint8_t state) {
+  switch (state) {
+    case DEVICE_STATE_INIT:  return "INIT";
+    case DEVICE_STATE_JOIN:  return "JOIN";
+    case DEVICE_STATE_SEND:  return "SEND";
+    case DEVICE_STATE_CYCLE: return "CYCLE";
+    case DEVICE_STATE_SLEEP: return "SLEEP";
+    default:                 return "UNKNOWN";
+  }
+}
+
 static void loraLoop() {
   if (!g_loraEnabled) return;
+
   switch (deviceState) {
     case DEVICE_STATE_INIT:
-      Serial.println("[LORA] INIT");
+      loraWanAdr = cfg.adr;
+      isTxConfirmed = false;
+      confirmedNbTrials = 1;
       syncLoraCompatAliases();
-      dumpLoraBuffers("buffers before LoRaWAN.init");
       LoRaWAN.init(loraWanClass, loraWanRegion);
       LoRaWAN.setDefaultDR(cfg.dr);
       g_loraInitDone = true;
       deviceState = DEVICE_STATE_JOIN;
       break;
+
     case DEVICE_STATE_JOIN:
-      Serial.println("[LORA] JOIN");
-      g_radioQuietUntilMs = millis() + 7000UL;
       LoRaWAN.join();
-      break;
-    case DEVICE_STATE_SEND:
-      Serial.println("[LORA] SEND");
-      captureFieldSnapshot();
-      prepareTxFrame(appPort);
-      g_radioQuietUntilMs = millis() + 3000UL;
-      LoRaWAN.send();
-      deviceState = DEVICE_STATE_CYCLE;
-      break;
-    case DEVICE_STATE_CYCLE:
-      Serial.println("[LORA] CYCLE");
-      LoRaWAN.cycle(appTxDutyCycle);
       deviceState = DEVICE_STATE_SLEEP;
       break;
+
+    case DEVICE_STATE_SEND: {
+      const uint32_t nowMs = millis();
+      const bool firstSendAfterJoin = !g_fieldSessionEstablished;
+
+      if (firstSendAfterJoin) {
+        g_fieldSessionEstablished = true;
+        g_fieldJoinPassed = true;
+      }
+
+      if (g_fieldSuppressNextImmediateSend) {
+        if ((nowMs - g_fieldLastUplinkMs) < FIELD_DUPLICATE_SEND_WINDOW_MS) {
+          g_fieldSuppressNextImmediateSend = false;
+          rearmFieldPeriodicCycleAfterSuppressedImmediateSend(nowMs);
+          deviceState = DEVICE_STATE_SLEEP;
+          break;
+        }
+        g_fieldSuppressNextImmediateSend = false;
+      }
+
+      prepareTxFrame(appPort);
+      LoRaWAN.send();
+
+      g_fieldLastUplinkMs = nowMs;
+      g_fieldPeriodicCycleArmed = false;
+      g_fieldPeriodicCycleStartMs = 0;
+      g_fieldPeriodicCycleDelayMs = 0;
+
+      if (firstSendAfterJoin) {
+        g_fieldSuppressNextImmediateSend = true;
+      }
+
+      deviceState = DEVICE_STATE_CYCLE;
+      break;
+    }
+
+    case DEVICE_STATE_CYCLE:
+      txDutyCycleTime = appTxDutyCycle + randr(0, APP_TX_DUTYCYCLE_RND);
+      LoRaWAN.cycle(txDutyCycleTime);
+      g_fieldPeriodicCycleArmed = true;
+      g_fieldPeriodicCycleStartMs = millis();
+      g_fieldPeriodicCycleDelayMs = txDutyCycleTime;
+      g_fieldCaptureOnNextWake = cfg.dmsEnabled || cfg.ain2Enabled || cfg.tempEnabled;
+      deviceState = DEVICE_STATE_SLEEP;
+      break;
+
     case DEVICE_STATE_SLEEP:
       LoRaWAN.sleep(loraWanClass);
       break;
+
     default:
       deviceState = DEVICE_STATE_INIT;
       break;
   }
 }
+
+static void setupCommonState() {
+  g_diagBootMs = millis();
+  g_spiBusMutex = xSemaphoreCreateMutex();
+  loadCfg();
+  applyLoraConfig();
+  g_mode = isApModeRequested() ? RunMode::CONFIG : RunMode::FIELD;
+  if (!oledIsActiveNow()) oledSleep();
+  last_dms_read_us = micros();
+  last_ain2_read_us = micros();
+
+  if (g_mode == RunMode::CONFIG) {
+    Serial.print("FW ");
+    Serial.print(FW_VERSION);
+    Serial.print(" build ");
+    Serial.print(__DATE__);
+    Serial.print(" ");
+    Serial.println(__TIME__);
+    Serial.print("Mode: ");
+    Serial.println(modeToString());
+    Serial.print("DevEUI=");
+    Serial.print(cfg.devEui);
+    Serial.print(" AppEUI=");
+    Serial.print(cfg.appEui);
+    Serial.print(" AppKey=");
+    Serial.println(cfg.appKey);
+    Serial.print("LoRa interval: ");
+    Serial.print(appTxDutyCycle);
+    Serial.println(" ms");
+    Serial.println("[ADS] software SPI on fixed PCB pins; LoRa SPI isolated");
+  }
+}
+
+static void setupConfigMode() {
+  g_loraEnabled = false;
+  g_sdStatus = cfg.sdLogEnabled ? "ready" : "disabled";
+
+  oledShowBootLogo();
+  delay(1500);
+  startApAndWeb();
+  ensureMeasurementTasksStarted();
+
+  if (g_oledEnabled && oledAllowedInCurrentMode()) {
+    startMeasurementsManual();
+    oledEnsureInit();
+    g_measurementsRunning = true;
+    oledUpdateLive(true);
+  } else {
+    g_measurementsRunning = false;
+    oledShowBanner("CONFIG MODE", "Manual measurement start");
+    oledShowBanner("CONFIG MODE", g_apSsid);
+    oledUpdateLive(true);
+  }
+}
+
+static void setupFieldMode() {
+  g_fieldJoinPassed = false;
+  g_fieldAdsReady = false;
+  g_measurementsInitialized = false;
+  g_measurementsRunning = false;
+  selfTestOk = false;
+  selfTestDelta_mV = NAN;
+  g_sdStatus = "field_disabled";
+  oledSleep();
+
+  WiFi.persistent(false);
+  WiFi.disconnect(true, true);
+  WiFi.mode(WIFI_OFF);
+  delay(20);
+
+  pinMode(PIN_ADS_CS, OUTPUT);
+  digitalWrite(PIN_ADS_CS, HIGH);
+  pinMode(PIN_SD_CS, OUTPUT);
+  digitalWrite(PIN_SD_CS, HIGH);
+  pinMode(PIN_MOSFET, OUTPUT);
+  digitalWrite(PIN_MOSFET, LOW);
+
+  g_fieldBootFromDeepSleep = (esp_sleep_get_wakeup_cause() != ESP_SLEEP_WAKEUP_UNDEFINED);
+  g_fieldRetainedSnapshotValid = (g_fieldRtcMagic == FIELD_RTC_MAGIC) && fieldIsDeviceStateValid(deviceState);
+  const bool coldBoot = !g_fieldBootFromDeepSleep || !g_fieldRetainedSnapshotValid;
+
+  resetFieldRuntimeState();
+
+  if (coldBoot) {
+    ++g_fieldColdBootCount;
+    resetFieldRetainedState();
+    captureFieldSensorsToRetainedBuffer();
+    g_fieldCaptureOnNextWake = false;
+  } else {
+    ++g_fieldSleepWakeCount;
+    if (g_fieldCaptureOnNextWake) {
+      captureFieldSensorsToRetainedBuffer();
+      g_fieldCaptureOnNextWake = false;
+    }
+  }
+
+  fieldApplyRetainedValuesToRuntime();
+  fieldReleaseAdsBus();
+
+  Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
+  g_loraEnabled = true;
+  g_loraInitDone = false;
+  g_fieldJoinPassed = g_fieldSessionEstablished;
+
+  if (coldBoot) {
+    deviceState = DEVICE_STATE_INIT;
+  } else if (g_fieldSessionEstablished && esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER) {
+    deviceState = DEVICE_STATE_SEND;
+  }
+}
+
+static void loopConfigMode() {
+  dnsServer.processNextRequest();
+  server.handleClient();
+  logLoopStatsIfNeeded();
+  delay(cfg.streamModeEnabled ? 5 : 1);
+}
+
+static void loopFieldMode() {
+  loraLoop();
+  delay(2);
+}
+
 // ============================================================
 // Setup / loop
 // ============================================================
 void setup() {
   Serial.begin(115200);
-  delay(300);
-  g_spiBusMutex = xSemaphoreCreateMutex();
-  loadCfg();
-  applyLoraConfig();
-  g_mode = isApModeRequested() ? RunMode::CONFIG : RunMode::FIELD;
+  delay(50);
+
+  setupCommonState();
+
   if (g_mode == RunMode::CONFIG) {
-    startApAndWeb();
-    g_loraEnabled = false;
-    g_sdStatus = cfg.sdLogEnabled ? g_sdStatus : "disabled";
-  }
-  adsInit();
-  dsInit();
-  runSelfTest();
-  if (cfg.dmsEnabled) restoreDmsRunMode();
-  last_dms_read_us = micros();
-  last_ain2_read_us = micros();
-  Serial.print("FW ");
-  Serial.print(FW_VERSION);
-  Serial.print(" build ");
-  Serial.print(__DATE__);
-  Serial.print(" ");
-  Serial.println(__TIME__);
-  Serial.print("Mode: ");
-  Serial.println(modeToString());
-  Serial.print("DevEUI=");
-  Serial.print(cfg.devEui);
-  Serial.print(" AppEUI=");
-  Serial.print(cfg.appEui);
-  Serial.print(" AppKey=");
-  Serial.println(cfg.appKey);
-  Serial.print("LoRa interval: ");
-  Serial.print(appTxDutyCycle);
-  Serial.println(" ms");
-  Serial.println("[ADS] software SPI on fixed PCB pins; LoRa SPI isolated");
-  dumpLoraBuffers("buffers before Mcu.begin");
-  if (g_mode == RunMode::FIELD) {
-    WiFi.persistent(false);
-    WiFi.disconnect(true, true);
-    WiFi.mode(WIFI_OFF);
-    delay(20);
-    Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
-    g_loraEnabled = true;
-    g_sdStatus = "field_disabled";
+    setupConfigMode();
   } else {
-    xTaskCreatePinnedToCore(sensorTask, "sensorTask", 8192, nullptr, 1, &g_sensorTaskHandle, 1);
-    xTaskCreatePinnedToCore(sdTask, "sdTask", 8192, nullptr, 1, &g_sdTaskHandle, 1);
-    xTaskCreatePinnedToCore(streamTask, "streamTask", 6144, nullptr, 1, &g_streamTaskHandle, 0);
+    setupFieldMode();
   }
 }
+
 void loop() {
   if (g_mode == RunMode::CONFIG) {
-    server.handleClient();
-    delay(cfg.streamModeEnabled ? 5 : 1);
+    loopConfigMode();
   } else {
-    loraLoop();
-    delay(2);
+    loopFieldMode();
   }
 }

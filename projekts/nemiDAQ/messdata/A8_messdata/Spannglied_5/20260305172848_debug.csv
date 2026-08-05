@@ -1,0 +1,533 @@
+05.03.2026 17:28:48 [PC]: [PC] TEL Data from Sensor 1 invalid! Skipping!
+05.03.2026 17:28:48 [PC]: [PC] IMU Data from Sensor 1 invalid! Skipping!
+05.03.2026 17:28:48 [Base]: [RP] Alive: 1098 s | 0 | 88 | 0 0
+05.03.2026 17:28:48 [Base]: [RP] USB Speed 8730 kByte/s
+05.03.2026 17:28:48 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:28:49 [PC]: Sensor 1 Stream 1 Sample(s) Missing!
+05.03.2026 17:28:49 [PC]: Sensor 1 Stream 2 Sample(s) Missing!
+05.03.2026 17:28:49 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 50
+05.03.2026 17:28:49 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:28:49 [Base]: [RP] Alive: 1099 s | 0 | 90 | 0 0
+05.03.2026 17:28:49 [Base]: [RP] USB Speed 9012 kByte/s
+05.03.2026 17:28:49 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:28:50 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 41
+05.03.2026 17:28:50 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:28:50 [Base]: [RP] Alive: 1100 s | 0 | 89 | 0 0
+05.03.2026 17:28:50 [Base]: [RP] USB Speed 8728 kByte/s
+05.03.2026 17:28:50 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:28:51 [Base]: [nRF] S1 TEL samples missing! ODR set: 95, measured 36
+05.03.2026 17:28:51 [1]: AF: CRC Check wrong, skipping sample!
+05.03.2026 17:28:51 [Base]: [RP] Alive: 1101 s | 0 | 87 | 0 0
+05.03.2026 17:28:51 [Base]: [RP] USB Speed 8973 kByte/s
+05.03.2026 17:28:51 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:28:52 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:28:52 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 37
+05.03.2026 17:28:52 [Base]: [RP] Alive: 1102 s | 0 | 87 | 0 0
+05.03.2026 17:28:52 [Base]: [RP] USB Speed 8682 kByte/s
+05.03.2026 17:28:53 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:28:53 [Base]: [RP] Alive: 1103 s | 0 | 93 | 0 0
+05.03.2026 17:28:53 [Base]: [RP] USB Speed 8996 kByte/s
+05.03.2026 17:28:53 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:28:54 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 41
+05.03.2026 17:28:54 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:28:54 [Base]: [RP] Alive: 1104 s | 0 | 92 | 0 0
+05.03.2026 17:28:54 [Base]: [RP] USB Speed 8790 kByte/s
+05.03.2026 17:28:55 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:28:55 [1]: Standard Sync, RTT 1312
+05.03.2026 17:28:55 [1]: Sync Success: -14 us
+05.03.2026 17:28:55 [1]: Raw: 790008754 1090254320 1090254326 790010066
+05.03.2026 17:28:55 [1]: Raw: 790008778 1090254813 1090254818 790013642
+05.03.2026 17:28:55 [Base]: [RP] Alive: 1105 s | 0 | 92 | 0 0
+05.03.2026 17:28:55 [Base]: [RP] USB Speed 8992 kByte/s
+05.03.2026 17:28:55 [Base]: [nRF] S1 TEL samples missing! ODR set: 94, measured 45
+05.03.2026 17:28:55 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 94
+05.03.2026 17:28:56 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:28:56 [Base]: [RP] Alive: 1106 s | 0 | 91 | 0 0
+05.03.2026 17:28:56 [Base]: [RP] USB Speed 8672 kByte/s
+05.03.2026 17:28:56 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:28:57 [1]: AF: CRC Check wrong, skipping sample!
+05.03.2026 17:28:57 [Base]: [RP] Alive: 1107 s | 0 | 91 | 0 0
+05.03.2026 17:28:57 [Base]: [RP] USB Speed 9011 kByte/s
+05.03.2026 17:28:57 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 57
+05.03.2026 17:28:57 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:28:57 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:28:58 [Base]: [RP] Alive: 1108 s | 0 | 71 | 0 0
+05.03.2026 17:28:58 [Base]: [RP] USB Speed 8616 kByte/s
+05.03.2026 17:28:58 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:28:58 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 36
+05.03.2026 17:28:58 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:28:59 [Base]: [RP] Alive: 1109 s | 0 | 61 | 0 0
+05.03.2026 17:28:59 [Base]: [RP] USB Speed 9097 kByte/s
+05.03.2026 17:28:59 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:28:59 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:28:59 [Base]: [nRF] S1 TEL samples missing! ODR set: 95, measured 47
+05.03.2026 17:29:00 [Base]: [RP] Alive: 1110 s | 0 | 83 | 0 0
+05.03.2026 17:29:00 [Base]: [RP] USB Speed 8753 kByte/s
+05.03.2026 17:29:00 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 57
+05.03.2026 17:29:00 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:29:00 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:01 [Base]: [RP] Alive: 1111 s | 0 | 91 | 0 0
+05.03.2026 17:29:01 [Base]: [RP] USB Speed 9050 kByte/s
+05.03.2026 17:29:02 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:29:02 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:02 [Base]: [RP] Alive: 1112 s | 0 | 93 | 0 0
+05.03.2026 17:29:02 [Base]: [RP] USB Speed 8708 kByte/s
+05.03.2026 17:29:02 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 58
+05.03.2026 17:29:03 [Base]: [RP] Alive: 1113 s | 0 | 90 | 0 0
+05.03.2026 17:29:03 [Base]: [RP] USB Speed 8963 kByte/s
+05.03.2026 17:29:03 [1]: AF: CRC Check wrong, skipping sample!
+05.03.2026 17:29:04 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 50
+05.03.2026 17:29:04 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:29:04 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:04 [Base]: [RP] Alive: 1114 s | 0 | 93 | 0 0
+05.03.2026 17:29:04 [Base]: [RP] USB Speed 8660 kByte/s
+05.03.2026 17:29:05 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 57
+05.03.2026 17:29:05 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:29:05 [1]: Standard Sync, RTT 1344
+05.03.2026 17:29:05 [1]: Sync Success: 15 us
+05.03.2026 17:29:05 [1]: Raw: 800025494 1100271123 1100271128 800026838
+05.03.2026 17:29:05 [1]: Raw: 800025593 1100271616 1100271621 800030543
+05.03.2026 17:29:05 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:05 [Base]: [RP] Alive: 1115 s | 0 | 92 | 0 0
+05.03.2026 17:29:05 [Base]: [RP] USB Speed 8954 kByte/s
+05.03.2026 17:29:06 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:29:06 [Base]: [RP] Alive: 1116 s | 0 | 89 | 0 0
+05.03.2026 17:29:06 [Base]: [RP] USB Speed 8715 kByte/s
+05.03.2026 17:29:06 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:06 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 57
+05.03.2026 17:29:07 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:29:07 [Base]: [RP] Alive: 1117 s | 0 | 93 | 0 0
+05.03.2026 17:29:07 [Base]: [RP] USB Speed 8962 kByte/s
+05.03.2026 17:29:07 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:08 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 97
+05.03.2026 17:29:08 [Base]: [RP] Alive: 1118 s | 0 | 92 | 0 0
+05.03.2026 17:29:08 [Base]: [RP] USB Speed 8735 kByte/s
+05.03.2026 17:29:08 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:09 [Base]: [RP] Alive: 1119 s | 0 | 96 | 0 0
+05.03.2026 17:29:09 [Base]: [RP] USB Speed 8973 kByte/s
+05.03.2026 17:29:09 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:29:09 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:10 [Base]: [nRF] S1 TEL samples missing! ODR set: 97, measured 58
+05.03.2026 17:29:10 [Base]: [RP] Alive: 1120 s | 0 | 92 | 0 0
+05.03.2026 17:29:10 [Base]: [RP] USB Speed 8738 kByte/s
+05.03.2026 17:29:10 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:29:10 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:11 [Base]: [RP] Alive: 1121 s | 0 | 92 | 0 0
+05.03.2026 17:29:11 [Base]: [RP] USB Speed 8940 kByte/s
+05.03.2026 17:29:12 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:29:12 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:12 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 51
+05.03.2026 17:29:12 [Base]: [RP] Alive: 1122 s | 0 | 89 | 0 0
+05.03.2026 17:29:12 [Base]: [RP] USB Speed 8697 kByte/s
+05.03.2026 17:29:13 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:29:13 [Base]: [nRF] S1 TEL samples missing! ODR set: 95, measured 56
+05.03.2026 17:29:13 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:13 [Base]: [RP] Alive: 1123 s | 0 | 91 | 0 0
+05.03.2026 17:29:13 [Base]: [RP] USB Speed 8908 kByte/s
+05.03.2026 17:29:14 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 95
+05.03.2026 17:29:14 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:14 [Base]: [RP] Alive: 1124 s | 0 | 93 | 0 0
+05.03.2026 17:29:14 [Base]: [RP] USB Speed 8726 kByte/s
+05.03.2026 17:29:15 [1]: Standard Sync, RTT 1312
+05.03.2026 17:29:15 [1]: Sync Success: -1 us
+05.03.2026 17:29:15 [1]: Raw: 810008966 1110254595 1110254600 810010278
+05.03.2026 17:29:15 [1]: Raw: 810008990 1110255077 1110255082 810014009
+05.03.2026 17:29:15 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 48
+05.03.2026 17:29:15 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:29:15 [Base]: [RP] Alive: 1125 s | 0 | 91 | 0 0
+05.03.2026 17:29:15 [Base]: [RP] USB Speed 8959 kByte/s
+05.03.2026 17:29:15 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:16 [Base]: [RP] Alive: 1126 s | 0 | 92 | 0 0
+05.03.2026 17:29:16 [Base]: [RP] USB Speed 8734 kByte/s
+05.03.2026 17:29:16 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 32
+05.03.2026 17:29:16 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:29:16 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:17 [Base]: [RP] Alive: 1127 s | 0 | 90 | 0 0
+05.03.2026 17:29:17 [Base]: [RP] USB Speed 8916 kByte/s
+05.03.2026 17:29:17 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:29:17 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:18 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 36
+05.03.2026 17:29:18 [Base]: [RP] Alive: 1128 s | 0 | 90 | 0 0
+05.03.2026 17:29:18 [Base]: [RP] USB Speed 8695 kByte/s
+05.03.2026 17:29:19 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:29:19 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:19 [Base]: [nRF] S1 TEL samples missing! ODR set: 95, measured 48
+05.03.2026 17:29:19 [1]: AF: CRC Check wrong, skipping sample!
+05.03.2026 17:29:19 [Base]: [RP] Alive: 1129 s | 0 | 90 | 0 0
+05.03.2026 17:29:19 [Base]: [RP] USB Speed 8966 kByte/s
+05.03.2026 17:29:20 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 57
+05.03.2026 17:29:20 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:29:20 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:20 [Base]: [RP] Alive: 1130 s | 0 | 88 | 0 0
+05.03.2026 17:29:20 [Base]: [RP] USB Speed 8761 kByte/s
+05.03.2026 17:29:21 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:29:21 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:21 [Base]: [RP] Alive: 1131 s | 0 | 90 | 0 0
+05.03.2026 17:29:21 [Base]: [RP] USB Speed 8959 kByte/s
+05.03.2026 17:29:21 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 47
+05.03.2026 17:29:22 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:29:22 [Base]: [RP] Alive: 1132 s | 0 | 86 | 0 0
+05.03.2026 17:29:22 [Base]: [RP] USB Speed 8659 kByte/s
+05.03.2026 17:29:22 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:22 [Base]: [nRF] S1 TEL samples missing! ODR set: 94, measured 36
+05.03.2026 17:29:23 [Base]: [RP] Alive: 1133 s | 0 | 90 | 0 0
+05.03.2026 17:29:23 [Base]: [RP] USB Speed 8982 kByte/s
+05.03.2026 17:29:24 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:29:24 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:24 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 47
+05.03.2026 17:29:24 [Base]: [RP] Alive: 1134 s | 0 | 92 | 0 0
+05.03.2026 17:29:24 [Base]: [RP] USB Speed 8732 kByte/s
+05.03.2026 17:29:25 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:29:25 [1]: Standard Sync, RTT 1355
+05.03.2026 17:29:25 [1]: Sync Success: 27 us
+05.03.2026 17:29:25 [1]: Raw: 820003058 1120248761 1120248766 820004413
+05.03.2026 17:29:25 [1]: Raw: 820003161 1120249254 1120249259 820010615
+05.03.2026 17:29:25 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 42
+05.03.2026 17:29:25 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:25 [Base]: [RP] Alive: 1135 s | 0 | 80 | 0 0
+05.03.2026 17:29:25 [Base]: [RP] USB Speed 8847 kByte/s
+05.03.2026 17:29:26 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:29:26 [Base]: [RP] Alive: 1136 s | 0 | 86 | 0 0
+05.03.2026 17:29:26 [Base]: [RP] USB Speed 8770 kByte/s
+05.03.2026 17:29:26 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:26 [Base]: [nRF] S1 TEL samples missing! ODR set: 94, measured 41
+05.03.2026 17:29:27 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:29:27 [Base]: [RP] Alive: 1137 s | 0 | 74 | 0 0
+05.03.2026 17:29:27 [Base]: [RP] USB Speed 9196 kByte/s
+05.03.2026 17:29:27 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:28 [Base]: [nRF] S1 TEL samples missing! ODR set: 94, measured 35
+05.03.2026 17:29:28 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 97
+05.03.2026 17:29:28 [Base]: [RP] Alive: 1138 s | 0 | 80 | 0 0
+05.03.2026 17:29:28 [Base]: [RP] USB Speed 8638 kByte/s
+05.03.2026 17:29:28 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:29 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 29
+05.03.2026 17:29:29 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:29:29 [Base]: [RP] Alive: 1139 s | 0 | 80 | 0 0
+05.03.2026 17:29:29 [Base]: [RP] USB Speed 8909 kByte/s
+05.03.2026 17:29:29 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:30 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 56
+05.03.2026 17:29:30 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:29:30 [Base]: [RP] Alive: 1140 s | 0 | 86 | 0 0
+05.03.2026 17:29:30 [Base]: [RP] USB Speed 8732 kByte/s
+05.03.2026 17:29:30 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:31 [Base]: [RP] Alive: 1141 s | 0 | 81 | 0 0
+05.03.2026 17:29:31 [Base]: [RP] USB Speed 8921 kByte/s
+05.03.2026 17:29:31 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 34
+05.03.2026 17:29:31 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:29:31 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:32 [Base]: [RP] Alive: 1142 s | 0 | 86 | 0 0
+05.03.2026 17:29:32 [Base]: [RP] USB Speed 8662 kByte/s
+05.03.2026 17:29:32 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 27
+05.03.2026 17:29:32 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:29:33 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:33 [Base]: [RP] Alive: 1143 s | 0 | 79 | 0 0
+05.03.2026 17:29:33 [Base]: [RP] USB Speed 9052 kByte/s
+05.03.2026 17:29:33 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:29:33 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 58
+05.03.2026 17:29:34 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:34 [Base]: [RP] Alive: 1144 s | 0 | 84 | 0 0
+05.03.2026 17:29:34 [Base]: [RP] USB Speed 8622 kByte/s
+05.03.2026 17:29:34 [1]: AF: CRC Check wrong, skipping sample!
+05.03.2026 17:29:34 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 97
+05.03.2026 17:29:35 [Base]: [nRF] S1 TEL samples missing! ODR set: 95, measured 48
+05.03.2026 17:29:35 [1]: Standard Sync, RTT 7005
+05.03.2026 17:29:35 [1]: Sync Success: 1115 us
+05.03.2026 17:29:35 [1]: Raw: 830005098 1130254754 1130254760 830012103
+05.03.2026 17:29:35 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:35 [1]: Raw: 830005233 1130256082 1130256087 830024497
+05.03.2026 17:29:35 [Base]: [RP] Alive: 1145 s | 0 | 85 | 0 0
+05.03.2026 17:29:35 [Base]: [RP] USB Speed 8993 kByte/s
+05.03.2026 17:29:36 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:29:36 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 57
+05.03.2026 17:29:36 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:36 [Base]: [RP] Alive: 1146 s | 0 | 84 | 0 0
+05.03.2026 17:29:36 [Base]: [RP] USB Speed 8612 kByte/s
+05.03.2026 17:29:37 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:29:37 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 50
+05.03.2026 17:29:37 [Base]: [RP] Alive: 1147 s | 0 | 81 | 0 0
+05.03.2026 17:29:37 [Base]: [RP] USB Speed 8973 kByte/s
+05.03.2026 17:29:37 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:38 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 95
+05.03.2026 17:29:38 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 57
+05.03.2026 17:29:38 [Base]: [RP] Alive: 1148 s | 0 | 56 | 0 0
+05.03.2026 17:29:38 [Base]: [RP] USB Speed 8745 kByte/s
+05.03.2026 17:29:38 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:39 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 95
+05.03.2026 17:29:39 [Base]: [RP] Alive: 1149 s | 0 | 68 | 0 0
+05.03.2026 17:29:39 [Base]: [RP] USB Speed 8839 kByte/s
+05.03.2026 17:29:39 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 29
+05.03.2026 17:29:39 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:40 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:29:40 [Base]: [RP] Alive: 1150 s | 0 | 73 | 0 0
+05.03.2026 17:29:40 [Base]: [RP] USB Speed 8741 kByte/s
+05.03.2026 17:29:40 [Base]: [nRF] S1 TEL samples missing! ODR set: 95, measured 53
+05.03.2026 17:29:40 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:41 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:29:41 [Base]: [RP] Alive: 1151 s | 0 | 81 | 0 0
+05.03.2026 17:29:41 [Base]: [RP] USB Speed 9050 kByte/s
+05.03.2026 17:29:41 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 46
+05.03.2026 17:29:41 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:42 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:29:42 [Base]: [RP] Alive: 1152 s | 0 | 71 | 0 0
+05.03.2026 17:29:42 [Base]: [RP] USB Speed 8574 kByte/s
+05.03.2026 17:29:42 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 56
+05.03.2026 17:29:43 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:43 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:29:43 [Base]: [RP] Alive: 1153 s | 0 | 73 | 0 0
+05.03.2026 17:29:43 [Base]: [RP] USB Speed 8896 kByte/s
+05.03.2026 17:29:43 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 33
+05.03.2026 17:29:44 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:44 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:29:44 [Base]: [RP] Alive: 1154 s | 0 | 74 | 0 0
+05.03.2026 17:29:44 [Base]: [RP] USB Speed 8683 kByte/s
+05.03.2026 17:29:44 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 57
+05.03.2026 17:29:45 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:45 [1]: SE: RTT too big: 13728 us
+05.03.2026 17:29:45 [1]: Raw: 840029472 1140287573 1140287578 840043200
+05.03.2026 17:29:45 [1]: SE: RTT too big: 32657 us
+05.03.2026 17:29:45 [1]: Raw: 840029488 1140288066 1140288071 840062145
+05.03.2026 17:29:45 [Base]: [RP] Alive: 1155 s | 0 | 72 | 0 0
+05.03.2026 17:29:45 [Base]: [RP] USB Speed 9039 kByte/s
+05.03.2026 17:29:45 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:29:45 [1]: AF: CRC Check wrong, skipping sample!
+05.03.2026 17:29:45 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 28
+05.03.2026 17:29:46 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:46 [Base]: [RP] Alive: 1156 s | 0 | 67 | 0 0
+05.03.2026 17:29:46 [Base]: [RP] USB Speed 8673 kByte/s
+05.03.2026 17:29:46 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:29:46 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 57
+05.03.2026 17:29:47 [Base]: [RP] Alive: 1157 s | 0 | 78 | 0 0
+05.03.2026 17:29:47 [Base]: [RP] USB Speed 9028 kByte/s
+05.03.2026 17:29:47 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:47 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:29:47 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 43
+05.03.2026 17:29:48 [Base]: [RP] Alive: 1158 s | 0 | 75 | 0 0
+05.03.2026 17:29:48 [Base]: [RP] USB Speed 8747 kByte/s
+05.03.2026 17:29:48 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:29:48 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:49 [Base]: [nRF] S1 TEL samples missing! ODR set: 95, measured 55
+05.03.2026 17:29:49 [Base]: [RP] Alive: 1159 s | 0 | 91 | 0 0
+05.03.2026 17:29:49 [Base]: [RP] USB Speed 8927 kByte/s
+05.03.2026 17:29:49 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:29:49 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:50 [Base]: [RP] Alive: 1160 s | 0 | 86 | 0 0
+05.03.2026 17:29:50 [Base]: [RP] USB Speed 8793 kByte/s
+05.03.2026 17:29:51 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 95
+05.03.2026 17:29:51 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:51 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 43
+05.03.2026 17:29:51 [Base]: [RP] Alive: 1161 s | 0 | 91 | 0 0
+05.03.2026 17:29:51 [Base]: [RP] USB Speed 8964 kByte/s
+05.03.2026 17:29:52 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 95
+05.03.2026 17:29:52 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:52 [Base]: [RP] Alive: 1162 s | 0 | 87 | 0 0
+05.03.2026 17:29:52 [Base]: [RP] USB Speed 8735 kByte/s
+05.03.2026 17:29:53 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 56
+05.03.2026 17:29:53 [Base]: [RP] Alive: 1163 s | 0 | 92 | 0 0
+05.03.2026 17:29:53 [Base]: [RP] USB Speed 9024 kByte/s
+05.03.2026 17:29:53 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:29:53 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:54 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 56
+05.03.2026 17:29:54 [Base]: [RP] Alive: 1164 s | 0 | 87 | 0 0
+05.03.2026 17:29:54 [Base]: [RP] USB Speed 8733 kByte/s
+05.03.2026 17:29:54 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:29:54 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:55 [Base]: [nRF] S1 TEL samples missing! ODR set: 94, measured 49
+05.03.2026 17:29:55 [1]: Standard Sync, RTT 1344
+05.03.2026 17:29:55 [1]: Sync Success: -1257 us
+05.03.2026 17:29:55 [1]: Raw: 850005710 1150251496 1150251501 850007054
+05.03.2026 17:29:55 [1]: Raw: 850005766 1150251989 1150251994 850010762
+05.03.2026 17:29:55 [Base]: [RP] Alive: 1165 s | 0 | 89 | 0 0
+05.03.2026 17:29:55 [Base]: [RP] USB Speed 8934 kByte/s
+05.03.2026 17:29:55 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 97
+05.03.2026 17:29:55 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:56 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 57
+05.03.2026 17:29:56 [Base]: [RP] Alive: 1166 s | 0 | 87 | 0 0
+05.03.2026 17:29:56 [Base]: [RP] USB Speed 8682 kByte/s
+05.03.2026 17:29:56 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:29:56 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:57 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 46
+05.03.2026 17:29:57 [Base]: [RP] Alive: 1167 s | 0 | 79 | 0 0
+05.03.2026 17:29:57 [Base]: [RP] USB Speed 8780 kByte/s
+05.03.2026 17:29:57 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:29:57 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:58 [Base]: [RP] Alive: 1168 s | 0 | 86 | 0 0
+05.03.2026 17:29:58 [Base]: [RP] USB Speed 8661 kByte/s
+05.03.2026 17:29:58 [Base]: [nRF] S1 TEL samples missing! ODR set: 95, measured 23
+05.03.2026 17:29:58 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:29:59 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:29:59 [Base]: [RP] Alive: 1169 s | 0 | 75 | 0 0
+05.03.2026 17:29:59 [Base]: [RP] USB Speed 8954 kByte/s
+05.03.2026 17:29:59 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 57
+05.03.2026 17:29:59 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:30:00 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:30:00 [Base]: [RP] Alive: 1170 s | 0 | 69 | 0 0
+05.03.2026 17:30:00 [Base]: [RP] USB Speed 8732 kByte/s
+05.03.2026 17:30:00 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 56
+05.03.2026 17:30:01 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:30:01 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:30:01 [Base]: [RP] Alive: 1171 s | 0 | 78 | 0 0
+05.03.2026 17:30:01 [Base]: [RP] USB Speed 8981 kByte/s
+05.03.2026 17:30:01 [Base]: [nRF] S1 TEL samples missing! ODR set: 95, measured 52
+05.03.2026 17:30:02 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:30:02 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:30:02 [Base]: [RP] Alive: 1172 s | 0 | 78 | 0 0
+05.03.2026 17:30:02 [Base]: [RP] USB Speed 8677 kByte/s
+05.03.2026 17:30:02 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 36
+05.03.2026 17:30:03 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 97
+05.03.2026 17:30:03 [Base]: [RP] Alive: 1173 s | 0 | 62 | 0 0
+05.03.2026 17:30:03 [Base]: [RP] USB Speed 8821 kByte/s
+05.03.2026 17:30:03 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:30:03 [1]: AF: CRC Check wrong, skipping sample!
+05.03.2026 17:30:03 [Base]: [nRF] S1 TEL samples missing! ODR set: 94, measured 32
+05.03.2026 17:30:04 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 95
+05.03.2026 17:30:04 [Base]: [RP] Alive: 1174 s | 0 | 61 | 0 0
+05.03.2026 17:30:04 [Base]: [RP] USB Speed 8540 kByte/s
+05.03.2026 17:30:04 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 46
+05.03.2026 17:30:04 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:30:05 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:30:05 [1]: Standard Sync, RTT 1422
+05.03.2026 17:30:05 [1]: Sync Success: -1231 us
+05.03.2026 17:30:05 [1]: Raw: 860005118 1160251014 1160251019 860006540
+05.03.2026 17:30:05 [1]: Raw: 860005252 1160251506 1160251512 860027635
+05.03.2026 17:30:05 [Base]: [RP] Alive: 1175 s | 0 | 83 | 0 0
+05.03.2026 17:30:05 [Base]: [RP] USB Speed 8940 kByte/s
+05.03.2026 17:30:05 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 58
+05.03.2026 17:30:05 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:30:06 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:30:06 [Base]: [RP] Alive: 1176 s | 0 | 83 | 0 0
+05.03.2026 17:30:06 [Base]: [RP] USB Speed 8659 kByte/s
+05.03.2026 17:30:06 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 37
+05.03.2026 17:30:06 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:30:07 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:30:07 [Base]: [RP] Alive: 1177 s | 0 | 71 | 0 0
+05.03.2026 17:30:07 [Base]: [RP] USB Speed 9116 kByte/s
+05.03.2026 17:30:07 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 36
+05.03.2026 17:30:07 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:30:08 [Base]: [RP] Alive: 1178 s | 0 | 39 | 0 0
+05.03.2026 17:30:08 [Base]: [RP] USB Speed 8439 kByte/s
+05.03.2026 17:30:08 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:30:08 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 19
+05.03.2026 17:30:09 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:30:09 [Base]: [RP] Alive: 1179 s | 0 | 40 | 0 0
+05.03.2026 17:30:09 [Base]: [RP] USB Speed 9204 kByte/s
+05.03.2026 17:30:09 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:30:09 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 56
+05.03.2026 17:30:10 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:30:10 [Base]: [RP] Alive: 1180 s | 0 | 75 | 0 0
+05.03.2026 17:30:10 [Base]: [RP] USB Speed 8819 kByte/s
+05.03.2026 17:30:10 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:30:11 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 57
+05.03.2026 17:30:11 [1]: AF: CRC Check wrong, skipping sample!
+05.03.2026 17:30:11 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:30:11 [Base]: [RP] Alive: 1181 s | 0 | 83 | 0 0
+05.03.2026 17:30:11 [Base]: [RP] USB Speed 9023 kByte/s
+05.03.2026 17:30:12 [Base]: [RP] Alive: 1182 s | 0 | 91 | 0 0
+05.03.2026 17:30:12 [Base]: [RP] USB Speed 8799 kByte/s
+05.03.2026 17:30:12 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 56
+05.03.2026 17:30:12 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:30:12 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:30:13 [Base]: [RP] Alive: 1183 s | 0 | 80 | 0 0
+05.03.2026 17:30:13 [Base]: [RP] USB Speed 8891 kByte/s
+05.03.2026 17:30:14 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:30:14 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 42
+05.03.2026 17:30:14 [Base]: [RP] Alive: 1184 s | 0 | 92 | 0 0
+05.03.2026 17:30:14 [Base]: [RP] USB Speed 8682 kByte/s
+05.03.2026 17:30:14 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:30:15 [1]: Standard Sync, RTT 1313
+05.03.2026 17:30:15 [1]: Sync Success: -1183 us
+05.03.2026 17:30:15 [1]: Raw: 870009203 1170255021 1170255026 870010516
+05.03.2026 17:30:15 [1]: Raw: 870009228 1170255514 1170255519 870014074
+05.03.2026 17:30:15 [Base]: [RP] Alive: 1185 s | 0 | 86 | 0 0
+05.03.2026 17:30:15 [Base]: [RP] USB Speed 8863 kByte/s
+05.03.2026 17:30:15 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 58
+05.03.2026 17:30:15 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:30:15 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:30:16 [Base]: [RP] Alive: 1186 s | 0 | 78 | 0 0
+05.03.2026 17:30:16 [Base]: [RP] USB Speed 8655 kByte/s
+05.03.2026 17:30:16 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:30:16 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 56
+05.03.2026 17:30:16 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:30:17 [Base]: [RP] Alive: 1187 s | 0 | 89 | 0 0
+05.03.2026 17:30:17 [Base]: [RP] USB Speed 9005 kByte/s
+05.03.2026 17:30:17 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:30:17 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 27
+05.03.2026 17:30:17 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:30:18 [Base]: [RP] Alive: 1188 s | 0 | 81 | 0 0
+05.03.2026 17:30:18 [Base]: [RP] USB Speed 8759 kByte/s
+05.03.2026 17:30:19 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:30:19 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:30:19 [Base]: [RP] Alive: 1189 s | 0 | 92 | 0 0
+05.03.2026 17:30:19 [Base]: [RP] USB Speed 8956 kByte/s
+05.03.2026 17:30:19 [Base]: [nRF] S1 TEL samples missing! ODR set: 97, measured 57
+05.03.2026 17:30:20 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:30:20 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:30:20 [Base]: [RP] Alive: 1190 s | 0 | 85 | 0 0
+05.03.2026 17:30:20 [Base]: [RP] USB Speed 8719 kByte/s
+05.03.2026 17:30:20 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 46
+05.03.2026 17:30:21 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:30:21 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:30:21 [Base]: [RP] Alive: 1191 s | 0 | 92 | 0 0
+05.03.2026 17:30:21 [Base]: [RP] USB Speed 8907 kByte/s
+05.03.2026 17:30:21 [Base]: [nRF] S1 TEL samples missing! ODR set: 94, measured 52
+05.03.2026 17:30:22 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:30:22 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:30:22 [Base]: [RP] Alive: 1192 s | 0 | 93 | 0 0
+05.03.2026 17:30:22 [Base]: [RP] USB Speed 8723 kByte/s
+05.03.2026 17:30:23 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 57
+05.03.2026 17:30:23 [Base]: [RP] Alive: 1193 s | 0 | 94 | 0 0
+05.03.2026 17:30:23 [Base]: [RP] USB Speed 8997 kByte/s
+05.03.2026 17:30:23 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:30:23 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:30:24 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 35
+05.03.2026 17:30:24 [Base]: [RP] Alive: 1194 s | 0 | 90 | 0 0
+05.03.2026 17:30:24 [Base]: [RP] USB Speed 8683 kByte/s
+05.03.2026 17:30:24 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:30:24 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:30:25 [1]: Standard Sync, RTT 1344
+05.03.2026 17:30:25 [1]: Sync Success: -964 us
+05.03.2026 17:30:25 [1]: Raw: 880009349 1180255230 1180255235 880010693
+05.03.2026 17:30:25 [1]: Raw: 880009405 1180255722 1180255727 880014404
+05.03.2026 17:30:25 [Base]: [RP] Alive: 1195 s | 0 | 84 | 0 0
+05.03.2026 17:30:25 [Base]: [RP] USB Speed 8910 kByte/s
+05.03.2026 17:30:25 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:30:25 [1]: AF: CRC Check wrong, skipping sample!
+05.03.2026 17:30:25 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 42
+05.03.2026 17:30:25 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:30:26 [Base]: [RP] Alive: 1196 s | 0 | 86 | 0 0
+05.03.2026 17:30:26 [Base]: [RP] USB Speed 8651 kByte/s
+05.03.2026 17:30:26 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 52
+05.03.2026 17:30:26 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:30:27 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:30:27 [Base]: [RP] Alive: 1197 s | 0 | 59 | 0 0
+05.03.2026 17:30:27 [Base]: [RP] USB Speed 9695 kByte/s
+05.03.2026 17:30:27 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 35
+05.03.2026 17:30:27 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:30:28 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:30:28 [Base]: [RP] Alive: 1198 s | 0 | 15 | 0 0
+05.03.2026 17:30:28 [Base]: [RP] USB Speed 8123 kByte/s
+05.03.2026 17:30:28 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 16
+05.03.2026 17:30:28 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:30:29 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:30:29 [Base]: [RP] Alive: 1199 s | 0 | 19 | 0 0
+05.03.2026 17:30:29 [Base]: [RP] USB Speed 9548 kByte/s
+05.03.2026 17:30:29 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 16
+05.03.2026 17:30:29 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:30:30 [Base]: [RP] Alive: 1200 s | 0 | 89 | 0 0
+05.03.2026 17:30:30 [Base]: [RP] USB Speed 8965 kByte/s
+05.03.2026 17:30:30 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:30:30 [Base]: [nRF] S1 TEL samples missing! ODR set: 95, measured 55
+05.03.2026 17:30:30 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 95
+05.03.2026 17:30:31 [Base]: [RP] Alive: 1201 s | 0 | 84 | 0 0
+05.03.2026 17:30:31 [Base]: [RP] USB Speed 9112 kByte/s
+05.03.2026 17:30:31 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:30:31 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 95
+05.03.2026 17:30:32 [1]: AF: CRC Check wrong, skipping sample!
+05.03.2026 17:30:32 [Base]: [nRF] S1 TEL samples missing! ODR set: 94, measured 37
+05.03.2026 17:30:32 [Base]: [RP] Alive: 1202 s | 0 | 90 | 0 0
+05.03.2026 17:30:32 [Base]: [RP] USB Speed 8738 kByte/s
+05.03.2026 17:30:33 [Base]: [RP C1]: S1 TEL samples missing! ODR: 0 < 96
+05.03.2026 17:30:33 [PC]: Sensor 1 Stream 0 Sample(s) Missing!
+05.03.2026 17:30:33 [Base]: [nRF] S1 TEL samples missing! ODR set: 96, measured 40
+05.03.2026 17:30:33 [Base]: [RP] Alive: 1203 s | 0 | 77 | 0 0
+05.03.2026 17:30:33 [Base]: [RP] USB Speed 9131 kByte/s
+05.03.2026 17:30:33 [PC]: Closing files
