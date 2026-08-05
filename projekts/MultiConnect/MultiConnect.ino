@@ -1,6 +1,6 @@
 /*
   LoRaSense V4.3 - All-in-one test and LoRaWAN sketch
-
+ Evgenij test
   Changes in this version:
   - EU868 channel mask restored to 0x00FF.
   - Default LoRaWAN data rate restored to DR3.
