@@ -1,6 +1,6 @@
 /*
  * =====================================================================
- *  MKP MultiConnect V1.4
+ *  MKP MultiConnect V1.4.1
  *  Universal LoRaWAN / NB-IoT-ready sensor controller
  *  Current firmware profile: LoRaWAN + DS18B20 + ADS1220 Wegsensor + INA226
  * ---------------------------------------------------------------------
@@ -56,7 +56,7 @@
 #include <math.h>
 
 // ============================= Firmware =============================
-static constexpr const char* FW_VERSION = "1.4.0";
+static constexpr const char* FW_VERSION = "1.4.1";
 static constexpr const char* DEVICE_NAME = "MKP MultiConnect";
 
 // ============================== Modes ===============================
@@ -81,7 +81,7 @@ static constexpr uint8_t PIN_INA_SCL = 42;
 static constexpr uint8_t PIN_BATTERY_ADC = 1;    // ADC1_CH0 / VBAT_Read
 static constexpr uint8_t PIN_BATTERY_CTRL = 37; // HIGH enables divider
 static constexpr float BATTERY_DIVIDER_RATIO = 4.90f;
-static constexpr float BATTERY_CALIBRATION = 1.000f;
+static constexpr float BATTERY_CALIBRATION = 1.0128f;
 static constexpr uint8_t BATTERY_SAMPLES = 24;
 
 // Reserved for future firmware profiles.
@@ -1155,6 +1155,11 @@ void setup() {
 
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
 
+  // Keep the OLED/Vext rail physically off immediately after board init.
+  // The display is initialized only when AP mode is selected.
+  pinMode(Vext, OUTPUT);
+  digitalWrite(Vext, HIGH);  // Heltec Vext active LOW -> HIGH means OFF
+
   Serial.println();
   Serial.printf("%s FW %s (%s %s)\n", DEVICE_NAME, FW_VERSION, __DATE__, __TIME__);
 
@@ -1170,11 +1175,18 @@ void setup() {
   loadConfig();
   copyConfigToLoRaGlobals();
 
-  oledPowerOn();
-  oledSplash();
-  delay(650);
-  oledShowBootMode(apMode);
-  delay(850);
+  if (apMode) {
+    oledPowerOn();
+    oledSplash();
+    delay(650);
+    oledShowBootMode(true);
+    delay(850);
+  } else {
+    // FIELD mode: never initialize the SSD1306 and never enable Vext.
+    oledAvailable = false;
+    pinMode(Vext, OUTPUT);
+    digitalWrite(Vext, HIGH);
+  }
 
   initializeBatteryMeasurement();
   dsAvailable = initializeDS18B20();
@@ -1193,11 +1205,11 @@ void setup() {
   if (apMode) {
     startAccessPoint();
   } else {
-    oledShowSensors();
-    delay(1500);
-    oledPowerOff();
+    // FIELD mode: OLED remains physically powered off from boot onward.
+    pinMode(Vext, OUTPUT);
+    digitalWrite(Vext, HIGH);
     disableUnusedRadiosForFieldMode();
-    Serial.println("[MODE] FIELD low-power mode");
+    Serial.println("[MODE] FIELD low-power mode; OLED/Vext OFF");
   }
 }
 
