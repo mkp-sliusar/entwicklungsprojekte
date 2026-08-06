@@ -127,6 +127,8 @@ html[data-theme="dark"] .cal-point h3{color:var(--mkp-cyan)}
             <div class="metric"><span class="metric-label" id="inaShuntLabel">INA226 shunt</span><span class="metric-value" id="inaShunt">—</span></div>
             <div class="metric"><span class="metric-label" id="inaCurrentLabel">INA226 current</span><span class="metric-value" id="inaCurrent">—</span></div>
             <div class="metric"><span class="metric-label" id="inaPowerLabel">INA226 power</span><span class="metric-value" id="inaPower">—</span></div>
+            <div class="metric"><span class="metric-label" id="batteryVoltageLabel">Internal battery</span><span class="metric-value" id="batteryVoltage">—</span></div>
+            <div class="metric"><span class="metric-label" id="batteryPercentLabel">Battery level</span><span class="metric-value" id="batteryPercent">—</span></div>
           </div>
         </div>
       </section>
@@ -215,7 +217,7 @@ async function request(url,options){
 }
 function errorText(error){return error instanceof TypeError?tr('connection_error'):(error?.message||tr('connection_error'))}
 function applyLanguage(){
-  const map={title:'title',subtitle:'subtitle',liveDataEyebrow:'live_data',systemEyebrow:'system',communicationEyebrow:'communication',measurementEyebrow:'measurement',sensorsTitle:'sensors',temperatureLabel:'temperature',positionLabel:'position',rawLabel:'raw',voltageLabel:'voltage',inaBusLabel:'ina_bus',inaShuntLabel:'ina_shunt',inaCurrentLabel:'ina_current',inaPowerLabel:'ina_power',controllerTitle:'controller',modeLabel:'mode',modePinLabel:'mode_selection',ipLabel:'ip',uptimeLabel:'uptime',heapLabel:'heap',firmwareLabel:'firmware',loraTitle:'lora',devEuiLabel:'deveui',joinEuiLabel:'joineui',appKeyLabel:'appkey',intervalLabel:'interval',minutesLabel:'minutes',dataRateLabel:'data_rate',calibrationTitle:'calibration',calibrationHelp:'calibration_help',point0Title:'point0',point1Title:'point1',capture0Btn:'use_current',capture1Btn:'use_current',saveBtn:'save_all',readChipBtn:'read_chip',useChipBtn:'use_chip',rebootBtn:'reboot',footer:'footer'};
+  const map={title:'title',subtitle:'subtitle',liveDataEyebrow:'live_data',systemEyebrow:'system',communicationEyebrow:'communication',measurementEyebrow:'measurement',sensorsTitle:'sensors',temperatureLabel:'temperature',positionLabel:'position',rawLabel:'raw',voltageLabel:'voltage',inaBusLabel:'ina_bus',inaShuntLabel:'ina_shunt',inaCurrentLabel:'ina_current',inaPowerLabel:'ina_power',batteryVoltageLabel:'battery_voltage',batteryPercentLabel:'battery_percent',controllerTitle:'controller',modeLabel:'mode',modePinLabel:'mode_selection',ipLabel:'ip',uptimeLabel:'uptime',heapLabel:'heap',firmwareLabel:'firmware',loraTitle:'lora',devEuiLabel:'deveui',joinEuiLabel:'joineui',appKeyLabel:'appkey',intervalLabel:'interval',minutesLabel:'minutes',dataRateLabel:'data_rate',calibrationTitle:'calibration',calibrationHelp:'calibration_help',point0Title:'point0',point1Title:'point1',capture0Btn:'use_current',capture1Btn:'use_current',saveBtn:'save_all',readChipBtn:'read_chip',useChipBtn:'use_chip',rebootBtn:'reboot',footer:'footer'};
   Object.entries(map).forEach(([id,key])=>text(id,tr(key)));
   $('dr').options[0].text=tr('adr_auto');
   text('langBtn',lang.toUpperCase());
@@ -243,6 +245,8 @@ async function loadState(){
     text('inaShunt',state.ina_valid?fmt(state.ina_shunt_mv,4,'mV'):tr('not_available'));
     text('inaCurrent',state.ina_valid?fmt(state.ina_current_ma,1,'mA'):tr('not_available'));
     text('inaPower',state.ina_valid?fmt(state.ina_power_w,4,'W'):tr('not_available'));
+    text('batteryVoltage',state.battery_valid?fmt(state.battery_v,3,'V'):tr('not_available'));
+    text('batteryPercent',state.battery_valid?`${Number(state.battery_percent).toFixed(0)} %`:tr('not_available'));
     renderMode();
     text('ip',state.ip||'—');
     text('uptime',(state.uptime_s??'—')+' s');

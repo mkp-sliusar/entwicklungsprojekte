@@ -1,6 +1,6 @@
 /*
  * =====================================================================
- *  MKP MultiConnect V1.2
+ *  MKP MultiConnect V1.3
  *  Universal LoRaWAN / NB-IoT-ready sensor controller
  *  Current firmware profile: LoRaWAN + DS18B20 + ADS1220 Wegsensor + INA226
  * ---------------------------------------------------------------------
@@ -21,6 +21,8 @@
  *    Wegsensor: AIN2 - AIN3
  *    DS18B20: GPIO47, external 4.7 kOhm pull-up to 3.3 V
  *    INA226: SDA=41, SCL=42, address 0x40 (second I2C controller)
+ *    Internal battery measurement:
+ *      VBAT ADC=GPIO1, divider enable=GPIO37, divider ratio=4.9
  *    Reserved: MAX3485 GPIO40/39/38, sensor MOSFET GPIO34
  *
  *  Important OneWire patch for GPIO47:
@@ -54,7 +56,7 @@
 #include <math.h>
 
 // ============================= Firmware =============================
-static constexpr const char* FW_VERSION = "1.2.0";
+static constexpr const char* FW_VERSION = "1.3.0";
 static constexpr const char* DEVICE_NAME = "MKP MultiConnect";
 
 // ============================== Modes ===============================
@@ -74,6 +76,13 @@ static constexpr uint8_t PIN_ADS_DRDY = 45;
 static constexpr uint8_t PIN_DS18B20 = 47;
 static constexpr uint8_t PIN_INA_SDA = 41;
 static constexpr uint8_t PIN_INA_SCL = 42;
+
+// Heltec WiFi LoRa 32 V4.x internal Li-ion battery monitor.
+static constexpr uint8_t PIN_BATTERY_ADC = 1;    // ADC1_CH0 / VBAT_Read
+static constexpr uint8_t PIN_BATTERY_CTRL = 37; // HIGH enables divider
+static constexpr float BATTERY_DIVIDER_RATIO = 4.90f;
+static constexpr float BATTERY_CALIBRATION = 1.000f;
+static constexpr uint8_t BATTERY_SAMPLES = 24;
 
 // Reserved for future firmware profiles.
 static constexpr uint8_t PIN_RS485_RE_DE = 40;
@@ -151,6 +160,11 @@ struct Measurements {
   float inaShuntVoltageMv = NAN;
   float inaCurrentMa = NAN;
   float inaPowerW = NAN;
+
+  bool batteryValid = false;
+  uint16_t batteryMillivolts = 0;
+  float batteryVoltageV = NAN;
+  uint8_t batteryPercent = 0;
 
   uint32_t measuredAtMs = 0;
 };
@@ -510,6 +524,100 @@ bool readINA226(float& busVoltageV, float& shuntVoltageMv, float& currentMa, flo
   return true;
 }
 
+
+// ======================== Internal battery ADC ======================
+uint8_t batteryPercentFromMillivolts(uint16_t millivolts) {
+  // Approximate resting-voltage curve for a single-cell Li-ion / LiPo.
+  // Voltage is the primary measurement; percentage is only an estimate.
+  struct Point {
+    uint16_t mv;
+    uint8_t percent;
+  };
+
+  static constexpr Point curve[] = {
+    { 3200,   0 },
+    { 3300,   5 },
+    { 3500,  10 },
+    { 3600,  20 },
+    { 3700,  35 },
+    { 3750,  50 },
+    { 3800,  60 },
+    { 3900,  75 },
+    { 4000,  85 },
+    { 4100,  95 },
+    { 4200, 100 }
+  };
+
+  if (millivolts <= curve[0].mv) return curve[0].percent;
+  const size_t count = sizeof(curve) / sizeof(curve[0]);
+  if (millivolts >= curve[count - 1].mv) return curve[count - 1].percent;
+
+  for (size_t i = 1; i < count; ++i) {
+    if (millivolts <= curve[i].mv) {
+      const uint16_t x0 = curve[i - 1].mv;
+      const uint16_t x1 = curve[i].mv;
+      const uint8_t y0 = curve[i - 1].percent;
+      const uint8_t y1 = curve[i].percent;
+      return static_cast<uint8_t>(
+        y0 + ((static_cast<uint32_t>(millivolts - x0) * (y1 - y0)) / (x1 - x0))
+      );
+    }
+  }
+
+  return 0;
+}
+
+void initializeBatteryMeasurement() {
+  analogReadResolution(12);
+  analogSetPinAttenuation(PIN_BATTERY_ADC, ADC_11db);
+
+  pinMode(PIN_BATTERY_CTRL, OUTPUT);
+  digitalWrite(PIN_BATTERY_CTRL, LOW); // divider disabled between readings
+}
+
+bool readInternalBattery(uint16_t& batteryMillivolts,
+                         float& batteryVoltageV,
+                         uint8_t& batteryPercent) {
+  digitalWrite(PIN_BATTERY_CTRL, HIGH);
+  delay(8);
+
+  // Discard the first reading after enabling the divider.
+  (void)analogReadMilliVolts(PIN_BATTERY_ADC);
+  delayMicroseconds(250);
+
+  uint32_t adcMillivoltSum = 0;
+  for (uint8_t i = 0; i < BATTERY_SAMPLES; ++i) {
+    adcMillivoltSum += static_cast<uint32_t>(
+      analogReadMilliVolts(PIN_BATTERY_ADC)
+    );
+    delayMicroseconds(250);
+  }
+
+  digitalWrite(PIN_BATTERY_CTRL, LOW);
+
+  const float adcMillivolts =
+    static_cast<float>(adcMillivoltSum) /
+    static_cast<float>(BATTERY_SAMPLES);
+
+  const float calculatedBatteryMv =
+    adcMillivolts *
+    BATTERY_DIVIDER_RATIO *
+    BATTERY_CALIBRATION;
+
+  if (!isfinite(calculatedBatteryMv) ||
+      calculatedBatteryMv < 500.0f ||
+      calculatedBatteryMv > 6000.0f) {
+    return false;
+  }
+
+  batteryMillivolts = static_cast<uint16_t>(
+    constrain(lroundf(calculatedBatteryMv), 0L, 65534L)
+  );
+  batteryVoltageV = static_cast<float>(batteryMillivolts) / 1000.0f;
+  batteryPercent = batteryPercentFromMillivolts(batteryMillivolts);
+  return true;
+}
+
 // =========================== Sensor cache ===========================
 void readAllSensors() {
   Measurements next;
@@ -518,6 +626,9 @@ void readAllSensors() {
   next.wegValid = readWegsensor(next.wegRaw, next.wegVoltageV, next.wegPositionMm);
   next.inaValid = readINA226(next.inaBusVoltageV, next.inaShuntVoltageMv,
                                 next.inaCurrentMa, next.inaPowerW);
+  next.batteryValid = readInternalBattery(next.batteryMillivolts,
+                                           next.batteryVoltageV,
+                                           next.batteryPercent);
   next.measuredAtMs = millis();
 
   cached = next;
@@ -533,6 +644,10 @@ void readAllSensors() {
                                      cached.inaShuntVoltageMv,
                                      cached.inaCurrentMa,
                                      cached.inaPowerW);
+  if (cached.batteryValid) Serial.printf("  battery: %u mV / %.3f V / %u %%\n",
+                                         cached.batteryMillivolts,
+                                         cached.batteryVoltageV,
+                                         cached.batteryPercent);
 }
 
 // ================================ OLED ==============================
@@ -608,9 +723,9 @@ void oledShowSensors() {
   oled.drawString(0, 29, cached.wegValid
     ? String("Weg   ") + String(cached.wegPositionMm, 3) + " mm"
     : "Weg   N/C");
-  oled.drawString(0, 43, cached.inaValid
-    ? String("I ") + String(cached.inaCurrentMa, 1) + "mA P " + String(cached.inaPowerW, 2) + "W"
-    : "INA   N/C");
+  oled.drawString(0, 43, cached.batteryValid
+    ? String("Bat   ") + String(cached.batteryVoltageV, 2) + " V  " + String(cached.batteryPercent) + "%"
+    : "Bat   N/C");
   oled.display();
 }
 
@@ -657,6 +772,13 @@ void apiState() {
     doc["ina_shunt_mv"] = cached.inaShuntVoltageMv;
     doc["ina_current_ma"] = cached.inaCurrentMa;
     doc["ina_power_w"] = cached.inaPowerW;
+  }
+
+  doc["battery_valid"] = cached.batteryValid;
+  if (cached.batteryValid) {
+    doc["battery_mv"] = cached.batteryMillivolts;
+    doc["battery_v"] = cached.batteryVoltageV;
+    doc["battery_percent"] = cached.batteryPercent;
   }
 
   JsonObject config = doc["cfg"].to<JsonObject>();
@@ -876,12 +998,13 @@ static void prepareTxFrame(uint8_t port) {
   (void)port;
 
   uint8_t index = 0;
-  appData[index++] = 3;
+  appData[index++] = 4;
 
   uint8_t status = 0;
   if (cached.temperatureValid) status |= 1U << 0;
   if (cached.wegValid) status |= 1U << 1;
   if (cached.inaValid) status |= 1U << 2;
+  if (cached.batteryValid) status |= 1U << 3;
   appData[index++] = status;
 
   int16_t encodedTemperature = INT16_MAX;
@@ -931,6 +1054,14 @@ static void prepareTxFrame(uint8_t port) {
   putInt32BE(index, encodedCurrentMa);
   putInt32BE(index, encodedPowerMw);
 
+  const uint16_t encodedBatteryMv =
+    cached.batteryValid ? cached.batteryMillivolts : UINT16_MAX;
+  const uint8_t encodedBatteryPercent =
+    cached.batteryValid ? cached.batteryPercent : UINT8_MAX;
+
+  putUInt16BE(index, encodedBatteryMv);
+  appData[index++] = encodedBatteryPercent;
+
   appDataSize = index;
 
   Serial.print("[LORA] cached payload: ");
@@ -978,6 +1109,7 @@ void setup() {
   oledShowBootMode(apMode);
   delay(850);
 
+  initializeBatteryMeasurement();
   dsAvailable = initializeDS18B20();
   inaAvailable = initializeINA226();
   adsAvailable = initializeADS1220();

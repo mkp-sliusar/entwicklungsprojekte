@@ -48,7 +48,9 @@
     "not_available": "N/A",
     "footer": "MKP GmbH · MultiConnect",
     "ina_current": "INA226 current",
-    "ina_power": "INA226 power"
+    "ina_power": "INA226 power",
+    "battery_voltage": "Internal battery",
+    "battery_percent": "Battery level"
   },
   "de": {
     "title": "MKP MultiConnect",
@@ -99,7 +101,9 @@
     "not_available": "n/v",
     "footer": "MKP GmbH · MultiConnect",
     "ina_current": "INA226 Strom",
-    "ina_power": "INA226 Leistung"
+    "ina_power": "INA226 Leistung",
+    "battery_voltage": "Interne Batterie",
+    "battery_percent": "Batteriestand"
   },
   "uk": {
     "title": "MKP MultiConnect",
@@ -150,6 +154,8 @@
     "not_available": "Н/Д",
     "footer": "MKP GmbH · MultiConnect",
     "ina_current": "Струм INA226",
-    "ina_power": "Потужність INA226"
+    "ina_power": "Потужність INA226",
+    "battery_voltage": "Внутрішня батарея",
+    "battery_percent": "Рівень батареї"
   }
 }
