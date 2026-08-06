@@ -1,304 +1,43 @@
 <!doctype html>
-<html lang="en" data-theme="light">
+<html lang="en" data-theme="light" data-view="user">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="color-scheme" content="light dark">
-<title>MKP MultiConnect</title>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark"><title>MKP MultiConnect</title>
 <style>
-:root{
-  --mkp-cyan:#42c0eb;
-  --mkp-cyan-strong:#159dcc;
-  --mkp-navy:#003b62;
-  --mkp-navy-2:#082f49;
-  --bg:#edf4f8;
-  --surface:#ffffff;
-  --surface-soft:#f6fafc;
-  --text:#102c3d;
-  --muted:#607887;
-  --line:#cfdee6;
-  --shadow:0 14px 38px rgba(0,59,98,.10);
-  --danger:#b42318;
-  --success:#147a4b;
-  --radius:18px;
-}
-html[data-theme="dark"]{
-  --bg:#071721;
-  --surface:#0e2533;
-  --surface-soft:#112c3d;
-  --text:#edf8fc;
-  --muted:#a8bdc8;
-  --line:#29495b;
-  --shadow:0 18px 46px rgba(0,0,0,.28);
-  --danger:#ff938b;
-  --success:#6ee7aa;
-}
-*{box-sizing:border-box}
-html{min-height:100%;background:var(--bg)}
-body{margin:0;min-height:100vh;background:linear-gradient(180deg,rgba(66,192,235,.08),transparent 330px),var(--bg);color:var(--text);font:14px/1.5 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
-button,input,select{font:inherit}
-button{touch-action:manipulation}
-.page{width:min(1160px,calc(100% - 32px));margin:0 auto;padding:26px 0 22px}
-.site-header{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:20px;margin-bottom:20px;padding:16px 18px;background:color-mix(in srgb,var(--surface) 92%,transparent);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
-.logo-link{display:flex;align-items:center;justify-content:center;width:170px;min-height:60px;padding:7px 10px;background:#fff;border:1px solid #d9e5eb;border-radius:13px;text-decoration:none}
-.logo-link img{display:block;width:100%;height:auto;max-height:54px}
-.product h1{margin:0;color:var(--mkp-navy);font-size:25px;line-height:1.15;letter-spacing:-.02em}
-html[data-theme="dark"] .product h1{color:var(--mkp-cyan)}
-.subtitle{margin-top:4px;color:var(--muted);font-size:13px}
-.header-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}
-.mode-pill{display:inline-flex;align-items:center;gap:7px;min-height:38px;padding:7px 12px;border:1px solid var(--line);border-radius:999px;background:var(--surface-soft);font-size:12px;font-weight:800;letter-spacing:.03em}
-.mode-pill::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--mkp-cyan);box-shadow:0 0 0 4px rgba(66,192,235,.16)}
-.icon-button{min-width:42px;height:38px;padding:0 11px;border:1px solid var(--line);border-radius:11px;background:var(--surface);color:var(--text);font-weight:800;cursor:pointer}
-.icon-button:hover{border-color:var(--mkp-cyan-strong);box-shadow:0 0 0 3px rgba(66,192,235,.12)}
-.section-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin-top:18px}
-.card{position:relative;min-width:0;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
-.card::before{content:"";position:absolute;inset:0 0 auto;height:4px;background:linear-gradient(90deg,var(--mkp-cyan),var(--mkp-navy))}
-.card-inner{height:100%;padding:20px}
-.card-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px}
-.card h2{margin:0;font-size:17px;color:var(--mkp-navy);letter-spacing:-.01em}
-html[data-theme="dark"] .card h2{color:var(--mkp-cyan)}
-.eyebrow{font-size:11px;color:var(--muted);font-weight:800;text-transform:uppercase;letter-spacing:.09em}
-.metrics{border-top:1px solid var(--line)}
-.metric{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:center;min-height:44px;border-bottom:1px solid var(--line)}
-.metric-label{color:var(--muted)}
-.metric-value{text-align:right;font-variant-numeric:tabular-nums;font-weight:800;overflow-wrap:anywhere}
-.form-stack{display:grid;gap:12px}
-.field{display:grid;grid-template-columns:190px minmax(0,1fr);gap:14px;align-items:center}
-.field label{color:var(--muted);font-weight:650}
-.field-inline{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:9px;align-items:center}
-.field-inline span{color:var(--muted);white-space:nowrap}
-input,select{width:100%;min-width:0;height:42px;padding:9px 12px;border:1px solid var(--line);border-radius:11px;background:var(--surface-soft);color:var(--text);outline:none;font-variant-numeric:tabular-nums}
-input:focus,select:focus{border-color:var(--mkp-cyan-strong);box-shadow:0 0 0 3px rgba(66,192,235,.15)}
-.button-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:14px}
-.button{min-height:42px;padding:9px 13px;border:1px solid var(--line);border-radius:11px;background:var(--surface-soft);color:var(--text);font-weight:800;cursor:pointer}
-.button:hover{border-color:var(--mkp-cyan-strong);transform:translateY(-1px)}
-.button:disabled{opacity:.58;cursor:wait;transform:none}
-.button-primary{border-color:transparent;background:linear-gradient(135deg,var(--mkp-cyan),var(--mkp-cyan-strong));color:#002f49}
-.button-navy{border-color:transparent;background:var(--mkp-navy);color:#fff}
-.help{margin:0 0 16px;padding:11px 13px;border-radius:12px;background:var(--surface-soft);color:var(--muted);font-size:12px}
-.calibration-points{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
-.cal-point{padding:14px;border:1px solid var(--line);border-radius:14px;background:var(--surface-soft)}
-.cal-point h3{margin:0 0 12px;font-size:14px;color:var(--mkp-navy)}
-html[data-theme="dark"] .cal-point h3{color:var(--mkp-cyan)}
-.cal-fields{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:10px}
-.mini-field label{display:block;margin:0 0 5px;color:var(--muted);font-size:12px;font-weight:700}
-.action-panel{display:grid;grid-template-columns:minmax(220px,340px) minmax(0,1fr);gap:16px;align-items:center;margin-top:18px;padding:15px 16px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
-.status{min-height:24px;color:var(--muted);font-weight:650;overflow-wrap:anywhere}
-.status.error{color:var(--danger)}
-.status.success{color:var(--success)}
-.footer{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:20px;color:var(--muted);font-size:12px;text-align:center}
-.footer::before,.footer::after{content:"";width:54px;height:1px;background:var(--line)}
-@media(max-width:850px){
-  .site-header{grid-template-columns:auto 1fr}.header-actions{grid-column:1/-1;justify-content:flex-end}.section-grid{grid-template-columns:1fr}.card-inner{padding:18px}.action-panel{grid-template-columns:1fr}.calibration-points{grid-template-columns:1fr}
-}
-@media(max-width:590px){
-  .page{width:min(100% - 18px,1160px);padding-top:10px}.site-header{grid-template-columns:1fr;justify-items:center;text-align:center;padding:14px}.logo-link{width:150px}.header-actions{grid-column:auto;justify-content:center}.field{grid-template-columns:1fr;gap:6px}.button-row{grid-template-columns:1fr}.metric{grid-template-columns:1fr;gap:2px;padding:8px 0}.metric-value{text-align:left}.cal-fields{grid-template-columns:1fr}.footer::before,.footer::after{width:24px}
-}
-</style>
-</head>
-<body>
-<div class="page">
-  <header class="site-header">
-    <a class="logo-link" href="https://www.marxkrontal.com/de/" target="_blank" rel="noopener noreferrer" aria-label="MKP GmbH">
-      <img src="/logo.svg" alt="MKP GmbH">
-    </a>
-    <div class="product">
-      <h1 id="title">MKP MultiConnect</h1>
-      <div class="subtitle" id="subtitle">Universal field telemetry controller</div>
-    </div>
-    <div class="header-actions">
-      <span class="mode-pill" id="modeBadge">AP</span>
-      <button class="icon-button" id="langBtn" type="button" aria-label="Language">EN</button>
-      <button class="icon-button" id="themeBtn" type="button" aria-label="Theme">☾</button>
-    </div>
-  </header>
+:root{--cyan:#42c0eb;--navy:#003b62;--bg:#edf4f8;--surface:#fff;--soft:#f5fafc;--text:#102c3d;--muted:#667d89;--line:#cfdee6;--ok:#198754;--warn:#d98c00;--bad:#c43d3d;--shadow:0 14px 36px rgba(0,59,98,.10);--r:18px}
+html[data-theme=dark]{--bg:#071721;--surface:#0e2533;--soft:#112c3d;--text:#eef8fc;--muted:#a8bdc8;--line:#29495b;--shadow:0 18px 42px rgba(0,0,0,.3)}
+*{box-sizing:border-box}body{margin:0;background:linear-gradient(180deg,rgba(66,192,235,.10),transparent 300px),var(--bg);color:var(--text);font:14px/1.45 Inter,system-ui,"Segoe UI",Arial,sans-serif}.page{width:min(1060px,calc(100% - 24px));margin:auto;padding:18px 0}.header{display:grid;grid-template-columns:auto 1fr auto;gap:18px;align-items:center;padding:14px 16px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow)}.logo{width:150px;padding:8px;background:white;border-radius:12px}.logo img{display:block;width:100%}.product h1{margin:0;color:var(--navy);font-size:24px}.subtitle{color:var(--muted);font-size:13px}.actions{display:flex;gap:8px}.icon{height:40px;min-width:42px;border:1px solid var(--line);border-radius:11px;background:var(--soft);color:var(--text);font-weight:800;cursor:pointer}.icon.active{background:var(--navy);color:white}.overview{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:16px}.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden}.card::before{content:"";display:block;height:4px;background:linear-gradient(90deg,var(--cyan),var(--navy))}.pad{padding:18px}.kicker{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:800}.big{margin-top:8px;font-size:30px;font-weight:850;font-variant-numeric:tabular-nums}.small{color:var(--muted)}.gauge{--p:0;display:grid;place-items:center;width:112px;height:112px;margin:10px auto 0;border-radius:50%;background:conic-gradient(var(--cyan) calc(var(--p)*1%),var(--line) 0);position:relative}.gauge::after{content:"";position:absolute;inset:12px;border-radius:50%;background:var(--surface)}.gauge span{position:relative;z-index:1;font-size:23px;font-weight:850}.bar{height:10px;border-radius:99px;background:var(--line);overflow:hidden;margin-top:13px}.bar>span{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--cyan),var(--navy));transition:width .35s}.section{margin-top:16px}.section-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.section-title{margin:0 0 12px;font-size:17px;color:var(--navy)}.form{display:grid;gap:11px}.field{display:grid;grid-template-columns:180px 1fr;gap:12px;align-items:center}.field label{color:var(--muted);font-weight:650}input,select{width:100%;height:41px;border:1px solid var(--line);border-radius:10px;background:var(--soft);color:var(--text);padding:8px 11px}.buttons{display:grid;grid-template-columns:1fr 1fr;gap:9px}.btn{min-height:42px;border:1px solid var(--line);border-radius:11px;background:var(--soft);color:var(--text);font-weight:800;cursor:pointer}.primary{background:linear-gradient(135deg,var(--cyan),#159dcc);color:#002e48;border:0}.metrics{border-top:1px solid var(--line)}.metric{display:flex;justify-content:space-between;gap:16px;padding:10px 0;border-bottom:1px solid var(--line)}.metric span:first-child{color:var(--muted)}.metric b{font-variant-numeric:tabular-nums;text-align:right}.status-pill{display:inline-flex;align-items:center;gap:7px}.dot{width:9px;height:9px;border-radius:50%;background:var(--bad)}.dot.ok{background:var(--ok)}.expert-only{display:none}html[data-view=expert] .expert-only{display:block}html[data-view=expert] .expert-grid{display:grid}.save{display:grid;grid-template-columns:minmax(220px,330px) 1fr;gap:14px;align-items:center;margin-top:16px}.message{color:var(--muted);font-weight:650}.help{padding:10px 12px;background:var(--soft);border-radius:11px;color:var(--muted);font-size:12px}.switch{display:flex;gap:10px;align-items:center}.switch input{width:auto;height:auto}.footer{text-align:center;color:var(--muted);font-size:12px;margin-top:16px}@media(max-width:800px){.overview,.section-grid{grid-template-columns:1fr}.header{grid-template-columns:1fr;text-align:center;justify-items:center}.actions{justify-content:center}.field{grid-template-columns:1fr;gap:5px}.save{grid-template-columns:1fr}}@media(max-width:420px){.page{width:calc(100% - 14px)}.big{font-size:27px}.buttons{grid-template-columns:1fr}}
+</style></head>
+<body><div class="page">
+<header class="header"><a class="logo" href="https://www.marxkrontal.com/de/" target="_blank"><img src="/logo.svg" alt="MKP"></a><div class="product"><h1 id="title">MKP MultiConnect</h1><div class="subtitle" id="subtitle">Simple field monitoring</div></div><div class="actions"><button id="langBtn" class="icon">EN</button><button id="themeBtn" class="icon">☾</button><button id="expertBtn" class="icon" title="Expert mode">⚙</button></div></header>
 
-  <main>
-    <div class="section-grid">
-      <section class="card">
-        <div class="card-inner">
-          <div class="card-header"><div><div class="eyebrow" id="liveDataEyebrow">Live data</div><h2 id="sensorsTitle">Sensors</h2></div></div>
-          <div class="metrics">
-            <div class="metric"><span class="metric-label" id="temperatureLabel">Temperature</span><span class="metric-value" id="temperature">—</span></div>
-            <div class="metric"><span class="metric-label" id="positionLabel">Position</span><span class="metric-value" id="position">—</span></div>
-            <div class="metric"><span class="metric-label" id="rawLabel">ADS1220 raw</span><span class="metric-value" id="raw">—</span></div>
-            <div class="metric"><span class="metric-label" id="voltageLabel">Wegsensor voltage</span><span class="metric-value" id="voltage">—</span></div>
-            <div class="metric"><span class="metric-label" id="inaBusLabel">INA226 bus</span><span class="metric-value" id="inaBus">—</span></div>
-            <div class="metric"><span class="metric-label" id="inaShuntLabel">INA226 shunt</span><span class="metric-value" id="inaShunt">—</span></div>
-            <div class="metric"><span class="metric-label" id="inaCurrentLabel">INA226 current</span><span class="metric-value" id="inaCurrent">—</span></div>
-            <div class="metric"><span class="metric-label" id="inaPowerLabel">INA226 power</span><span class="metric-value" id="inaPower">—</span></div>
-            <div class="metric"><span class="metric-label" id="batteryVoltageLabel">Internal battery</span><span class="metric-value" id="batteryVoltage">—</span></div>
-            <div class="metric"><span class="metric-label" id="batteryPercentLabel">Battery level</span><span class="metric-value" id="batteryPercent">—</span></div>
-          </div>
-        </div>
-      </section>
+<main>
+<section class="overview">
+  <article class="card"><div class="pad"><div class="kicker" id="temperatureLabel">Temperature</div><div class="big" id="temperature">—</div><div class="small" id="temperatureHint">Current sensor value</div></div></article>
+  <article class="card"><div class="pad"><div class="kicker" id="positionLabel">Position</div><div class="big" id="position">—</div><div class="bar"><span id="positionBar"></span></div><div class="small" id="positionHint">Wegsensor position</div></div></article>
+  <article class="card"><div class="pad"><div class="kicker" id="batteryLabel">Battery</div><div class="gauge" id="batteryGauge"><span id="batteryPercent">—</span></div><div class="small" id="batteryVoltage" style="text-align:center;margin-top:8px">—</div></div></article>
+</section>
 
-      <section class="card">
-        <div class="card-inner">
-          <div class="card-header"><div><div class="eyebrow" id="systemEyebrow">System</div><h2 id="controllerTitle">Controller</h2></div></div>
-          <div class="metrics">
-            <div class="metric"><span class="metric-label" id="modeLabel">Mode</span><span class="metric-value" id="mode">—</span></div>
-            <div class="metric"><span class="metric-label" id="modePinLabel">Mode selection</span><span class="metric-value" id="modePin">GPIO48</span></div>
-            <div class="metric"><span class="metric-label" id="ipLabel">IP address</span><span class="metric-value" id="ip">—</span></div>
-            <div class="metric"><span class="metric-label" id="uptimeLabel">Uptime</span><span class="metric-value" id="uptime">—</span></div>
-            <div class="metric"><span class="metric-label" id="heapLabel">Free heap</span><span class="metric-value" id="heap">—</span></div>
-            <div class="metric"><span class="metric-label" id="firmwareLabel">Firmware</span><span class="metric-value" id="firmware">—</span></div>
-          </div>
-          <button class="button button-navy" id="rebootBtn" type="button" style="width:100%;margin-top:14px">Reboot controller</button>
-        </div>
-      </section>
-    </div>
+<section class="section section-grid">
+  <article class="card"><div class="pad"><h2 class="section-title" id="loraTitle">LoRaWAN settings</h2><div class="form"><div class="field"><label id="intervalLabel">Send interval</label><input id="interval" type="number" min="1" max="1440"></div><div class="field"><label id="dataRateLabel">Range / speed</label><select id="dr"><option value="auto">Automatic</option><option value="0">Maximum range</option><option value="1">Long range</option><option value="2">Long range / faster</option><option value="3">Balanced</option><option value="4">Fast</option><option value="5">Very fast</option></select></div><div class="expert-only"><div class="buttons"><button class="btn" id="readChipBtn">Read DevEUI</button><button class="btn" id="useChipBtn">Use chip DevEUI</button></div><div class="form" style="margin-top:11px"><div class="field"><label>DevEUI</label><input id="devEui" maxlength="16"></div><div class="field"><label>JoinEUI</label><input id="joinEui" maxlength="16"></div><div class="field"><label>AppKey</label><input id="appKey" maxlength="32"></div></div></div></div></div></article>
+  <article class="card"><div class="pad"><h2 class="section-title" id="summaryTitle">Status</h2><div class="metrics"><div class="metric"><span id="radioModeLabel">Operating mode</span><b id="mode">—</b></div><div class="metric"><span id="lastUpdateLabel">Last measurement</span><b id="age">—</b></div><div class="metric"><span id="batteryStateLabel">Battery state</span><b id="batteryState">—</b></div></div></div></article>
+</section>
 
-    <div class="section-grid">
-      <section class="card">
-        <div class="card-inner">
-          <div class="card-header"><div><div class="eyebrow" id="communicationEyebrow">Communication</div><h2 id="loraTitle">LoRaWAN settings</h2></div></div>
-          <div class="button-row">
-            <button class="button" id="readChipBtn" type="button">Read chip DevEUI</button>
-            <button class="button" id="useChipBtn" type="button">Use chip DevEUI</button>
-          </div>
-          <div class="form-stack">
-            <div class="field"><label id="devEuiLabel" for="devEui">DevEUI (MSB)</label><input id="devEui" maxlength="16" autocomplete="off" spellcheck="false"></div>
-            <div class="field"><label id="joinEuiLabel" for="joinEui">JoinEUI / AppEUI (MSB)</label><input id="joinEui" maxlength="16" autocomplete="off" spellcheck="false"></div>
-            <div class="field"><label id="appKeyLabel" for="appKey">AppKey (MSB)</label><input id="appKey" maxlength="32" autocomplete="off" spellcheck="false"></div>
-            <div class="field"><label id="intervalLabel" for="interval">Uplink interval</label><div class="field-inline"><input id="interval" type="number" min="1" max="1440"><span id="minutesLabel">minutes</span></div></div>
-            <div class="field"><label id="dataRateLabel" for="dr">Data rate</label><select id="dr"><option value="auto">ADR automatic</option><option value="0">DR0 / SF12</option><option value="1">DR1 / SF11</option><option value="2">DR2 / SF10</option><option value="3">DR3 / SF9</option><option value="4">DR4 / SF8</option><option value="5">DR5 / SF7</option></select></div>
-          </div>
-        </div>
-      </section>
+<section class="section expert-only expert-grid section-grid">
+  <article class="card"><div class="pad"><h2 class="section-title" id="diagnosticsTitle">Diagnostics</h2><div class="metrics"><div class="metric"><span>ADS1220 RAW</span><b id="raw">—</b></div><div class="metric"><span>Wegsensor voltage</span><b id="wegVoltage">—</b></div><div class="metric"><span>INA226</span><b class="status-pill"><i id="inaDot" class="dot"></i><span id="inaStatus">—</span></b></div><div class="metric"><span>INA bus</span><b id="inaBus">—</b></div><div class="metric"><span>INA current</span><b id="inaCurrent">—</b></div><div class="metric"><span>INA power</span><b id="inaPower">—</b></div><div class="metric"><span>IP</span><b id="ip">—</b></div><div class="metric"><span>Firmware</span><b id="firmware">—</b></div><div class="metric"><span>Free heap</span><b id="heap">—</b></div></div><div class="switch" style="margin-top:13px"><input id="lowPower" type="checkbox"><label id="lowPowerLabel">Maximum low-power field mode</label></div><button class="btn" id="rebootBtn" style="width:100%;margin-top:12px">Reboot controller</button></div></article>
+  <article class="card"><div class="pad"><h2 class="section-title" id="calibrationTitle">Wegsensor calibration</h2><p class="help" id="calibrationHelp">For technicians: store raw values at two known positions.</p><div class="form"><div class="field"><label>Point 0</label><div class="buttons"><input id="raw0" type="number"><input id="mm0" type="number" step="0.001"></div></div><button class="btn" id="capture0Btn">Use current RAW for point 0</button><div class="field"><label>Point 1</label><div class="buttons"><input id="raw1" type="number"><input id="mm1" type="number" step="0.001"></div></div><button class="btn" id="capture1Btn">Use current RAW for point 1</button></div></div></article>
+</section>
 
-      <section class="card">
-        <div class="card-inner">
-          <div class="card-header"><div><div class="eyebrow" id="measurementEyebrow">Measurement</div><h2 id="calibrationTitle">Wegsensor calibration</h2></div></div>
-          <p class="help" id="calibrationHelp">Set two known mechanical positions. The raw value may increase or decrease with movement.</p>
-          <div class="calibration-points">
-            <div class="cal-point">
-              <h3 id="point0Title">Calibration point 0</h3>
-              <div class="cal-fields">
-                <div class="mini-field"><label for="raw0">RAW</label><input id="raw0" type="number"></div>
-                <div class="mini-field"><label for="mm0">mm</label><input id="mm0" type="number" step="0.001"></div>
-              </div>
-              <button class="button" id="capture0Btn" type="button" style="width:100%">Use current raw</button>
-            </div>
-            <div class="cal-point">
-              <h3 id="point1Title">Calibration point 1</h3>
-              <div class="cal-fields">
-                <div class="mini-field"><label for="raw1">RAW</label><input id="raw1" type="number"></div>
-                <div class="mini-field"><label for="mm1">mm</label><input id="mm1" type="number" step="0.001"></div>
-              </div>
-              <button class="button" id="capture1Btn" type="button" style="width:100%">Use current raw</button>
-            </div>
-          </div>
-        </div>
-      </section>
-    </div>
-
-    <section class="action-panel">
-      <button class="button button-primary" id="saveBtn" type="button">Save all settings</button>
-      <div class="status" id="status" role="status" aria-live="polite"></div>
-    </section>
-  </main>
-
-  <footer class="footer"><span id="footer">MKP GmbH · MultiConnect</span></footer>
-</div>
+<section class="card save"><button id="saveBtn" class="btn primary">Save settings</button><div id="message" class="message"></div></section>
+</main><footer class="footer">MKP GmbH · MultiConnect</footer></div>
 <script>
-const LANGS=['en','de','uk'];
-let lang=localStorage.getItem('mc-lang')||'en';
-let dict={};
-let state={};
-const $=id=>document.getElementById(id);
-const text=(id,value)=>{const el=$(id);if(el)el.textContent=value};
-function tr(key){return dict[lang]?.[key]||dict.en?.[key]||key}
-async function request(url,options){
-  const response=await fetch(url,options);
-  if(!response.ok)throw new Error((await response.text())||`${response.status} ${response.statusText}`);
-  const type=response.headers.get('content-type')||'';
-  return type.includes('json')?response.json():response.text();
-}
-function errorText(error){return error instanceof TypeError?tr('connection_error'):(error?.message||tr('connection_error'))}
-function applyLanguage(){
-  const map={title:'title',subtitle:'subtitle',liveDataEyebrow:'live_data',systemEyebrow:'system',communicationEyebrow:'communication',measurementEyebrow:'measurement',sensorsTitle:'sensors',temperatureLabel:'temperature',positionLabel:'position',rawLabel:'raw',voltageLabel:'voltage',inaBusLabel:'ina_bus',inaShuntLabel:'ina_shunt',inaCurrentLabel:'ina_current',inaPowerLabel:'ina_power',batteryVoltageLabel:'battery_voltage',batteryPercentLabel:'battery_percent',controllerTitle:'controller',modeLabel:'mode',modePinLabel:'mode_selection',ipLabel:'ip',uptimeLabel:'uptime',heapLabel:'heap',firmwareLabel:'firmware',loraTitle:'lora',devEuiLabel:'deveui',joinEuiLabel:'joineui',appKeyLabel:'appkey',intervalLabel:'interval',minutesLabel:'minutes',dataRateLabel:'data_rate',calibrationTitle:'calibration',calibrationHelp:'calibration_help',point0Title:'point0',point1Title:'point1',capture0Btn:'use_current',capture1Btn:'use_current',saveBtn:'save_all',readChipBtn:'read_chip',useChipBtn:'use_chip',rebootBtn:'reboot',footer:'footer'};
-  Object.entries(map).forEach(([id,key])=>text(id,tr(key)));
-  $('dr').options[0].text=tr('adr_auto');
-  text('langBtn',lang.toUpperCase());
-  document.title=tr('title');
-  renderMode();
-}
-function setTheme(theme){document.documentElement.dataset.theme=theme;localStorage.setItem('mc-theme',theme);text('themeBtn',theme==='dark'?'☀':'☾')}
-function showStatus(message,type=''){const el=$('status');el.textContent=message;el.className='status'+(type?' '+type:'')}
-function setInput(id,value){const el=$(id);if(document.activeElement!==el&&!el.dataset.dirty)el.value=value??''}
-function fmt(value,digits,unit){return Number.isFinite(Number(value))?`${Number(value).toFixed(digits)} ${unit}`:tr('not_available')}
-function renderMode(){
-  const isAp=state.mode==='AP';
-  text('mode',state.mode?(isAp?tr('mode_ap'):tr('mode_field')):'—');
-  text('modeBadge',state.mode?(isAp?tr('mode_ap'):tr('mode_field')):'—');
-  text('modePin',isAp?'GPIO48 = HIGH/open':'GPIO48 = GND');
-}
-async function loadState(){
-  try{
-    state=await request('/api/state');
-    text('temperature',state.temperature_valid?fmt(state.temperature_c,2,'°C'):tr('not_available'));
-    text('position',state.weg_valid?fmt(state.position_mm,3,'mm'):tr('not_available'));
-    text('raw',state.weg_raw??'—');
-    text('voltage',state.weg_valid?fmt(state.weg_voltage_v,6,'V'):tr('not_available'));
-    text('inaBus',state.ina_valid?fmt(state.ina_bus_v,4,'V'):tr('not_available'));
-    text('inaShunt',state.ina_valid?fmt(state.ina_shunt_mv,4,'mV'):tr('not_available'));
-    text('inaCurrent',state.ina_valid?fmt(state.ina_current_ma,1,'mA'):tr('not_available'));
-    text('inaPower',state.ina_valid?fmt(state.ina_power_w,4,'W'):tr('not_available'));
-    text('batteryVoltage',state.battery_valid?fmt(state.battery_v,3,'V'):tr('not_available'));
-    text('batteryPercent',state.battery_valid?`${Number(state.battery_percent).toFixed(0)} %`:tr('not_available'));
-    renderMode();
-    text('ip',state.ip||'—');
-    text('uptime',(state.uptime_s??'—')+' s');
-    text('heap',(state.heap_free??'—')+' B');
-    text('firmware',state.fw||'—');
-    const c=state.cfg||{};
-    setInput('devEui',c.devEui_msb);setInput('joinEui',c.appEui_msb);setInput('appKey',c.appKey_msb);setInput('interval',c.minutes);
-    const dr=$('dr');if(document.activeElement!==dr&&!dr.dataset.dirty)dr.value=c.adr?'auto':String(c.dr??3);
-    const cal=c.weg_cal||{};setInput('raw0',cal.raw0);setInput('mm0',cal.mm0);setInput('raw1',cal.raw1);setInput('mm1',cal.mm1);
-  }catch(error){showStatus(errorText(error),'error')}
-}
-function normalizeHex(value){return String(value||'').replace(/\s/g,'').toUpperCase()}
-async function save(){
-  const button=$('saveBtn');
-  const original=tr('save_all');
-  const dr=$('dr').value;
-  const payload={
-    devEui_msb:normalizeHex($('devEui').value),
-    appEui_msb:normalizeHex($('joinEui').value),
-    appKey_msb:normalizeHex($('appKey').value),
-    minutes:Number($('interval').value),
-    adr:dr==='auto',
-    dr:dr==='auto'?3:Number(dr),
-    weg_cal:{raw0:Number($('raw0').value),mm0:Number($('mm0').value),raw1:Number($('raw1').value),mm1:Number($('mm1').value)}
-  };
-  try{
-    button.disabled=true;text('saveBtn',tr('saving'));showStatus(tr('saving'));
-    await request('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-    document.querySelectorAll('input,select').forEach(el=>delete el.dataset.dirty);
-    showStatus(tr('saved'),'success');
-    await loadState();
-  }catch(error){showStatus(`${tr('save_error')}: ${errorText(error)}`,'error')}
-  finally{button.disabled=false;text('saveBtn',original)}
-}
-async function readChip(){try{const data=await request('/api/deveui');$('devEui').value=data.chip_devEui_msb;$('devEui').dataset.dirty='1';showStatus(`Chip DevEUI: ${data.chip_devEui_msb}`,'success')}catch(error){showStatus(errorText(error),'error')}}
-async function useChip(){try{await request('/api/deveui/use-chip',{method:'POST'});showStatus(tr('saved'),'success');await loadState()}catch(error){showStatus(errorText(error),'error')}}
-async function reboot(){try{await request('/api/reboot',{method:'POST'});showStatus(tr('restarting'),'success')}catch(error){showStatus(errorText(error),'error')}}
-async function init(){
-  try{dict=await request('/i18n.json')}catch(_){dict={en:{}}}
-  if(!LANGS.includes(lang))lang='en';
-  applyLanguage();
-  setTheme(localStorage.getItem('mc-theme')||'light');
-  document.querySelectorAll('input,select').forEach(el=>{el.addEventListener('input',()=>el.dataset.dirty='1');el.addEventListener('change',()=>el.dataset.dirty='1')});
-  $('langBtn').onclick=()=>{lang=LANGS[(LANGS.indexOf(lang)+1)%LANGS.length];localStorage.setItem('mc-lang',lang);applyLanguage();loadState()};
-  $('themeBtn').onclick=()=>setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark');
-  $('capture0Btn').onclick=()=>{$('raw0').value=state.weg_raw??0;$('raw0').dataset.dirty='1'};
-  $('capture1Btn').onclick=()=>{$('raw1').value=state.weg_raw??0;$('raw1').dataset.dirty='1'};
-  $('saveBtn').onclick=save;$('readChipBtn').onclick=readChip;$('useChipBtn').onclick=useChip;$('rebootBtn').onclick=reboot;
-  await loadState();
-  setInterval(loadState,1500);
-}
-init().catch(error=>showStatus(errorText(error),'error'));
-</script>
-</body>
-</html>
+const LANGS=['en','de','uk'];let lang=localStorage.getItem('mc-lang')||'en';let dict={},state={};const $=id=>document.getElementById(id);const set=(id,v)=>{const e=$(id);if(e)e.textContent=v};const tr=k=>dict[lang]?.[k]||dict.en?.[k]||k;
+async function req(url,opt){const r=await fetch(url,opt);if(!r.ok)throw new Error(await r.text());return (r.headers.get('content-type')||'').includes('json')?r.json():r.text()}
+function fmt(v,n,u){return Number.isFinite(Number(v))?`${Number(v).toFixed(n)} ${u}`:'—'}function input(id,v){const e=$(id);if(document.activeElement!==e&&!e.dataset.dirty)e.value=v??''}
+function applyLang(){const m={subtitle:'simple_subtitle',temperatureLabel:'temperature',temperatureHint:'temperature_hint',positionLabel:'position',positionHint:'position_hint',batteryLabel:'battery',loraTitle:'lora_simple',intervalLabel:'interval_simple',dataRateLabel:'range_speed',summaryTitle:'status',radioModeLabel:'operating_mode',lastUpdateLabel:'last_measurement',batteryStateLabel:'battery_state',diagnosticsTitle:'diagnostics',lowPowerLabel:'low_power',calibrationTitle:'calibration',calibrationHelp:'calibration_help',saveBtn:'save_all',rebootBtn:'reboot'};Object.entries(m).forEach(([i,k])=>set(i,tr(k)));set('langBtn',lang.toUpperCase());document.title=tr('title')}
+function batteryText(p){if(p<15)return tr('battery_critical');if(p<30)return tr('battery_low');if(p<60)return tr('battery_medium');return tr('battery_good')}
+function render(){set('temperature',state.temperature_valid?fmt(state.temperature_c,2,'°C'):'—');set('position',state.weg_valid?fmt(state.position_mm,3,'mm'):'—');const pos=Math.max(0,Math.min(100,(Number(state.position_mm)||0)*10));$('positionBar').style.width=pos+'%';const bp=state.battery_valid?Number(state.battery_percent):null;$('batteryGauge').style.setProperty('--p',bp??0);set('batteryPercent',bp!=null?Math.round(bp)+'%':'—');set('batteryVoltage',state.battery_valid?fmt(state.battery_v,3,'V'):'—');set('batteryState',bp!=null?batteryText(bp):'—');set('mode',state.mode==='AP'?tr('mode_ap'):tr('mode_field'));set('age',state.measurement_age_s!=null?Math.round(state.measurement_age_s)+' s':'—');set('raw',state.weg_raw??'—');set('wegVoltage',state.weg_valid?fmt(state.weg_voltage_v,6,'V'):'—');const connected=!!state.ina_connected;set('inaStatus',connected?tr('connected'):tr('not_connected'));$('inaDot').classList.toggle('ok',connected);set('inaBus',state.ina_valid?fmt(state.ina_bus_v,4,'V'):'—');set('inaCurrent',state.ina_valid?fmt(state.ina_current_ma,1,'mA'):'—');set('inaPower',state.ina_valid?fmt(state.ina_power_w,4,'W'):'—');set('ip',state.ip||'—');set('firmware',state.fw||'—');set('heap',(state.heap_free??'—')+' B');const c=state.cfg||{};input('interval',c.minutes);const dr=$('dr');if(!dr.dataset.dirty)dr.value=c.adr?'auto':String(c.dr??3);input('devEui',c.devEui_msb);input('joinEui',c.appEui_msb);input('appKey',c.appKey_msb);input('raw0',c.weg_cal?.raw0);input('mm0',c.weg_cal?.mm0);input('raw1',c.weg_cal?.raw1);input('mm1',c.weg_cal?.mm1);if(!$('lowPower').dataset.dirty)$('lowPower').checked=c.low_power!==false}
+async function load(){try{state=await req('/api/state');render()}catch(e){set('message',e.message)}}
+async function save(){const d=$('dr').value,p={minutes:Number($('interval').value),adr:d==='auto',dr:d==='auto'?3:Number(d),low_power:$('lowPower').checked,devEui_msb:$('devEui').value,appEui_msb:$('joinEui').value,appKey_msb:$('appKey').value,weg_cal:{raw0:Number($('raw0').value),mm0:Number($('mm0').value),raw1:Number($('raw1').value),mm1:Number($('mm1').value)}};try{await req('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});set('message',tr('saved'));document.querySelectorAll('input,select').forEach(e=>delete e.dataset.dirty);await load()}catch(e){set('message',e.message)}}
+async function init(){try{dict=await req('/i18n.json')}catch(_){dict={en:{}}}applyLang();const theme=localStorage.getItem('mc-theme')||'light';document.documentElement.dataset.theme=theme;$('themeBtn').textContent=theme==='dark'?'☀':'☾';const expert=localStorage.getItem('mc-view')==='expert';document.documentElement.dataset.view=expert?'expert':'user';$('expertBtn').classList.toggle('active',expert);$('expertBtn').onclick=()=>{const e=document.documentElement.dataset.view!=='expert';document.documentElement.dataset.view=e?'expert':'user';localStorage.setItem('mc-view',e?'expert':'user');$('expertBtn').classList.toggle('active',e)};$('themeBtn').onclick=()=>{const t=document.documentElement.dataset.theme==='dark'?'light':'dark';document.documentElement.dataset.theme=t;localStorage.setItem('mc-theme',t);$('themeBtn').textContent=t==='dark'?'☀':'☾'};$('langBtn').onclick=()=>{lang=LANGS[(LANGS.indexOf(lang)+1)%LANGS.length];localStorage.setItem('mc-lang',lang);applyLang();render()};document.querySelectorAll('input,select').forEach(e=>{e.oninput=()=>e.dataset.dirty='1';e.onchange=()=>e.dataset.dirty='1'});$('saveBtn').onclick=save;$('capture0Btn').onclick=()=>{$('raw0').value=state.weg_raw??0;$('raw0').dataset.dirty='1'};$('capture1Btn').onclick=()=>{$('raw1').value=state.weg_raw??0;$('raw1').dataset.dirty='1'};$('readChipBtn').onclick=async()=>{const d=await req('/api/deveui');$('devEui').value=d.chip_devEui_msb;$('devEui').dataset.dirty='1'};$('useChipBtn').onclick=async()=>{await req('/api/deveui/use-chip',{method:'POST'});await load()};$('rebootBtn').onclick=async()=>{await req('/api/reboot',{method:'POST'});set('message',tr('restarting'))};await load();setInterval(load,1500)}init();
+</script></body></html>

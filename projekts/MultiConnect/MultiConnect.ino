@@ -1,6 +1,6 @@
 /*
  * =====================================================================
- *  MKP MultiConnect V1.3
+ *  MKP MultiConnect V1.4
  *  Universal LoRaWAN / NB-IoT-ready sensor controller
  *  Current firmware profile: LoRaWAN + DS18B20 + ADS1220 Wegsensor + INA226
  * ---------------------------------------------------------------------
@@ -56,7 +56,7 @@
 #include <math.h>
 
 // ============================= Firmware =============================
-static constexpr const char* FW_VERSION = "1.3.0";
+static constexpr const char* FW_VERSION = "1.4.0";
 static constexpr const char* DEVICE_NAME = "MKP MultiConnect";
 
 // ============================== Modes ===============================
@@ -135,6 +135,7 @@ struct Config {
   uint32_t intervalMinutes = 15;
   bool adr = true;
   uint8_t dataRate = 3;
+  bool lowPowerEnabled = true;
 
   int32_t wegRaw0 = 0;
   int32_t wegRaw1 = 8388607;
@@ -288,6 +289,7 @@ void loadConfig() {
   cfg.intervalMinutes = preferences.getUInt("interval", cfg.intervalMinutes);
   cfg.adr = preferences.getBool("adr", cfg.adr);
   cfg.dataRate = preferences.getUChar("dr", cfg.dataRate);
+  cfg.lowPowerEnabled = preferences.getBool("lowPower", cfg.lowPowerEnabled);
   cfg.wegRaw0 = preferences.getInt("wegRaw0", cfg.wegRaw0);
   cfg.wegRaw1 = preferences.getInt("wegRaw1", cfg.wegRaw1);
   cfg.wegMm0_x1000 = preferences.getInt("wegMm0", cfg.wegMm0_x1000);
@@ -312,6 +314,7 @@ void saveConfig() {
   preferences.putUInt("interval", cfg.intervalMinutes);
   preferences.putBool("adr", cfg.adr);
   preferences.putUChar("dr", cfg.dataRate);
+  preferences.putBool("lowPower", cfg.lowPowerEnabled);
   preferences.putInt("wegRaw0", cfg.wegRaw0);
   preferences.putInt("wegRaw1", cfg.wegRaw1);
   preferences.putInt("wegMm0", cfg.wegMm0_x1000);
@@ -320,6 +323,7 @@ void saveConfig() {
 }
 
 // ============================== ADS1220 =============================
+static constexpr uint8_t ADS_CMD_POWERDOWN = 0x02;
 static constexpr uint8_t ADS_CMD_RESET = 0x06;
 static constexpr uint8_t ADS_CMD_START = 0x08;
 static constexpr uint8_t ADS_CMD_RDATA = 0x10;
@@ -454,7 +458,9 @@ bool readWegsensor(int32_t& raw, float& voltageV, float& positionMm) {
   const float lower = min(mm0, mm1);
   const float upper = max(mm0, mm1);
   positionMm = constrain(positionMm, lower, upper);
-  return isfinite(positionMm);
+  const bool valid = isfinite(positionMm);
+  adsCommand(ADS_CMD_POWERDOWN);
+  return valid;
 }
 
 // ============================== DS18B20 =============================
@@ -478,11 +484,15 @@ bool readTemperature(float& temperatureC) {
 
 // =============================== INA226 =============================
 static constexpr uint8_t INA226_ADDRESS = 0x40;
+static constexpr uint8_t INA226_REG_CONFIG = 0x00;
 static constexpr uint8_t INA226_REG_SHUNT = 0x01;
 static constexpr uint8_t INA226_REG_BUS = 0x02;
 static constexpr uint8_t INA226_REG_MANUFACTURER = 0xFE;
 static constexpr uint8_t INA226_REG_DIE_ID = 0xFF;
 static constexpr float INA226_SHUNT_OHMS = 0.010f;  // R010 = 10 mOhm
+static constexpr uint32_t INA226_REPROBE_INTERVAL_MS = 5000;
+
+uint32_t lastInaProbeMs = 0;
 
 bool inaReadRegister(uint8_t reg, uint16_t& value) {
   sensorI2C.beginTransmission(INA226_ADDRESS);
@@ -495,25 +505,63 @@ bool inaReadRegister(uint8_t reg, uint16_t& value) {
   return true;
 }
 
-bool initializeINA226() {
-  sensorI2C.begin(PIN_INA_SDA, PIN_INA_SCL, 100000);
+bool inaWriteRegister(uint8_t reg, uint16_t value) {
+  sensorI2C.beginTransmission(INA226_ADDRESS);
+  sensorI2C.write(reg);
+  sensorI2C.write(static_cast<uint8_t>(value >> 8));
+  sensorI2C.write(static_cast<uint8_t>(value & 0xFF));
+  return sensorI2C.endTransmission() == 0;
+}
+
+bool probeINA226(bool printStatus = true) {
+  lastInaProbeMs = millis();
 
   uint16_t manufacturer = 0;
   uint16_t dieId = 0;
-  if (!inaReadRegister(INA226_REG_MANUFACTURER, manufacturer)) return false;
-  if (!inaReadRegister(INA226_REG_DIE_ID, dieId)) return false;
+  const bool present =
+    inaReadRegister(INA226_REG_MANUFACTURER, manufacturer) &&
+    inaReadRegister(INA226_REG_DIE_ID, dieId) &&
+    manufacturer == 0x5449;
 
-  Serial.printf("[INA226] manufacturer=0x%04X die=0x%04X\n", manufacturer, dieId);
-  return manufacturer == 0x5449;
+  if (present) {
+    // Continuous shunt + bus conversion. The module is optional; this is
+    // applied whenever it appears on the bus, including hot-plug in AP mode.
+    inaWriteRegister(INA226_REG_CONFIG, 0x4127);
+    if (printStatus) {
+      Serial.printf("[INA226] connected manufacturer=0x%04X die=0x%04X\n",
+                    manufacturer, dieId);
+    }
+  } else if (printStatus) {
+    Serial.println("[INA226] not connected - continuing without current monitor");
+  }
+
+  inaAvailable = present;
+  return present;
+}
+
+bool initializeINA226() {
+  sensorI2C.begin(PIN_INA_SDA, PIN_INA_SCL, 100000);
+  sensorI2C.setTimeOut(30);
+  return probeINA226(true);
+}
+
+bool ensureINA226Available() {
+  if (inaAvailable) return true;
+  if (millis() - lastInaProbeMs < INA226_REPROBE_INTERVAL_MS) return false;
+  return probeINA226(false);
 }
 
 bool readINA226(float& busVoltageV, float& shuntVoltageMv, float& currentMa, float& powerW) {
-  if (!inaAvailable) return false;
+  if (!ensureINA226Available()) return false;
 
   uint16_t rawBus = 0;
   uint16_t rawShunt = 0;
-  if (!inaReadRegister(INA226_REG_BUS, rawBus)) return false;
-  if (!inaReadRegister(INA226_REG_SHUNT, rawShunt)) return false;
+  if (!inaReadRegister(INA226_REG_BUS, rawBus) ||
+      !inaReadRegister(INA226_REG_SHUNT, rawShunt)) {
+    inaAvailable = false;
+    Serial.println("[INA226] disconnected during read");
+    return false;
+  }
 
   busVoltageV = static_cast<float>(rawBus) * 0.00125f;
   shuntVoltageMv = static_cast<float>(static_cast<int16_t>(rawShunt)) * 0.0025f;
@@ -523,7 +571,6 @@ bool readINA226(float& busVoltageV, float& shuntVoltageMv, float& currentMa, flo
   powerW = busVoltageV * currentA;
   return true;
 }
-
 
 // ======================== Internal battery ADC ======================
 uint8_t batteryPercentFromMillivolts(uint16_t millivolts) {
@@ -755,6 +802,7 @@ void apiState() {
   doc["ip"] = apMode ? WiFi.softAPIP().toString() : String("-");
   doc["uptime_s"] = millis() / 1000UL;
   doc["heap_free"] = ESP.getFreeHeap();
+  doc["measurement_age_s"] = cached.measuredAtMs > 0 ? (millis() - cached.measuredAtMs) / 1000UL : 0;
 
   doc["temperature_valid"] = cached.temperatureValid;
   if (cached.temperatureValid) doc["temperature_c"] = cached.temperatureC;
@@ -766,6 +814,7 @@ void apiState() {
     doc["position_mm"] = cached.wegPositionMm;
   }
 
+  doc["ina_connected"] = inaAvailable;
   doc["ina_valid"] = cached.inaValid;
   if (cached.inaValid) {
     doc["ina_bus_v"] = cached.inaBusVoltageV;
@@ -788,6 +837,7 @@ void apiState() {
   config["minutes"] = cfg.intervalMinutes;
   config["adr"] = cfg.adr;
   config["dr"] = cfg.dataRate;
+  config["low_power"] = cfg.lowPowerEnabled;
 
   JsonObject calibration = config["weg_cal"].to<JsonObject>();
   calibration["raw0"] = cfg.wegRaw0;
@@ -860,6 +910,7 @@ void apiSaveConfig() {
   }
 
   if (request["adr"].is<bool>()) updated.adr = request["adr"].as<bool>();
+  if (request["low_power"].is<bool>()) updated.lowPowerEnabled = request["low_power"].as<bool>();
   if (request["dr"].is<int>()) {
     const int value = request["dr"].as<int>();
     if (value < 0 || value > 5) {
@@ -1069,6 +1120,22 @@ static void prepareTxFrame(uint8_t port) {
   Serial.println();
 }
 
+// ========================= Field power policy =======================
+void preparePeripheralsForLowPower() {
+  // OLED and Wi-Fi/Bluetooth are already disabled in FIELD mode.
+  digitalWrite(PIN_BATTERY_CTRL, LOW);
+  digitalWrite(PIN_RS485_RE_DE, LOW);
+  digitalWrite(PIN_SENSOR_MOSFET, LOW);
+
+  if (adsAvailable) adsCommand(ADS_CMD_POWERDOWN);
+
+  // Keep only the LoRaWAN stack state needed by LoRaWAN.sleep().
+  // Deep-sleep would reboot the ESP32-S3 and force a new OTAA join unless
+  // the complete LoRaMAC session were persisted. LoRaWAN.sleep() therefore
+  // provides the most reliable low-energy mode for the current firmware.
+  Serial.flush();
+}
+
 // =============================== Setup ==============================
 bool selectApMode() {
   pinMode(PIN_AP_MODE, INPUT_PULLUP);
@@ -1114,10 +1181,11 @@ void setup() {
   inaAvailable = initializeINA226();
   adsAvailable = initializeADS1220();
 
-  Serial.printf("[INIT] ADS1220=%s DS18B20=%s INA226=%s\n",
+  Serial.printf("[INIT] ADS1220=%s DS18B20=%s INA226=%s LOWPOWER=%s\n",
                 adsAvailable ? "OK" : "ERROR",
                 dsAvailable ? "OK" : "ERROR",
-                inaAvailable ? "OK" : "ERROR");
+                inaAvailable ? "CONNECTED" : "NOT CONNECTED",
+                cfg.lowPowerEnabled ? "ON" : "OFF");
 
   // Initial cached measurement is prepared before LoRaWAN initialization.
   readAllSensors();
@@ -1184,12 +1252,17 @@ void loop() {
       // This avoids ADS1220 activity immediately before LoRaWAN.send().
       readAllSensors();
       appTxDutyCycle = intervalMs();
+      if (cfg.lowPowerEnabled) preparePeripheralsForLowPower();
       LoRaWAN.cycle(appTxDutyCycle);
       deviceState = DEVICE_STATE_SLEEP;
       break;
 
     case DEVICE_STATE_SLEEP:
-      LoRaWAN.sleep(loraWanClass);
+      if (cfg.lowPowerEnabled) {
+        LoRaWAN.sleep(loraWanClass);
+      } else {
+        delay(10);
+      }
       break;
 
     default:
