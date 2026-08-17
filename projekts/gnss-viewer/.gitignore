@@ -1,0 +1,31 @@
+# Python caches and virtual environments
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+ENV/
+
+# Test, type-checking, and coverage output
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*.env
+!gnss-viewer.env.example
+
+# Logs and local snapshots
+*.log
+backups/
+
+# OS and editor files
+.DS_Store
+.vscode/
