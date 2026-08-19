@@ -2,7 +2,7 @@
  * =====================================================================
  *  MKP MultiConnect V1.4.1
  *  Universal LoRaWAN / NB-IoT-ready sensor controller
- *  Current firmware profile: LoRaWAN + DS18B20 + ADS1220 Wegsensor + INA226
+ *  Current firmware profile: LoRaWAN + optional DS18B20 + ADS1220 Wegsensor + INA226
  * ---------------------------------------------------------------------
  *  Board: Heltec WiFi LoRa 32 V4.3 (ESP32-S3, SX1262)
  *  Region: EU868, OTAA, Class A
@@ -18,12 +18,16 @@
  *
  *  Hardware:
  *    ADS1220: SCLK=6, MISO=5, MOSI=4, CS=3, DRDY=45 (HSPI)
+ *    WARNING: MISO GPIO5 is shared with Heltec V4.3 PA_CTX GPIO5;
+ *    rewire ADS1220 MISO before using the external FEM reliably.
  *    Wegsensor: AIN2 - AIN3
  *    DS18B20: GPIO47, external 4.7 kOhm pull-up to 3.3 V
  *    INA226: SDA=41, SCL=42, address 0x40 (second I2C controller)
  *    Internal battery measurement:
  *      VBAT ADC=GPIO1, divider enable=GPIO37, divider ratio=4.9
- *    Reserved: MAX3485 GPIO40/39/38, sensor MOSFET GPIO34
+ *    V4.3 board controls: Vext GPIO36, VFEM GPIO7, PA_CSD GPIO2,
+ *    PA_CTX GPIO5, reserved sensor MOSFET GPIO34, white LED GPIO35,
+ *    battery divider GPIO37
  *
  *  Important OneWire patch for GPIO47:
  *    OneWire 2.3.8 / util / OneWire_direct_gpio.h
@@ -53,6 +57,7 @@
 #include <WebServer.h>
 #include <WiFi.h>
 #include <Wire.h>
+#include "driver/rtc_io.h"
 #include <math.h>
 
 // ============================= Firmware =============================
@@ -77,6 +82,15 @@ static constexpr uint8_t PIN_DS18B20 = 47;
 static constexpr uint8_t PIN_INA_SDA = 41;
 static constexpr uint8_t PIN_INA_SCL = 42;
 
+// Heltec WiFi LoRa 32 V4.3 onboard power-control pins.
+static constexpr uint8_t PIN_LORA_FEM_POWER = 7;  // VFEM_Ctrl, LOW disables FEM LDO
+static constexpr uint8_t PIN_LORA_FEM_CSD = 2;    // PA_CSD, LOW shuts down KCT8103L
+static constexpr uint8_t PIN_LORA_FEM_CTX = 5;    // PA_CTX, LOW is safe while off
+// GPIO34 also drives the unpopulated V4.3 GNSS power switch. With no GNSS
+// module fitted it is available for the external sensor MOSFET; LOW is off.
+static constexpr uint8_t PIN_SENSOR_MOSFET = 34;
+static constexpr uint8_t PIN_BOARD_LED = 35;      // White LED, LOW is off
+
 // Heltec WiFi LoRa 32 V4.x internal Li-ion battery monitor.
 static constexpr uint8_t PIN_BATTERY_ADC = 1;    // ADC1_CH0 / VBAT_Read
 static constexpr uint8_t PIN_BATTERY_CTRL = 37; // HIGH enables divider
@@ -84,11 +98,11 @@ static constexpr float BATTERY_DIVIDER_RATIO = 4.90f;
 static constexpr float BATTERY_CALIBRATION = 1.0128f;
 static constexpr uint8_t BATTERY_SAMPLES = 24;
 
-// Reserved for future firmware profiles.
+// Reserved for future firmware profiles. GPIO40..38 are shared with the V4.3
+// GNSS header and may be used for an external RS485 transceiver.
 static constexpr uint8_t PIN_RS485_RE_DE = 40;
 static constexpr uint8_t PIN_RS485_DI = 39;
 static constexpr uint8_t PIN_RS485_RO = 38;
-static constexpr uint8_t PIN_SENSOR_MOSFET = 34;
 
 // ============================ LoRaWAN ================================
 // Defaults are overwritten from NVS during setup.
@@ -351,6 +365,26 @@ void adsCommand(uint8_t command) {
   adsDeselect();
 }
 
+void adsPowerDown() {
+  adsCommand(ADS_CMD_POWERDOWN);
+}
+
+void disableAdsInterface() {
+  adsSPI.end();
+
+  pinMode(PIN_ADS_CS, OUTPUT);
+  digitalWrite(PIN_ADS_CS, HIGH);
+  pinMode(PIN_ADS_SCLK, OUTPUT);
+  digitalWrite(PIN_ADS_SCLK, LOW);
+  pinMode(PIN_ADS_MOSI, OUTPUT);
+  digitalWrite(PIN_ADS_MOSI, LOW);
+  // GPIO5 is also the V4.3 FEM PA_CTX line.
+  if (PIN_ADS_MISO != PIN_LORA_FEM_CTX) {
+    pinMode(PIN_ADS_MISO, INPUT);
+  }
+  pinMode(PIN_ADS_DRDY, INPUT);
+}
+
 void adsWriteRegister(uint8_t address, uint8_t value) {
   adsSelect();
   adsSPI.transfer(ADS_CMD_WREG | ((address & 0x03) << 2));
@@ -422,7 +456,11 @@ bool initializeADS1220() {
   const uint8_t readback = adsReadRegister(0);
   Serial.printf("[ADS1220] REG0 readback: 0x%02X\n", readback);
 
-  if (readback != 0x10) return false;
+  if (readback != 0x10) {
+    disableAdsInterface();
+    Serial.println("[ADS1220] not available - continuing without Wegsensor");
+    return false;
+  }
   configureWegChannel();
   return true;
 }
@@ -434,13 +472,25 @@ bool readWegsensor(int32_t& raw, float& voltageV, float& positionMm) {
 
   for (uint8_t i = 0; i < ADS_DISCARD_SAMPLES; ++i) {
     int32_t dummy = 0;
-    if (!adsSingleConversion(dummy)) return false;
+    if (!adsSingleConversion(dummy)) {
+      adsPowerDown();
+      adsAvailable = false;
+      disableAdsInterface();
+      Serial.println("[ADS1220] read timeout - disabling Wegsensor");
+      return false;
+    }
   }
 
   int64_t sum = 0;
   for (uint8_t i = 0; i < ADS_AVERAGE_SAMPLES; ++i) {
     int32_t sample = 0;
-    if (!adsSingleConversion(sample)) return false;
+    if (!adsSingleConversion(sample)) {
+      adsPowerDown();
+      adsAvailable = false;
+      disableAdsInterface();
+      Serial.println("[ADS1220] read timeout - disabling Wegsensor");
+      return false;
+    }
     sum += sample;
   }
 
@@ -448,7 +498,10 @@ bool readWegsensor(int32_t& raw, float& voltageV, float& positionMm) {
   voltageV = static_cast<float>(raw) * 3.300f / 8388608.0f;
 
   const int32_t rawDelta = cfg.wegRaw1 - cfg.wegRaw0;
-  if (rawDelta == 0) return false;
+  if (rawDelta == 0) {
+    adsPowerDown();
+    return false;
+  }
 
   const float mm0 = static_cast<float>(cfg.wegMm0_x1000) / 1000.0f;
   const float mm1 = static_cast<float>(cfg.wegMm1_x1000) / 1000.0f;
@@ -459,7 +512,7 @@ bool readWegsensor(int32_t& raw, float& voltageV, float& positionMm) {
   const float upper = max(mm0, mm1);
   positionMm = constrain(positionMm, lower, upper);
   const bool valid = isfinite(positionMm);
-  adsCommand(ADS_CMD_POWERDOWN);
+  adsPowerDown();
   return valid;
 }
 
@@ -1017,9 +1070,9 @@ void disableUnusedRadiosForFieldMode() {
 }
 
 // ============================= Payload ==============================
-// Payload V3, 22 bytes, big-endian:
-// 0 version=3
-// 1 status: bit0 temp, bit1 weg, bit2 INA226
+// Payload V4, 25 bytes, big-endian:
+// 0 version=4
+// 1 status: bit0 temp, bit1 weg, bit2 INA226, bit3 battery
 // 2..3 temperature x100, int16
 // 4..5 position x1000 mm, uint16
 // 6..9 Wegsensor raw, int32
@@ -1027,6 +1080,8 @@ void disableUnusedRadiosForFieldMode() {
 // 12..13 INA shunt voltage uV, int16
 // 14..17 INA current mA, int32
 // 18..21 INA power mW, int32
+// 22..23 battery voltage mV, uint16
+// 24 battery percentage, uint8
 
 void putInt16BE(uint8_t& index, int16_t value) {
   appData[index++] = static_cast<uint8_t>((value >> 8) & 0xFF);
@@ -1121,14 +1176,53 @@ static void prepareTxFrame(uint8_t port) {
 }
 
 // ========================= Field power policy =======================
+void releaseLoRaFemHolds() {
+#if defined(USE_KCT8103L_PA)
+  rtc_gpio_hold_dis(static_cast<gpio_num_t>(PIN_LORA_FEM_POWER));
+  rtc_gpio_hold_dis(static_cast<gpio_num_t>(PIN_LORA_FEM_CSD));
+#endif
+}
+
+void disableLoRaFem() {
+#if defined(USE_KCT8103L_PA)
+  releaseLoRaFemHolds();
+
+  pinMode(PIN_LORA_FEM_CSD, OUTPUT);
+  digitalWrite(PIN_LORA_FEM_CSD, LOW);
+  pinMode(PIN_LORA_FEM_CTX, OUTPUT);
+  digitalWrite(PIN_LORA_FEM_CTX, LOW);
+  pinMode(PIN_LORA_FEM_POWER, OUTPUT);
+  digitalWrite(PIN_LORA_FEM_POWER, LOW);
+
+  rtc_gpio_hold_en(static_cast<gpio_num_t>(PIN_LORA_FEM_CSD));
+  rtc_gpio_hold_en(static_cast<gpio_num_t>(PIN_LORA_FEM_POWER));
+#endif
+}
+
+void disableSensorInterfacesForSleep() {
+  if (inaAvailable) {
+    // INA226 mode 0 is power-down; wake-up reinitializes the sensor.
+    inaWriteRegister(INA226_REG_CONFIG, 0x4120);
+  }
+  if (adsAvailable) adsPowerDown();
+  disableAdsInterface();
+
+  sensorI2C.end();
+  pinMode(PIN_INA_SDA, INPUT);
+  pinMode(PIN_INA_SCL, INPUT);
+  pinMode(PIN_DS18B20, INPUT);
+}
+
 void preparePeripheralsForLowPower() {
   // OLED and Wi-Fi/Bluetooth are already disabled in FIELD mode.
   digitalWrite(PIN_BATTERY_CTRL, LOW);
   digitalWrite(PIN_RS485_RE_DE, LOW);
   digitalWrite(PIN_SENSOR_MOSFET, LOW);
+  digitalWrite(PIN_BOARD_LED, LOW);
+  disableSensorInterfacesForSleep();
 
-  if (adsAvailable) adsCommand(ADS_CMD_POWERDOWN);
-
+  // The Heltec radio driver disables the V4.3 FEM after TX/RX windows.
+  // Do not touch FEM pins here while the current LoRaWAN exchange may run.
   // Keep only the LoRaWAN stack state needed by LoRaWAN.sleep().
   // Deep-sleep would reboot the ESP32-S3 and force a new OTAA join unless
   // the complete LoRaMAC session were persisted. LoRaWAN.sleep() therefore
@@ -1153,6 +1247,9 @@ void setup() {
   const uint32_t serialStarted = millis();
   while (!Serial && millis() - serialStarted < 5000) delay(10);
 
+  releaseLoRaFemHolds();
+  pinMode(PIN_SENSOR_MOSFET, OUTPUT);
+  digitalWrite(PIN_SENSOR_MOSFET, LOW);
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
 
   // Keep the OLED/Vext rail physically off immediately after board init.
@@ -1169,8 +1266,16 @@ void setup() {
   // Keep reserved outputs in safe states.
   pinMode(PIN_RS485_RE_DE, OUTPUT);
   digitalWrite(PIN_RS485_RE_DE, LOW);
-  pinMode(PIN_SENSOR_MOSFET, OUTPUT);
   digitalWrite(PIN_SENSOR_MOSFET, LOW);
+  pinMode(PIN_BOARD_LED, OUTPUT);
+  digitalWrite(PIN_BOARD_LED, LOW);
+  disableLoRaFem();
+
+#if defined(USE_KCT8103L_PA)
+  Serial.println("[BOARD] V4.3 KCT8103L FEM control enabled");
+#else
+  Serial.println("[BOARD] WARNING: select LoRa FEM Type = USE_KCT8103L_PA for V4.3");
+#endif
 
   loadConfig();
   copyConfigToLoRaGlobals();
@@ -1194,8 +1299,8 @@ void setup() {
   adsAvailable = initializeADS1220();
 
   Serial.printf("[INIT] ADS1220=%s DS18B20=%s INA226=%s LOWPOWER=%s\n",
-                adsAvailable ? "OK" : "ERROR",
-                dsAvailable ? "OK" : "ERROR",
+                adsAvailable ? "OK" : "NOT CONNECTED",
+                dsAvailable ? "OK" : "NOT CONNECTED",
                 inaAvailable ? "CONNECTED" : "NOT CONNECTED",
                 cfg.lowPowerEnabled ? "ON" : "OFF");
 
@@ -1260,9 +1365,8 @@ void loop() {
       break;
 
     case DEVICE_STATE_CYCLE:
-      // Prepare data for the next uplink only after the current uplink.
-      // This avoids ADS1220 activity immediately before LoRaWAN.send().
-      readAllSensors();
+      // The cache was measured before SEND. Do not access sensors here:
+      // LoRaWAN still owns the radio for its TX/RX windows.
       appTxDutyCycle = intervalMs();
       if (cfg.lowPowerEnabled) preparePeripheralsForLowPower();
       LoRaWAN.cycle(appTxDutyCycle);
