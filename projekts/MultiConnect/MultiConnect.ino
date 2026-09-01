@@ -46,7 +46,17 @@
 #endif
 #define LORAWAN_DEVEUI_AUTO 0
 
+#define USE_KCT8103L_PA
 #include "LoRaWan_APP.h"
+
+#if defined(USE_NONE_PA) || defined(USE_GC1109_PA)
+#error "Select Tools > LoRa FEM Type > USE_KCT8103L_PA for this firmware"
+#endif
+
+#if !defined(LORA_PA_POWER) || !defined(LORA_PA_CSD) || !defined(LORA_PA_CTX)
+#error "Install a KCT8103L-capable Heltec ESP32 Dev-Boards library"
+#endif
+
 #include "HT_SSD1306Wire.h"
 #include <ArduinoJson.h>
 #include <DallasTemperature.h>
@@ -83,12 +93,15 @@ static constexpr uint8_t PIN_INA_SDA = 41;
 static constexpr uint8_t PIN_INA_SCL = 42;
 
 // Heltec WiFi LoRa 32 V4.3 onboard power-control pins.
-static constexpr uint8_t PIN_LORA_FEM_POWER = 7;  // VFEM_Ctrl, LOW disables FEM LDO
-static constexpr uint8_t PIN_LORA_FEM_CSD = 2;    // PA_CSD, LOW shuts down KCT8103L
-static constexpr uint8_t PIN_LORA_FEM_CTX = 5;    // PA_CTX, LOW is safe while off
+static constexpr uint8_t PIN_LORA_FEM_POWER = LORA_PA_POWER;
+static constexpr uint8_t PIN_LORA_FEM_CSD = LORA_PA_CSD;
+static constexpr uint8_t PIN_LORA_FEM_CTX = LORA_PA_CTX;
 // GPIO34 also drives the unpopulated V4.3 GNSS power switch. With no GNSS
 // module fitted it is available for the external sensor MOSFET; LOW is off.
 static constexpr uint8_t PIN_SENSOR_MOSFET = 34;
+// Latest schematic: GPIO34 controls the shared Q1/Q2 gate driver.
+static constexpr uint8_t SENSOR_MOSFET_ON_LEVEL = HIGH;
+static constexpr uint8_t SENSOR_MOSFET_OFF_LEVEL = LOW;
 static constexpr uint8_t PIN_BOARD_LED = 35;      // White LED, LOW is off
 
 // Heltec WiFi LoRa 32 V4.x internal Li-ion battery monitor.
@@ -211,6 +224,14 @@ bool adsAvailable = false;
 bool dsAvailable = false;
 bool inaAvailable = false;
 bool oledAvailable = false;
+bool sensorPowerEnabled = false;
+bool sensorInterfacesReady = false;
+bool fieldMeasurementPending = false;
+
+void powerExternalSensorsOn();
+void powerExternalSensorsOff();
+void setExternalSensorMosfet(bool enabled);
+void prepareLoRaFemForSensorAccess();
 
 // ============================== Helpers =============================
 static inline uint32_t intervalMs() {
@@ -518,6 +539,9 @@ bool readWegsensor(int32_t& raw, float& voltageV, float& positionMm) {
 
 // ============================== DS18B20 =============================
 bool initializeDS18B20() {
+  // GPIO47 is put into a passive state when the switched sensor rail is off.
+  // Reinitialize OneWire after every power cycle before searching for devices.
+  oneWire.begin(PIN_DS18B20);
   temperatureSensors.begin();
   const uint8_t count = temperatureSensors.getDeviceCount();
   Serial.printf("[DS18B20] devices: %u\n", count);
@@ -718,8 +742,36 @@ bool readInternalBattery(uint16_t& batteryMillivolts,
   return true;
 }
 
+void initializePoweredSensorInterfaces() {
+  dsAvailable = initializeDS18B20();
+  inaAvailable = initializeINA226();
+  adsAvailable = initializeADS1220();
+  sensorInterfacesReady = true;
+}
+
+void setExternalSensorMosfet(bool enabled) {
+  pinMode(PIN_SENSOR_MOSFET, OUTPUT);
+  digitalWrite(PIN_SENSOR_MOSFET,
+               enabled ? SENSOR_MOSFET_ON_LEVEL : SENSOR_MOSFET_OFF_LEVEL);
+  sensorPowerEnabled = enabled;
+}
+
+void powerExternalSensorsOn() {
+  if (!sensorPowerEnabled) {
+    prepareLoRaFemForSensorAccess();
+    setExternalSensorMosfet(true);
+    delay(50);
+    sensorInterfacesReady = false;
+    Serial.println("[SENSORS] external power ON");
+  }
+
+  if (!sensorInterfacesReady) initializePoweredSensorInterfaces();
+}
+
 // =========================== Sensor cache ===========================
 void readAllSensors() {
+  powerExternalSensorsOn();
+
   Measurements next;
 
   next.temperatureValid = readTemperature(next.temperatureC);
@@ -852,6 +904,8 @@ void apiState() {
   doc["mode"] = apMode ? "AP" : "FIELD";
   doc["mode_pin"] = PIN_AP_MODE;
   doc["mode_pin_high"] = apMode;
+  doc["sensor_power_enabled"] = sensorPowerEnabled;
+  doc["sensor_power_pin"] = PIN_SENSOR_MOSFET;
   doc["ip"] = apMode ? WiFi.softAPIP().toString() : String("-");
   doc["uptime_s"] = millis() / 1000UL;
   doc["heap_free"] = ESP.getFreeHeap();
@@ -1000,6 +1054,31 @@ void apiSaveConfig() {
   server.send(200, "text/plain", "saved");
 }
 
+void apiSensorPower() {
+  if (!server.hasArg("plain")) {
+    server.send(400, "text/plain", "missing body");
+    return;
+  }
+
+  JsonDocument request;
+  if (deserializeJson(request, server.arg("plain")) ||
+      !request["enabled"].is<bool>()) {
+    server.send(400, "text/plain", "invalid enabled value");
+    return;
+  }
+
+  if (request["enabled"].as<bool>()) {
+    powerExternalSensorsOn();
+    readAllSensors();
+  } else {
+    powerExternalSensorsOff();
+  }
+
+  JsonDocument response;
+  response["enabled"] = sensorPowerEnabled;
+  sendJson(response);
+}
+
 void apiReboot() {
   server.send(200, "text/plain", "restarting");
   delay(200);
@@ -1030,6 +1109,7 @@ void attachWebRoutes() {
 
   server.on("/api/state", HTTP_GET, apiState);
   server.on("/api/config", HTTP_POST, apiSaveConfig);
+  server.on("/api/sensor-power", HTTP_POST, apiSensorPower);
   server.on("/api/deveui", HTTP_GET, apiChipDevEui);
   server.on("/api/deveui/use-chip", HTTP_POST, apiUseChipDevEui);
   server.on("/api/reboot", HTTP_POST, apiReboot);
@@ -1199,6 +1279,13 @@ void disableLoRaFem() {
 #endif
 }
 
+void prepareLoRaFemForSensorAccess() {
+#if defined(USE_KCT8103L_PA)
+  disableLoRaFem();
+  pinMode(PIN_LORA_FEM_CTX, INPUT);
+#endif
+}
+
 void disableSensorInterfacesForSleep() {
   if (inaAvailable) {
     // INA226 mode 0 is power-down; wake-up reinitializes the sensor.
@@ -1213,13 +1300,28 @@ void disableSensorInterfacesForSleep() {
   pinMode(PIN_DS18B20, INPUT);
 }
 
+void powerExternalSensorsOff() {
+  if (sensorPowerEnabled) {
+    disableSensorInterfacesForSleep();
+    delay(2);
+  }
+
+  setExternalSensorMosfet(false);
+  sensorInterfacesReady = false;
+  dsAvailable = false;
+  inaAvailable = false;
+  adsAvailable = false;
+  Serial.println("[SENSORS] external power OFF");
+}
+
 void preparePeripheralsForLowPower() {
   // OLED and Wi-Fi/Bluetooth are already disabled in FIELD mode.
   digitalWrite(PIN_BATTERY_CTRL, LOW);
   digitalWrite(PIN_RS485_RE_DE, LOW);
-  digitalWrite(PIN_SENSOR_MOSFET, LOW);
+  // Q1/Q2 are disabled during the sleep phase and enabled immediately
+  // before the next measurement.
+  powerExternalSensorsOff();
   digitalWrite(PIN_BOARD_LED, LOW);
-  disableSensorInterfacesForSleep();
 
   // The Heltec radio driver disables the V4.3 FEM after TX/RX windows.
   // Do not touch FEM pins here while the current LoRaWAN exchange may run.
@@ -1249,7 +1351,7 @@ void setup() {
 
   releaseLoRaFemHolds();
   pinMode(PIN_SENSOR_MOSFET, OUTPUT);
-  digitalWrite(PIN_SENSOR_MOSFET, LOW);
+  digitalWrite(PIN_SENSOR_MOSFET, SENSOR_MOSFET_OFF_LEVEL);
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
 
   // Keep the OLED/Vext rail physically off immediately after board init.
@@ -1266,7 +1368,7 @@ void setup() {
   // Keep reserved outputs in safe states.
   pinMode(PIN_RS485_RE_DE, OUTPUT);
   digitalWrite(PIN_RS485_RE_DE, LOW);
-  digitalWrite(PIN_SENSOR_MOSFET, LOW);
+  digitalWrite(PIN_SENSOR_MOSFET, SENSOR_MOSFET_OFF_LEVEL);
   pinMode(PIN_BOARD_LED, OUTPUT);
   digitalWrite(PIN_BOARD_LED, LOW);
   disableLoRaFem();
@@ -1294,9 +1396,7 @@ void setup() {
   }
 
   initializeBatteryMeasurement();
-  dsAvailable = initializeDS18B20();
-  inaAvailable = initializeINA226();
-  adsAvailable = initializeADS1220();
+  powerExternalSensorsOn();
 
   Serial.printf("[INIT] ADS1220=%s DS18B20=%s INA226=%s LOWPOWER=%s\n",
                 adsAvailable ? "OK" : "NOT CONNECTED",
@@ -1310,7 +1410,9 @@ void setup() {
   if (apMode) {
     startAccessPoint();
   } else {
-    // FIELD mode: OLED remains physically powered off from boot onward.
+    // FIELD mode: OLED remains physically powered off from boot onward and
+    // Q1/Q2 are disabled until the next measurement.
+    powerExternalSensorsOff();
     pinMode(Vext, OUTPUT);
     digitalWrite(Vext, HIGH);
     disableUnusedRadiosForFieldMode();
@@ -1329,7 +1431,7 @@ void loop() {
 
     if (millis() - lastSensorRead >= 2000) {
       lastSensorRead = millis();
-      readAllSensors();
+      if (sensorPowerEnabled) readAllSensors();
     }
 
     if (millis() - lastPageChange >= 5000) {
@@ -1358,6 +1460,17 @@ void loop() {
       break;
 
     case DEVICE_STATE_SEND:
+      if (fieldMeasurementPending) {
+        Serial.println("[LORA] MEASURE AFTER WAKE");
+        readAllSensors();
+        powerExternalSensorsOff();
+        fieldMeasurementPending = false;
+        // Keep measurement and radio submission in separate loop passes.
+        // This also leaves the ADS1220 interface fully released before TX.
+        delay(5);
+        return;
+      }
+
       Serial.println("[LORA] SEND CACHED");
       prepareTxFrame(appPort);
       LoRaWAN.send();
@@ -1369,11 +1482,15 @@ void loop() {
       // LoRaWAN still owns the radio for its TX/RX windows.
       appTxDutyCycle = intervalMs();
       if (cfg.lowPowerEnabled) preparePeripheralsForLowPower();
+      else powerExternalSensorsOff();
       LoRaWAN.cycle(appTxDutyCycle);
+      fieldMeasurementPending = true;
       deviceState = DEVICE_STATE_SLEEP;
       break;
 
     case DEVICE_STATE_SLEEP:
+      // Keep the Q1/Q2 gate low throughout the entire sleep interval.
+      setExternalSensorMosfet(false);
       if (cfg.lowPowerEnabled) {
         LoRaWAN.sleep(loraWanClass);
       } else {

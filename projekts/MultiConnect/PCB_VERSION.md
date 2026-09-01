@@ -115,6 +115,17 @@ Truth table:
 
 The source/drain direction of Q3 is correct for a P-MOSFET high-side switch. R18 prevents a floating Q3 gate and defines the default OFF state. R15 defines the default OFF state of Q4 and Q2.
 
+### 3.5 GPIO34/VGNSS_CTRL deep-sleep conflict
+
+The Heltec V4.3 board uses GPIO34 as `VGNSS_CTRL` and pulls it up to `VDD_3V3` with onboard R21 = 10 kOhm. The MultiConnect PCB reuses the same GPIO34 through R14 for the Q1/Q2 gate driver. During normal operation the ESP32 actively drives the pin and the 24 V output switches correctly. During deep sleep GPIO34 can become high impedance; R21 then pulls the gate-control node HIGH and can turn Q2/Q1 back on. This explains why AP mode works while the 24 V output may reappear during sleep.
+
+R21 is on the Heltec board and is not removed for the current assembly. Two options are reserved for a future PCB revision:
+
+1. **Resistor option:** replace R15 = 100 kOhm with approximately 2.2 kOhm, or add 2.2 kOhm in parallel, from `Q4_G` to AGND. This should hold the Q2/Q4 gate node below the turn-on voltage while GPIO34 is high impedance. The trade-off is approximately 0.27 mA through the Heltec 10 kOhm pull-up during sleep; the unused GNSS switch Q7 may also be enabled and must be checked.
+2. **Pin-swap option:** move the MultiConnect MOSFET control net from GPIO34 to GPIO38 and move RS485 RO from GPIO38 to GPIO34. GPIO34 then remains an input with the Heltec pull-up, while GPIO38 controls Q1/Q2 without the VGNSS_CTRL pull-up. The PCB reroute, firmware pin definitions, and all GPIO conflicts must be verified together.
+
+D1 remains important for limiting Q1 gate-source voltage at 24 V, but it does not explain the sleep-only switching symptom by itself. Its type, polarity, and voltage rating must still be recorded before production release.
+
 ### 3.4 Q3/Q4 component requirements
 
 The schematic currently uses generic symbols:
