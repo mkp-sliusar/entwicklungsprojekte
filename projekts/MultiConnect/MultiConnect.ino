@@ -1,8 +1,24 @@
 /*
  * =====================================================================
- *  MKP MultiConnect V1.4.1
+ *  MKP MultiConnect V1.4.3
  *  Universal LoRaWAN / NB-IoT-ready sensor controller
- *  Current firmware profile: LoRaWAN + optional DS18B20 + ADS1220 Wegsensor + INA226
+ *  Current firmware profile: LoRaWAN + KCT8103L FEM + optional DS18B20 + ADS1220 Wegsensor + INA226
+ *
+ *  RELEASE NOTES - V1.4.3
+ *  This revision replaces the older V1.4.1/V1.4.2 firmware. Do not mix this
+ *  sketch with an older binary when comparing field measurements.
+ *    - KCT8103L FEM is selected in Arduino IDE and controlled only by the
+ *      Heltec radio driver during TX and RX windows.
+ *    - External sensor power and ADS1220 measurements are kept separate from
+ *      LoRaWAN radio activity.
+ *    - INA226 is optional. A physically disconnected INA226 is reported as
+ *      unavailable and its payload values are intentionally null.
+ *
+ *  REQUIRED ARDUINO IDE PROFILE
+ *    Board: WiFi LoRa 32 (V4)
+ *    LoRaWan Region: REGION_EU868
+ *    LoRa FEM Type: USE_KCT8103L_PA
+ *    LoRa External FEM Receive Gain: choose as required for the installation
  * ---------------------------------------------------------------------
  *  Board: Heltec WiFi LoRa 32 V4.3 (ESP32-S3, SX1262)
  *  Region: EU868, OTAA, Class A
@@ -22,7 +38,7 @@
  *    rewire ADS1220 MISO before using the external FEM reliably.
  *    Wegsensor: AIN2 - AIN3
  *    DS18B20: GPIO47, external 4.7 kOhm pull-up to 3.3 V
- *    INA226: SDA=41, SCL=42, address 0x40 (second I2C controller)
+ *    INA226 (optional): SDA=41, SCL=42, address 0x40 (second I2C controller)
  *    Internal battery measurement:
  *      VBAT ADC=GPIO1, divider enable=GPIO37, divider ratio=4.9
  *    V4.3 board controls: Vext GPIO36, VFEM GPIO7, PA_CSD GPIO2,
@@ -36,6 +52,8 @@
  *  Important LoRa / ADS1220 behavior:
  *    ADS1220 measurements are cached. LoRaWAN SEND uses only cached data.
  *    Do not read ADS1220 immediately before LoRaWAN.send().
+ *    GPIO5 is shared by ADS1220 MISO and KCT8103L PA_CTX. The firmware uses
+ *    these pins in separate phases; do not use them simultaneously.
  * =====================================================================
  */
 
@@ -72,7 +90,7 @@
 #include <math.h>
 
 // ============================= Firmware =============================
-static constexpr const char* FW_VERSION = "1.4.1";
+static constexpr const char* FW_VERSION = "1.4.3";
 static constexpr const char* DEVICE_NAME = "MKP MultiConnect";
 
 // ============================== Modes ===============================
