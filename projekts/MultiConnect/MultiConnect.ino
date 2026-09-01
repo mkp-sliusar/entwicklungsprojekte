@@ -48,6 +48,7 @@
 
 #define USE_KCT8103L_PA
 #include "LoRaWan_APP.h"
+#include "radio/radio.h"
 
 #if defined(USE_NONE_PA) || defined(USE_GC1109_PA)
 #error "Select Tools > LoRa FEM Type > USE_KCT8103L_PA for this firmware"
@@ -1068,7 +1069,6 @@ void apiSensorPower() {
   }
 
   if (request["enabled"].as<bool>()) {
-    powerExternalSensorsOn();
     readAllSensors();
   } else {
     powerExternalSensorsOff();
@@ -1494,6 +1494,8 @@ void loop() {
       if (cfg.lowPowerEnabled) {
         LoRaWAN.sleep(loraWanClass);
       } else {
+        Mcu.timerhandler();
+        Radio.IrqProcess();
         delay(10);
       }
       break;
