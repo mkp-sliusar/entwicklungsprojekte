@@ -1,10 +1,10 @@
 /*
  * =====================================================================
- *  MKP MultiConnect V1.4.4
+ *  MKP MultiConnect V1.4.5
  *  Universal LoRaWAN / NB-IoT-ready sensor controller
  *  Current firmware profile: LoRaWAN + KCT8103L FEM + optional DS18B20 + ADS1220 Wegsensor + INA226
  *
- *  RELEASE NOTES - V1.4.4
+ *  RELEASE NOTES - V1.4.5
  *  This revision replaces the older V1.4.1/V1.4.2 firmware. Do not mix this
  *  sketch with an older binary when comparing field measurements.
  *    - KCT8103L FEM is selected in Arduino IDE and controlled only by the
@@ -17,6 +17,7 @@
  *      Li-SOCl2 cells.
  *    - INA226 is optional. A physically disconnected INA226 is reported as
  *      unavailable and its payload values are intentionally null.
+ *    - AP mode provides captive-portal DNS and automatic browser redirect.
  *
  *  REQUIRED ARDUINO IDE PROFILE
  *    Board: WiFi LoRa 32 (V4)
@@ -95,7 +96,7 @@
 #include <math.h>
 
 // ============================= Firmware =============================
-static constexpr const char* FW_VERSION = "1.4.4";
+static constexpr const char* FW_VERSION = "1.4.5";
 static constexpr const char* DEVICE_NAME = "MKP MultiConnect";
 
 // ============================== Modes ===============================

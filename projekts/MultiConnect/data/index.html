@@ -1,9 +1,10 @@
 <!doctype html>
-<html lang="en" data-theme="light" data-view="user" data-menu="closed">
+<html lang="de" translate="no" class="notranslate" data-theme="light" data-view="user" data-menu="closed">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light dark">
+<meta name="google" content="notranslate">
 <title>MKP MultiConnect</title>
 <style>
 :root{--primary:#004972;--accent:#42c0eb;--accent-soft:#e4f5fb;--page:#fff;--surface:#f8f9fa;--field:#edf3f6;--ink:rgba(0,0,0,.87);--muted:#9aabb4;--line:rgba(0,0,0,.12);--ok:#278a61;--bad:#c95050;--shadow:0 2px 3px rgba(0,0,0,.16),0 1px 1px rgba(0,0,0,.10)}
@@ -107,7 +108,7 @@ html[data-theme=dark]{--page:#0e1b22;--surface:#172a33;--field:#203842;--ink:#ed
 </main>
 
 <script>
-const LANGS=['en','de','uk'];const MAX_CHART_POINTS=120;let lang=localStorage.getItem('mc-lang')||'en';let dict={},state={};const chartHistory={temperature:[],position:[]};const $=id=>document.getElementById(id);const set=(id,v)=>{const e=$(id);if(e)e.textContent=v};const tr=k=>dict[lang]?.[k]||dict.en?.[k]||k;
+const LANGS=['en','de','uk'];const MAX_CHART_POINTS=120;const browserLanguage=(navigator.languages?.[0]||navigator.language||'de').toLowerCase();const detectedLanguage=browserLanguage.startsWith('de')?'de':browserLanguage.startsWith('uk')?'uk':'en';const savedLanguage=localStorage.getItem('mc-lang');let lang=LANGS.includes(savedLanguage)?savedLanguage:detectedLanguage;let dict={},state={};const chartHistory={temperature:[],position:[]};const $=id=>document.getElementById(id);const set=(id,v)=>{const e=$(id);if(e)e.textContent=v};const tr=k=>dict[lang]?.[k]||dict.en?.[k]||k;
 async function req(url,opt){const r=await fetch(url,opt);if(!r.ok)throw new Error(await r.text());return (r.headers.get('content-type')||'').includes('json')?r.json():r.text()}
 function fmt(v,n,u){return Number.isFinite(Number(v))?`${Number(v).toFixed(n)} ${u}`:'—'}function input(id,v){const e=$(id);if(document.activeElement!==e&&!e.dataset.dirty)e.value=v??''}
 function recordChartPoint(){const time=Date.now();if(state.temperature_valid&&Number.isFinite(Number(state.temperature_c)))chartHistory.temperature.push({time,value:Number(state.temperature_c)});if(state.weg_valid&&Number.isFinite(Number(state.position_mm)))chartHistory.position.push({time,value:Number(state.position_mm)});Object.values(chartHistory).forEach(points=>{if(points.length>MAX_CHART_POINTS)points.splice(0,points.length-MAX_CHART_POINTS)})}
@@ -130,6 +131,9 @@ async function init(){try{dict=await req('/i18n.json')}catch(_){dict={en:{}}}app
 </script>
 <script>
 document.addEventListener('click',event=>{const item=event.target.closest('[data-expert]');if(!item)return;document.documentElement.dataset.view='expert';localStorage.setItem('mc-view','expert');$('expertBtn').classList.add('active');$('expertBtn').setAttribute('aria-pressed','true');drawCharts()},true);
+</script>
+<script>
+function syncDocumentLanguage(){document.documentElement.lang=lang;document.documentElement.setAttribute('translate','no')};syncDocumentLanguage();document.addEventListener('click',event=>{if(event.target.closest('#langBtn'))setTimeout(syncDocumentLanguage,0)},true);
 </script>
 </body>
 </html>
