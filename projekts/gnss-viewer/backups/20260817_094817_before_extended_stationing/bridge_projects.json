@@ -1,0 +1,48 @@
+{
+  "default_project": "bestand_a_l",
+  "projects": [
+    {
+      "id": "bestand_a_l",
+      "name": "Dresden · Budapester Straße · Achsen A–L",
+      "axes": {
+        "mode": "geojson",
+        "path": "axes.geojson",
+        "label": "Achsen A–L"
+      },
+      "map": {
+        "center": [51.0362, 13.7247],
+        "zoom": 18
+      },
+      "calculations": {
+        "reference": "sensor",
+        "extra": "haversine",
+        "extra_label": "Extra",
+        "extra_reference": [51.04471185, 13.727260815],
+        "extra_reference_editable": true
+      }
+    },
+    {
+      "id": "waren_herrenseebruecke",
+      "name": "Waren · Herrenseebrücke · Achsen 0–13",
+      "axes": {
+        "mode": "geojson",
+        "path": "waren_herrenseebruecke_axes.geojson",
+        "label": "Achsen 0–13",
+        "stationing": "axis_centers",
+        "source_label": "DB_REF2016 · Vermessungs-DXF"
+      },
+      "map": {
+        "center": [53.51760, 12.68438],
+        "zoom": 17
+      },
+      "calculations": {
+        "reference": "sensor",
+        "extra": "axis_station_nearby",
+        "extra_label": "Abstand ab Achse 0",
+        "extra_reference": [53.518716392, 12.684980356],
+        "extra_reference_editable": false,
+        "axis_max_reference_distance_m": 2000.0
+      }
+    }
+  ]
+}
