@@ -7,6 +7,7 @@ Project-specific MKP MultiConnect firmware for Leer Suedringbruecke.
 - AP SSID: `MultiConnect-Leer-<MAC suffix>`
 - NVS namespace: `multileer`
 - LoRa payload: V5, 12 bytes
+- ChirpStack codec: `CHIRPSTACK_CODEC.js`
 - LittleFS files: `data/`
 - Hardware notes: `PCB_VERSION.md`
 
