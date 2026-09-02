@@ -1,0 +1,11 @@
+services:
+  gnss-viewer:
+    build: .
+    container_name: gnss-viewer
+    restart: unless-stopped
+    env_file:
+      - gnss-viewer.env
+    volumes:
+      - ./axes.geojson:/app/axes.geojson:ro
+    ports:
+      - "8050:8050"

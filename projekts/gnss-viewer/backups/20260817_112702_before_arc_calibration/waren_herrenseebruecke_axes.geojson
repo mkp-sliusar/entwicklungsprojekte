@@ -1,0 +1,400 @@
+{
+  "type": "FeatureCollection",
+  "name": "Waren Herrenseebruecke Achsen 0-13 - GNSS arc calibrated v2",
+  "crs_target": "WGS84 / EPSG:4326",
+  "calibration": {
+    "method": "circular_arc",
+    "axis_0": {
+      "lat": 53.51871825833334,
+      "lon": 12.684979888333332
+    },
+    "axis_13": {
+      "lat": 53.51650284,
+      "lon": 12.683483484166667
+    },
+    "radius_m": 250.27557655875654,
+    "chord_length_m": 265.46739423020733,
+    "arc_length_m": 279.8148861192505,
+    "rotation_direction": 1
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "axis": "0",
+        "station_m": 0.0,
+        "plan_station_m": 0.0,
+        "bridge_width_m": 14.7,
+        "label_coordinates": [
+          12.684979888333332,
+          53.51871825833334
+        ],
+        "source": "GNSS circular-arc calibration, updated Achse 13"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            12.685045374963925,
+            53.51866484349417
+          ],
+          [
+            12.68491440170274,
+            53.5187716731725
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "axis": "1",
+        "station_m": 20.911,
+        "plan_station_m": 21.0,
+        "bridge_width_m": 14.7,
+        "label_coordinates": [
+          12.684732370425452,
+          53.51860126335196
+        ],
+        "source": "GNSS circular-arc calibration, updated Achse 13"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            12.684805126069858,
+            53.51855128437787
+          ],
+          [
+            12.684659614781047,
+            53.51865124232605
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "axis": "2",
+        "station_m": 41.823,
+        "plan_station_m": 42.0,
+        "bridge_width_m": 14.7,
+        "label_coordinates": [
+          12.6845021377725,
+          53.51847239438727
+        ],
+        "source": "GNSS circular-arc calibration, updated Achse 13"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            12.684581654803782,
+            53.51842619998898
+          ],
+          [
+            12.684422620741216,
+            53.518518588785554
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "axis": "3",
+        "station_m": 62.734,
+        "plan_station_m": 63.0,
+        "bridge_width_m": 14.7,
+        "label_coordinates": [
+          12.68429079674188,
+          53.51833255057715
+        ],
+        "source": "GNSS circular-arc calibration, updated Achse 13"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            12.684376520357906,
+            53.51829046305984
+          ],
+          [
+            12.684205073125854,
+            53.518374638094464
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "axis": "4",
+        "station_m": 83.646,
+        "plan_station_m": 84.0,
+        "bridge_width_m": 14.7,
+        "label_coordinates": [
+          12.684099821891348,
+          53.51818270763265
+        ],
+        "source": "GNSS circular-arc calibration, updated Achse 13"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            12.684191153985719,
+            53.51814502064717
+          ],
+          [
+            12.684008489796977,
+            53.518220394618126
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "axis": "5",
+        "station_m": 104.557,
+        "plan_station_m": 105.0,
+        "bridge_width_m": 14.7,
+        "label_coordinates": [
+          12.683930545680791,
+          53.51802391103023
+        ],
+        "source": "GNSS circular-arc calibration, updated Achse 13"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            12.684026849015924,
+            53.517990887524284
+          ],
+          [
+            12.68383424234566,
+            53.518056934536176
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "axis": "6",
+        "station_m": 125.469,
+        "plan_station_m": 126.0,
+        "bridge_width_m": 14.7,
+        "label_coordinates": [
+          12.68378414917547,
+          53.51785726871737
+        ],
+        "source": "GNSS circular-arc calibration, updated Achse 13"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            12.683884751828694,
+            53.517829139100854
+          ],
+          [
+            12.683683546522246,
+            53.51788539833389
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "axis": "7",
+        "station_m": 146.38,
+        "plan_station_m": 147.0,
+        "bridge_width_m": 14.7,
+        "label_coordinates": [
+          12.683661653805537,
+          53.51768394338224
+        ],
+        "source": "GNSS circular-arc calibration, updated Achse 13"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            12.683765853857203,
+            53.51766090391966
+          ],
+          [
+            12.683557453753872,
+            53.51770698284481
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "axis": "8",
+        "station_m": 171.275,
+        "plan_station_m": 172.0,
+        "bridge_width_m": 14.7,
+        "label_coordinates": [
+          12.683548163362593,
+          53.51747056950638
+        ],
+        "source": "GNSS circular-arc calibration, updated Achse 13"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            12.683655696359354,
+            53.51745379632839
+          ],
+          [
+            12.683440630365832,
+            53.51748734268436
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "axis": "9",
+        "station_m": 192.186,
+        "plan_station_m": 193.0,
+        "bridge_width_m": 14.7,
+        "label_coordinates": [
+          12.683480769520463,
+          53.517286883307236
+        ],
+        "source": "GNSS circular-arc calibration, updated Achse 13"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            12.683590281714501,
+            53.51727550455719
+          ],
+          [
+            12.683371257326424,
+            53.517298262057274
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "axis": "10",
+        "station_m": 217.081,
+        "plan_station_m": 218.0,
+        "bridge_width_m": 14.7,
+        "label_coordinates": [
+          12.683434489235756,
+          53.517064791912546
+        ],
+        "source": "GNSS circular-arc calibration, updated Achse 13"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            12.683545360571973,
+            53.51705993545994
+          ],
+          [
+            12.683323617899537,
+            53.51706964836515
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "axis": "11",
+        "station_m": 237.992,
+        "plan_station_m": 239.0,
+        "bridge_width_m": 14.7,
+        "label_coordinates": [
+          12.68342444812769,
+          53.51687688065512
+        ],
+        "source": "GNSS circular-arc calibration, updated Achse 13"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            12.683535614347434,
+            53.5168775427104
+          ],
+          [
+            12.683313281907948,
+            53.51687621859984
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "axis": "12",
+        "station_m": 258.903,
+        "plan_station_m": 260.0,
+        "bridge_width_m": 14.7,
+        "label_coordinates": [
+          12.683440817842639,
+          53.516689126688505
+        ],
+        "source": "GNSS circular-arc calibration, updated Achse 13"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            12.683551503322684,
+            53.51669530263241
+          ],
+          [
+            12.683330132362592,
+            53.5166829507446
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "axis": "13",
+        "station_m": 279.815,
+        "plan_station_m": 281.0,
+        "bridge_width_m": 14.7,
+        "label_coordinates": [
+          12.683483484166667,
+          53.51650284
+        ],
+        "source": "GNSS circular-arc calibration, updated Achse 13"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            12.683592916637986,
+            53.51651448674205
+          ],
+          [
+            12.683374051695347,
+            53.516491193257956
+          ]
+        ]
+      }
+    }
+  ]
+}

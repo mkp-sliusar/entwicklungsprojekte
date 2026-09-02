@@ -1,0 +1,398 @@
+{
+  "type": "FeatureCollection",
+  "name": "Waren Herrenseebruecke Achsen 0-13 - GNSS calibrated",
+  "crs_target": "WGS84 / EPSG:4326",
+  "calibration": {
+    "method": "2D similarity transform",
+    "control_axis_0": {
+      "lat": 53.51871825833334,
+      "lon": 12.684979888333332
+    },
+    "control_axis_13": {
+      "lat": 53.516507651666664,
+      "lon": 12.683473485
+    },
+    "scale": 0.9941124471484873,
+    "rotation_deg": 0.050489555986513876
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "axis": "0",
+        "station_m": 0.0,
+        "plan_station_m": 0.0,
+        "bridge_width_m": 14.602,
+        "label_coordinates": [
+          12.684979888333332,
+          53.51871825833334
+        ],
+        "source": "GNSS two-point calibrated from 30G0196100_Herrenseebruecke.dxf"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            12.684870559571563,
+            53.51871068555799
+          ],
+          [
+            12.685089217095102,
+            53.51872583110868
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "axis": "1",
+        "station_m": 21.161,
+        "plan_station_m": 21.0,
+        "bridge_width_m": 14.696,
+        "label_coordinates": [
+          12.685012888335248,
+          53.51852915311289
+        ],
+        "source": "GNSS two-point calibrated from 30G0196100_Herrenseebruecke.dxf"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            12.684902387665304,
+            53.518524496947634
+          ],
+          [
+            12.685123389005193,
+            53.51853380927814
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "axis": "2",
+        "station_m": 41.79,
+        "plan_station_m": 42.0,
+        "bridge_width_m": 14.858,
+        "label_coordinates": [
+          12.685026611144794,
+          53.518343973484946
+        ],
+        "source": "GNSS two-point calibrated from 30G0196100_Herrenseebruecke.dxf"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            12.68491462151873,
+            53.51834319010021
+          ],
+          [
+            12.685138600770857,
+            53.51834475686967
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "axis": "3",
+        "station_m": 61.39,
+        "plan_station_m": 63.0,
+        "bridge_width_m": 14.666,
+        "label_coordinates": [
+          12.68501941720959,
+          53.51816792575349
+        ],
+        "source": "GNSS two-point calibrated from 30G0196100_Herrenseebruecke.dxf"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            12.684909228805617,
+            53.518173253627026
+          ],
+          [
+            12.685129605613563,
+            53.51816259787994
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "axis": "4",
+        "station_m": 83.677,
+        "plan_station_m": 84.0,
+        "bridge_width_m": 14.725,
+        "label_coordinates": [
+          12.684981946278343,
+          53.51796893642543
+        ],
+        "source": "GNSS two-point calibrated from 30G0196100_Herrenseebruecke.dxf"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            12.68487252325989,
+            53.517980020613294
+          ],
+          [
+            12.685091369296797,
+            53.51795785223757
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "axis": "5",
+        "station_m": 104.293,
+        "plan_station_m": 105.0,
+        "bridge_width_m": 14.735,
+        "label_coordinates": [
+          12.684920845385035,
+          53.51778731926473
+        ],
+        "source": "GNSS two-point calibrated from 30G0196100_Herrenseebruecke.dxf"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            12.684813071770805,
+            53.51780331871358
+          ],
+          [
+            12.685028618999265,
+            53.51777131981588
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "axis": "6",
+        "station_m": 122.479,
+        "plan_station_m": 126.0,
+        "bridge_width_m": 14.634,
+        "label_coordinates": [
+          12.684846295790418,
+          53.51763008064543
+        ],
+        "source": "GNSS two-point calibrated from 30G0196100_Herrenseebruecke.dxf"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            12.684742114044038,
+            53.51765168827555
+          ],
+          [
+            12.6849504775368,
+            53.517608473015315
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "axis": "7",
+        "station_m": 144.873,
+        "plan_station_m": 147.0,
+        "bridge_width_m": 14.652,
+        "label_coordinates": [
+          12.684727889411551,
+          53.517441655598475
+        ],
+        "source": "GNSS two-point calibrated from 30G0196100_Herrenseebruecke.dxf"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            12.684626652711234,
+            53.5174679674224
+          ],
+          [
+            12.68482912611187,
+            53.51741534377456
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "axis": "8",
+        "station_m": 169.873,
+        "plan_station_m": 172.0,
+        "bridge_width_m": 14.63,
+        "label_coordinates": [
+          12.684561426649486,
+          53.51724013378294
+        ],
+        "source": "GNSS two-point calibrated from 30G0196100_Herrenseebruecke.dxf"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            12.684465378304061,
+            53.517272428411026
+          ],
+          [
+            12.68465747499491,
+            53.51720783915486
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "axis": "9",
+        "station_m": 191.408,
+        "plan_station_m": 193.0,
+        "bridge_width_m": 14.696,
+        "label_coordinates": [
+          12.684394548852321,
+          53.517074157248416
+        ],
+        "source": "GNSS two-point calibrated from 30G0196100_Herrenseebruecke.dxf"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            12.684302310089036,
+            53.517110716131285
+          ],
+          [
+            12.684486787615604,
+            53.51703759836555
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "axis": "10",
+        "station_m": 216.453,
+        "plan_station_m": 218.0,
+        "bridge_width_m": 14.588,
+        "label_coordinates": [
+          12.684166571356347,
+          53.516894787824484
+        ],
+        "source": "GNSS two-point calibrated from 30G0196100_Herrenseebruecke.dxf"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            12.684081306110292,
+            53.51693616634072
+          ],
+          [
+            12.684251836602403,
+            53.516853409308254
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "axis": "11",
+        "station_m": 237.353,
+        "plan_station_m": 239.0,
+        "bridge_width_m": 14.617,
+        "label_coordinates": [
+          12.683956080705194,
+          53.51675505836787
+        ],
+        "source": "GNSS two-point calibrated from 30G0196100_Herrenseebruecke.dxf"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            12.683878023865077,
+            53.516801404266296
+          ],
+          [
+            12.68403413754531,
+            53.516708712469445
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "axis": "12",
+        "station_m": 257.925,
+        "plan_station_m": 260.0,
+        "bridge_width_m": 14.524,
+        "label_coordinates": [
+          12.683729530516846,
+          53.516628839437345
+        ],
+        "source": "GNSS two-point calibrated from 30G0196100_Herrenseebruecke.dxf"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            12.683658906428123,
+            53.51667869447197
+          ],
+          [
+            12.683800154605567,
+            53.51657898440271
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "axis": "13",
+        "station_m": 279.614,
+        "plan_station_m": 281.0,
+        "bridge_width_m": 14.629,
+        "label_coordinates": [
+          12.683473485,
+          53.516507651666664
+        ],
+        "source": "GNSS two-point calibrated from 30G0196100_Herrenseebruecke.dxf"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            12.683409737068745,
+            53.51656127749461
+          ],
+          [
+            12.683537232931256,
+            53.51645402583872
+          ]
+        ]
+      }
+    }
+  ]
+}
