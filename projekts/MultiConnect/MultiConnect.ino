@@ -1,16 +1,20 @@
 /*
  * =====================================================================
- *  MKP MultiConnect V1.4.3
+ *  MKP MultiConnect V1.4.4
  *  Universal LoRaWAN / NB-IoT-ready sensor controller
  *  Current firmware profile: LoRaWAN + KCT8103L FEM + optional DS18B20 + ADS1220 Wegsensor + INA226
  *
- *  RELEASE NOTES - V1.4.3
+ *  RELEASE NOTES - V1.4.4
  *  This revision replaces the older V1.4.1/V1.4.2 firmware. Do not mix this
  *  sketch with an older binary when comparing field measurements.
  *    - KCT8103L FEM is selected in Arduino IDE and controlled only by the
  *      Heltec radio driver during TX and RX windows.
  *    - External sensor power and ADS1220 measurements are kept separate from
  *      LoRaWAN radio activity.
+ *    - Wegsensor calibration is applied to the live cache immediately after
+ *      it is saved from the AP interface.
+ *    - The battery profile can be selected for LiPo/18650 or SAFT 3.6 V
+ *      Li-SOCl2 cells.
  *    - INA226 is optional. A physically disconnected INA226 is reported as
  *      unavailable and its payload values are intentionally null.
  *
@@ -79,6 +83,7 @@
 #include "HT_SSD1306Wire.h"
 #include <ArduinoJson.h>
 #include <DallasTemperature.h>
+#include <DNSServer.h>
 #include <LittleFS.h>
 #include <OneWire.h>
 #include <Preferences.h>
@@ -90,7 +95,7 @@
 #include <math.h>
 
 // ============================= Firmware =============================
-static constexpr const char* FW_VERSION = "1.4.3";
+static constexpr const char* FW_VERSION = "1.4.4";
 static constexpr const char* DEVICE_NAME = "MKP MultiConnect";
 
 // ============================== Modes ===============================
@@ -129,6 +134,8 @@ static constexpr uint8_t PIN_BATTERY_CTRL = 37; // HIGH enables divider
 static constexpr float BATTERY_DIVIDER_RATIO = 4.90f;
 static constexpr float BATTERY_CALIBRATION = 1.0128f;
 static constexpr uint8_t BATTERY_SAMPLES = 24;
+static constexpr uint8_t BATTERY_TYPE_LIPO_18650 = 0;
+static constexpr uint8_t BATTERY_TYPE_SAFT_36V = 1;
 
 // Reserved for future firmware profiles. GPIO40..38 are shared with the V4.3
 // GNSS header and may be used for an external RS485 transceiver.
@@ -182,6 +189,7 @@ struct Config {
   bool adr = true;
   uint8_t dataRate = 3;
   bool lowPowerEnabled = true;
+  uint8_t batteryType = BATTERY_TYPE_LIPO_18650;
 
   int32_t wegRaw0 = 0;
   int32_t wegRaw1 = 8388607;
@@ -238,6 +246,8 @@ SSD1306Wire oled(
 );
 
 WebServer server(80);
+DNSServer apDnsServer;
+bool apDnsReady = false;
 
 bool adsAvailable = false;
 bool dsAvailable = false;
@@ -344,6 +354,7 @@ void loadConfig() {
   cfg.adr = preferences.getBool("adr", cfg.adr);
   cfg.dataRate = preferences.getUChar("dr", cfg.dataRate);
   cfg.lowPowerEnabled = preferences.getBool("lowPower", cfg.lowPowerEnabled);
+  cfg.batteryType = preferences.getUChar("batteryType", cfg.batteryType);
   cfg.wegRaw0 = preferences.getInt("wegRaw0", cfg.wegRaw0);
   cfg.wegRaw1 = preferences.getInt("wegRaw1", cfg.wegRaw1);
   cfg.wegMm0_x1000 = preferences.getInt("wegMm0", cfg.wegMm0_x1000);
@@ -353,6 +364,9 @@ void loadConfig() {
 
   cfg.intervalMinutes = constrain(cfg.intervalMinutes, 1UL, 1440UL);
   cfg.dataRate = constrain(cfg.dataRate, static_cast<uint8_t>(0), static_cast<uint8_t>(5));
+  cfg.batteryType = constrain(cfg.batteryType,
+                              BATTERY_TYPE_LIPO_18650,
+                              BATTERY_TYPE_SAFT_36V);
 
   if (cfg.wegRaw0 == cfg.wegRaw1) {
     cfg.wegRaw0 = 0;
@@ -369,6 +383,7 @@ void saveConfig() {
   preferences.putBool("adr", cfg.adr);
   preferences.putUChar("dr", cfg.dataRate);
   preferences.putBool("lowPower", cfg.lowPowerEnabled);
+  preferences.putUChar("batteryType", cfg.batteryType);
   preferences.putInt("wegRaw0", cfg.wegRaw0);
   preferences.putInt("wegRaw1", cfg.wegRaw1);
   preferences.putInt("wegMm0", cfg.wegMm0_x1000);
@@ -670,14 +685,12 @@ bool readINA226(float& busVoltageV, float& shuntVoltageMv, float& currentMa, flo
 
 // ======================== Internal battery ADC ======================
 uint8_t batteryPercentFromMillivolts(uint16_t millivolts) {
-  // Approximate resting-voltage curve for a single-cell Li-ion / LiPo.
-  // Voltage is the primary measurement; percentage is only an estimate.
   struct Point {
     uint16_t mv;
     uint8_t percent;
   };
 
-  static constexpr Point curve[] = {
+  static constexpr Point lipo18650Curve[] = {
     { 3200,   0 },
     { 3300,   5 },
     { 3500,  10 },
@@ -691,8 +704,26 @@ uint8_t batteryPercentFromMillivolts(uint16_t millivolts) {
     { 4200, 100 }
   };
 
+  static constexpr Point saft36vCurve[] = {
+    { 2800,   0 },
+    { 3000,   5 },
+    { 3200,  15 },
+    { 3300,  25 },
+    { 3400,  40 },
+    { 3500,  60 },
+    { 3550,  75 },
+    { 3600,  95 },
+    { 3650, 100 }
+  };
+
+  const Point* curve = cfg.batteryType == BATTERY_TYPE_SAFT_36V
+    ? saft36vCurve
+    : lipo18650Curve;
+  const size_t count = cfg.batteryType == BATTERY_TYPE_SAFT_36V
+    ? sizeof(saft36vCurve) / sizeof(saft36vCurve[0])
+    : sizeof(lipo18650Curve) / sizeof(lipo18650Curve[0]);
+
   if (millivolts <= curve[0].mv) return curve[0].percent;
-  const size_t count = sizeof(curve) / sizeof(curve[0]);
   if (millivolts >= curve[count - 1].mv) return curve[count - 1].percent;
 
   for (size_t i = 1; i < count; ++i) {
@@ -964,6 +995,9 @@ void apiState() {
   config["adr"] = cfg.adr;
   config["dr"] = cfg.dataRate;
   config["low_power"] = cfg.lowPowerEnabled;
+  config["battery_type"] = cfg.batteryType == BATTERY_TYPE_SAFT_36V
+    ? "saft-36v"
+    : "lipo-18650";
 
   JsonObject calibration = config["weg_cal"].to<JsonObject>();
   calibration["raw0"] = cfg.wegRaw0;
@@ -1037,6 +1071,17 @@ void apiSaveConfig() {
 
   if (request["adr"].is<bool>()) updated.adr = request["adr"].as<bool>();
   if (request["low_power"].is<bool>()) updated.lowPowerEnabled = request["low_power"].as<bool>();
+  if (request["battery_type"].is<const char*>()) {
+    const String batteryType = request["battery_type"].as<String>();
+    if (batteryType == "lipo-18650") {
+      updated.batteryType = BATTERY_TYPE_LIPO_18650;
+    } else if (batteryType == "saft-36v" || batteryType == "saft-ls26500") {
+      updated.batteryType = BATTERY_TYPE_SAFT_36V;
+    } else {
+      server.send(400, "text/plain", "invalid battery type");
+      return;
+    }
+  }
   if (request["dr"].is<int>()) {
     const int value = request["dr"].as<int>();
     if (value < 0 || value > 5) {
@@ -1049,13 +1094,23 @@ void apiSaveConfig() {
   if (request["weg_cal"].is<JsonObjectConst>()) {
     JsonObjectConst cal = request["weg_cal"].as<JsonObjectConst>();
 
-    if (cal["raw0"].is<int32_t>()) updated.wegRaw0 = cal["raw0"].as<int32_t>();
-    if (cal["raw1"].is<int32_t>()) updated.wegRaw1 = cal["raw1"].as<int32_t>();
-    if (cal["mm0"].is<float>() || cal["mm0"].is<int>()) {
-      updated.wegMm0_x1000 = static_cast<int32_t>(lroundf(cal["mm0"].as<float>() * 1000.0f));
+    if (!cal["raw0"].isNull()) updated.wegRaw0 = cal["raw0"].as<int32_t>();
+    if (!cal["raw1"].isNull()) updated.wegRaw1 = cal["raw1"].as<int32_t>();
+    if (!cal["mm0"].isNull()) {
+      const float value = cal["mm0"].as<float>();
+      if (!isfinite(value)) {
+        server.send(400, "text/plain", "invalid calibration point 0");
+        return;
+      }
+      updated.wegMm0_x1000 = static_cast<int32_t>(lroundf(value * 1000.0f));
     }
-    if (cal["mm1"].is<float>() || cal["mm1"].is<int>()) {
-      updated.wegMm1_x1000 = static_cast<int32_t>(lroundf(cal["mm1"].as<float>() * 1000.0f));
+    if (!cal["mm1"].isNull()) {
+      const float value = cal["mm1"].as<float>();
+      if (!isfinite(value)) {
+        server.send(400, "text/plain", "invalid calibration point 1");
+        return;
+      }
+      updated.wegMm1_x1000 = static_cast<int32_t>(lroundf(value * 1000.0f));
     }
 
     if (updated.wegRaw0 == updated.wegRaw1) {
@@ -1067,6 +1122,10 @@ void apiSaveConfig() {
   cfg = updated;
   saveConfig();
   copyConfigToLoRaGlobals();
+  if (cached.batteryValid) {
+    cached.batteryPercent = batteryPercentFromMillivolts(cached.batteryMillivolts);
+  }
+  if (sensorPowerEnabled) readAllSensors();
 
   // AP loop refreshes the sensor cache independently. Keep this response fast
   // so the browser does not lose the connection while saving settings.
@@ -1103,6 +1162,17 @@ void apiReboot() {
   ESP.restart();
 }
 
+void redirectToCaptivePortal() {
+  if (server.uri().startsWith("/api/")) {
+    server.send(404, "text/plain", "Not found");
+    return;
+  }
+
+  server.sendHeader("Cache-Control", "no-store");
+  server.sendHeader("Location", String("http://") + WiFi.softAPIP().toString() + "/", true);
+  server.send(302, "text/plain", "Redirecting to MultiConnect");
+}
+
 void attachWebRoutes() {
   server.on("/", HTTP_GET, []() {
     server.sendHeader("Cache-Control", "no-store");
@@ -1132,9 +1202,16 @@ void attachWebRoutes() {
   server.on("/api/deveui/use-chip", HTTP_POST, apiUseChipDevEui);
   server.on("/api/reboot", HTTP_POST, apiReboot);
 
-  server.onNotFound([]() {
-    server.send(404, "text/plain", "Not found");
-  });
+  server.on("/generate_204", HTTP_ANY, redirectToCaptivePortal);
+  server.on("/gen_204", HTTP_ANY, redirectToCaptivePortal);
+  server.on("/hotspot-detect.html", HTTP_ANY, redirectToCaptivePortal);
+  server.on("/connecttest.txt", HTTP_ANY, redirectToCaptivePortal);
+  server.on("/ncsi.txt", HTTP_ANY, redirectToCaptivePortal);
+  server.on("/redirect", HTTP_ANY, redirectToCaptivePortal);
+  server.on("/canonical.html", HTTP_ANY, redirectToCaptivePortal);
+  server.on("/success.txt", HTTP_ANY, redirectToCaptivePortal);
+  server.on("/fwlink", HTTP_ANY, redirectToCaptivePortal);
+  server.onNotFound(redirectToCaptivePortal);
 
   server.begin();
 }
@@ -1146,6 +1223,8 @@ void startAccessPoint() {
 
   const String ssid = apSsid();
   WiFi.softAP(ssid.c_str(), AP_PASSWORD);
+  apDnsReady = apDnsServer.start(53, "*", WiFi.softAPIP());
+  Serial.printf("[AP] captive portal DNS=%s\n", apDnsReady ? "READY" : "FAILED");
 
   littleFsReady = LittleFS.begin(true);
   if (littleFsReady) {
@@ -1441,6 +1520,7 @@ void setup() {
 // ================================ Loop ==============================
 void loop() {
   if (apMode) {
+    if (apDnsReady) apDnsServer.processNextRequest();
     server.handleClient();
 
     static uint32_t lastSensorRead = 0;

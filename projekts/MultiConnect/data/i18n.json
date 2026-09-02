@@ -74,7 +74,19 @@
     "battery_critical": "Critical",
     "battery_low": "Low",
     "battery_medium": "Medium",
-    "battery_good": "Good"
+    "battery_good": "Good",
+    "battery_type": "Battery type",
+    "battery_type_lipo": "LiPo / 18650 (4.2 V)",
+    "battery_type_saft": "SAFT 3.6 V Li-SOCl2",
+    "charts": "Charts",
+    "battery_type": "Battery type",
+    "battery_type_lipo": "LiPo / 18650 (4.2 V)",
+    "battery_type_saft": "SAFT 3.6 V Li-SOCl2",
+    "charts": "Charts",
+    "trends": "Trends",
+    "temperature_chart": "Temperature history",
+    "position_chart": "Position history",
+    "no_chart_data": "Waiting for data"
   },
   "de": {
     "title": "MKP MultiConnect",
@@ -151,7 +163,19 @@
     "battery_critical": "Kritisch",
     "battery_low": "Niedrig",
     "battery_medium": "Mittel",
-    "battery_good": "Gut"
+    "battery_good": "Gut",
+    "battery_type": "Batterietyp",
+    "battery_type_lipo": "LiPo / 18650 (4,2 V)",
+    "battery_type_saft": "SAFT 3,6 V Li-SOCl2",
+    "charts": "Diagramme",
+    "battery_type": "Batterietyp",
+    "battery_type_lipo": "LiPo / 18650 (4,2 V)",
+    "battery_type_saft": "SAFT 3,6 V Li-SOCl2",
+    "charts": "Diagramme",
+    "trends": "Verlauf",
+    "temperature_chart": "Temperaturverlauf",
+    "position_chart": "Positionsverlauf",
+    "no_chart_data": "Warte auf Daten"
   },
   "uk": {
     "title": "MKP MultiConnect",
@@ -228,6 +252,18 @@
     "battery_critical": "Критичний",
     "battery_low": "Низький",
     "battery_medium": "Середній",
-    "battery_good": "Добрий"
+    "battery_good": "Добрий",
+    "battery_type": "Тип батареї",
+    "battery_type_lipo": "LiPo / 18650 (4,2 В)",
+    "battery_type_saft": "SAFT 3,6 В Li-SOCl2",
+    "charts": "Графіки",
+    "battery_type": "Тип батареї",
+    "battery_type_lipo": "LiPo / 18650 (4,2 В)",
+    "battery_type_saft": "SAFT 3,6 В Li-SOCl2",
+    "charts": "Графіки",
+    "trends": "Графіки",
+    "temperature_chart": "Історія температури",
+    "position_chart": "Історія положення",
+    "no_chart_data": "Очікування даних"
   }
 }
