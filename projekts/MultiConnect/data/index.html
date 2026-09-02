@@ -81,6 +81,7 @@ html[data-theme=dark]{--page:#0e1b22;--surface:#172a33;--field:#203842;--ink:#ed
       <div class="metrics"><div class="metric"><span>ADS1220 RAW</span><b id="raw">—</b></div><div class="metric"><span>Wegsensor voltage</span><b id="wegVoltage">—</b></div><div class="metric"><span>INA226</span><b class="status-pill"><i id="inaDot" class="dot"></i><span id="inaStatus">—</span></b></div><div class="metric"><span>INA bus</span><b id="inaBus">—</b></div><div class="metric"><span>INA current</span><b id="inaCurrent">—</b></div><div class="metric"><span>INA power</span><b id="inaPower">—</b></div><div class="metric"><span>IP</span><b id="ip">—</b></div><div class="metric"><span>Firmware</span><b id="firmware">—</b></div><div class="metric"><span>Free heap</span><b id="heap">—</b></div></div>
       <div class="field battery-type-field"><label id="batteryTypeLabel">Battery type</label><select id="batteryType"><option id="batteryTypeLipo" value="lipo-18650">LiPo / 18650 (4.2 V)</option><option id="batteryTypeSaft" value="saft-36v">Saft 3.6 V Li-SOCl2</option></select></div>
       <div class="switch"><input id="lowPower" type="checkbox"><label id="lowPowerLabel">Maximum low-power field mode</label></div>
+      <div class="switch"><input id="autoRedirect" type="checkbox"><label id="autoRedirectLabel">Automatic captive portal redirect</label></div>
       <button class="btn" id="rebootBtn" type="button" style="width:100%;margin-top:16px">Reboot controller</button>
     </article>
     <article class="subpanel">
@@ -134,6 +135,9 @@ document.addEventListener('click',event=>{const item=event.target.closest('[data
 </script>
 <script>
 function syncDocumentLanguage(){document.documentElement.lang=lang;document.documentElement.setAttribute('translate','no')};syncDocumentLanguage();document.addEventListener('click',event=>{if(event.target.closest('#langBtn'))setTimeout(syncDocumentLanguage,0)},true);
+</script>
+<script>
+(function(){const baseRender=render;render=function(){baseRender();const control=$('autoRedirect');if(control&&!control.dataset.dirty)control.checked=(state.cfg||{}).auto_redirect===true};const baseRequest=req;req=async function(url,options){if(url==='/api/config'&&options?.body&&$('autoRedirect')){try{const payload=JSON.parse(options.body);payload.auto_redirect=$('autoRedirect').checked;options={...options,body:JSON.stringify(payload)}}catch(_){}}return baseRequest(url,options)};const baseApplyLang=applyLang;applyLang=function(){baseApplyLang();set('autoRedirectLabel',tr('auto_redirect'))};applyLang()})();
 </script>
 </body>
 </html>

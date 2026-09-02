@@ -17,7 +17,8 @@
  *      Li-SOCl2 cells.
  *    - INA226 is optional. A physically disconnected INA226 is reported as
  *      unavailable and its payload values are intentionally null.
- *    - AP mode provides captive-portal DNS and automatic browser redirect.
+ *    - AP mode provides captive-portal DNS. Automatic browser redirect is
+ *      disabled by default and can be enabled in Expert mode.
  *
  *  REQUIRED ARDUINO IDE PROFILE
  *    Board: WiFi LoRa 32 (V4)
@@ -191,6 +192,7 @@ struct Config {
   uint8_t dataRate = 3;
   bool lowPowerEnabled = true;
   uint8_t batteryType = BATTERY_TYPE_LIPO_18650;
+  bool autoRedirectEnabled = false;
 
   int32_t wegRaw0 = 0;
   int32_t wegRaw1 = 8388607;
@@ -356,6 +358,7 @@ void loadConfig() {
   cfg.dataRate = preferences.getUChar("dr", cfg.dataRate);
   cfg.lowPowerEnabled = preferences.getBool("lowPower", cfg.lowPowerEnabled);
   cfg.batteryType = preferences.getUChar("batteryType", cfg.batteryType);
+  cfg.autoRedirectEnabled = preferences.getBool("autoRedirect", cfg.autoRedirectEnabled);
   cfg.wegRaw0 = preferences.getInt("wegRaw0", cfg.wegRaw0);
   cfg.wegRaw1 = preferences.getInt("wegRaw1", cfg.wegRaw1);
   cfg.wegMm0_x1000 = preferences.getInt("wegMm0", cfg.wegMm0_x1000);
@@ -385,6 +388,7 @@ void saveConfig() {
   preferences.putUChar("dr", cfg.dataRate);
   preferences.putBool("lowPower", cfg.lowPowerEnabled);
   preferences.putUChar("batteryType", cfg.batteryType);
+  preferences.putBool("autoRedirect", cfg.autoRedirectEnabled);
   preferences.putInt("wegRaw0", cfg.wegRaw0);
   preferences.putInt("wegRaw1", cfg.wegRaw1);
   preferences.putInt("wegMm0", cfg.wegMm0_x1000);
@@ -996,6 +1000,7 @@ void apiState() {
   config["adr"] = cfg.adr;
   config["dr"] = cfg.dataRate;
   config["low_power"] = cfg.lowPowerEnabled;
+  config["auto_redirect"] = cfg.autoRedirectEnabled;
   config["battery_type"] = cfg.batteryType == BATTERY_TYPE_SAFT_36V
     ? "saft-36v"
     : "lipo-18650";
@@ -1072,6 +1077,7 @@ void apiSaveConfig() {
 
   if (request["adr"].is<bool>()) updated.adr = request["adr"].as<bool>();
   if (request["low_power"].is<bool>()) updated.lowPowerEnabled = request["low_power"].as<bool>();
+  if (request["auto_redirect"].is<bool>()) updated.autoRedirectEnabled = request["auto_redirect"].as<bool>();
   if (request["battery_type"].is<const char*>()) {
     const String batteryType = request["battery_type"].as<String>();
     if (batteryType == "lipo-18650") {
@@ -1164,7 +1170,7 @@ void apiReboot() {
 }
 
 void redirectToCaptivePortal() {
-  if (server.uri().startsWith("/api/")) {
+  if (server.uri().startsWith("/api/") || !cfg.autoRedirectEnabled) {
     server.send(404, "text/plain", "Not found");
     return;
   }
