@@ -1,4 +1,4 @@
--- MKP MultiConnect database migration for SenseCAP Modbus and LoRa V5.
+-- MKP MultiConnect database migration for Modbus and LoRa V5/V6.
 -- Run once on the PostgreSQL database containing public.multiconnect.
 -- ADD COLUMN IF NOT EXISTS makes this safe to run more than once.
 
@@ -29,4 +29,5 @@ ALTER TABLE public.multiconnect
     ADD COLUMN IF NOT EXISTS modbus_solar_radiation_wm2 double precision,
     ADD COLUMN IF NOT EXISTS modbus_sunshine_duration_h double precision,
     ADD COLUMN IF NOT EXISTS lora_field_mask bigint,
-    ADD COLUMN IF NOT EXISTS lora_selected_fields jsonb;
+    ADD COLUMN IF NOT EXISTS lora_selected_fields jsonb,
+    ADD COLUMN IF NOT EXISTS lora_sisgeo_devices jsonb;

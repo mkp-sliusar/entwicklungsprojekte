@@ -1,10 +1,10 @@
 /*
  * =====================================================================
- *  MKP MultiConnect V1.4.5
+ *  MKP MultiConnect V1.6.0
  *  Universal LoRaWAN / NB-IoT-ready sensor controller
- *  Current firmware profile: LoRaWAN + KCT8103L FEM + optional DS18B20 + ADS1220 Wegsensor + INA226 + SenseCAP Modbus
+ *  Current firmware profile: LoRaWAN + KCT8103L FEM + optional DS18B20 + ADS1220 Wegsensor + INA226 + multi-device Modbus RTU
  *
- *  RELEASE NOTES - V1.5.0
+ *  RELEASE NOTES - V1.6.0
  *    - KCT8103L FEM is selected in Arduino IDE and controlled only by the
  *      Heltec radio driver during TX and RX windows.
  *    - External sensor power and ADS1220 measurements are kept separate from
@@ -15,8 +15,10 @@
  *      Li-SOCl2 cells.
  *    - INA226 is optional. A physically disconnected INA226 is reported as
  *      unavailable and its payload values are intentionally null.
+ *    - Up to four Modbus devices can be configured and polled sequentially
+ *      with per-device presets, addresses, baud rates, and warm-up times.
  *    - AP mode provides captive-portal DNS. Automatic browser redirect is
- *      disabled by default and can be enabled in Expert mode.
+ *      disabled by default.
  *
  *  REQUIRED ARDUINO IDE PROFILE
  *    Board: WiFi LoRa 32 (V4)
@@ -95,8 +97,10 @@
 #include "driver/rtc_io.h"
 #include <math.h>
 
+struct Config;
+
 // ============================= Firmware =============================
-static constexpr const char* FW_VERSION = "1.5.0";
+static constexpr const char* FW_VERSION = "1.6.0";
 static constexpr const char* DEVICE_NAME = "MKP MultiConnect";
 
 // ============================== Modes ===============================
@@ -144,6 +148,53 @@ static constexpr uint8_t PIN_RS485_RE_DE = 40;
 static constexpr uint8_t PIN_RS485_DI = 39;
 static constexpr uint8_t PIN_RS485_RO = 38;
 
+// Modbus vendors, presets, and device slots.
+static constexpr uint8_t MODBUS_MAX_SISGEO_DEVICES = 12;
+static constexpr uint8_t MODBUS_MAX_DEVICES = MODBUS_MAX_SISGEO_DEVICES;
+static constexpr uint16_t MODBUS_MAX_REGISTERS = 32;
+static constexpr uint8_t MODBUS_LEGACY_MAX_DEVICES = 4;
+static constexpr uint8_t MODBUS_MAX_SENSECAP_DEVICES = 1;
+static constexpr uint8_t SISGEO_LORA_FIELD_COUNT = 5;
+static constexpr uint8_t SISGEO_LORA_FIELD_VALUE1 = 0;
+static constexpr uint8_t SISGEO_LORA_FIELD_VALUE2 = 1;
+static constexpr uint8_t SISGEO_LORA_FIELD_TEMPERATURE = 2;
+static constexpr uint8_t SISGEO_LORA_FIELD_HUMIDITY = 3;
+static constexpr uint8_t SISGEO_LORA_FIELD_SUPPLY_VOLTAGE = 4;
+static constexpr uint8_t SISGEO_LORA_FIELD_MASK_ALL =
+  (1U << SISGEO_LORA_FIELD_COUNT) - 1U;
+static constexpr uint8_t LORA_PAYLOAD_VERSION_V5 = 5;
+static constexpr uint8_t LORA_PAYLOAD_VERSION_V6 = 6;
+
+struct ModbusMeasurements;
+struct ModbusDeviceRuntime;
+
+enum ModbusVendor : uint8_t {
+  MODBUS_VENDOR_SENSECAP = 0,
+  MODBUS_VENDOR_SISGEO,
+  MODBUS_VENDOR_CUSTOM,
+  MODBUS_VENDOR_COUNT
+};
+
+enum ModbusValueFormat : uint8_t {
+  MODBUS_VALUE_FLOAT32 = 0,
+  MODBUS_VALUE_UINT16,
+  MODBUS_VALUE_INT16,
+  MODBUS_VALUE_UINT32
+};
+
+struct ModbusDeviceConfig {
+  uint8_t enabled;
+  uint8_t vendor;
+  uint8_t model;
+  uint8_t address;
+  uint32_t baudRate;
+  uint16_t warmupSeconds;
+  uint16_t valueRegister;
+  uint8_t functionCode;
+  uint8_t registerCount;
+  uint8_t valueFormat;
+};
+
 // SenseCAP ONE model identifiers and factory Modbus addresses.
 enum SenseCapModel : uint8_t {
   SENSECAP_S200 = 0,
@@ -175,6 +226,126 @@ static constexpr SenseCapModelInfo SENSECAP_MODELS[] = {
 
 static constexpr size_t SENSECAP_MODEL_COUNT =
   sizeof(SENSECAP_MODELS) / sizeof(SENSECAP_MODELS[0]);
+
+static constexpr uint8_t SISGEO_MODEL_H_LEVEL = 0;
+static constexpr uint8_t CUSTOM_MODEL_FLOAT32 = 0;
+
+struct ModbusPresetInfo {
+  uint8_t vendor;
+  uint8_t model;
+  const char* vendorId;
+  const char* vendorLabel;
+  const char* modelId;
+  const char* modelLabel;
+  uint8_t defaultAddress;
+  uint32_t defaultBaudRate;
+  uint16_t defaultWarmupSeconds;
+  uint16_t valueRegister;
+  uint8_t functionCode;
+  uint8_t registerCount;
+  uint8_t valueFormat;
+};
+
+static constexpr ModbusPresetInfo MODBUS_PRESETS[] = {
+  { MODBUS_VENDOR_SENSECAP, SENSECAP_S200,
+    "sensecap", "SenseCAP", "s200", "S200", 44, 9600, 10, 0, 4, 0, 0 },
+  { MODBUS_VENDOR_SENSECAP, SENSECAP_S500,
+    "sensecap", "SenseCAP", "s500", "S500", 10, 9600, 10, 0, 4, 0, 0 },
+  { MODBUS_VENDOR_SENSECAP, SENSECAP_S600_A,
+    "sensecap", "SenseCAP", "s600-a", "S600-A", 69, 9600, 10, 0, 4, 0, 0 },
+  { MODBUS_VENDOR_SENSECAP, SENSECAP_S700_A,
+    "sensecap", "SenseCAP", "s700-a", "S700-A", 20, 9600, 10, 0, 4, 0, 0 },
+  { MODBUS_VENDOR_SENSECAP, SENSECAP_S700_BC,
+    "sensecap", "SenseCAP", "s700-bc", "S700-B/C", 60, 9600, 10, 0, 4, 0, 0 },
+  { MODBUS_VENDOR_SENSECAP, SENSECAP_S800,
+    "sensecap", "SenseCAP", "s800", "S800", 46, 9600, 10, 0, 4, 0, 0 },
+  { MODBUS_VENDOR_SENSECAP, SENSECAP_S1000,
+    "sensecap", "SenseCAP", "s1000", "S1000", 43, 9600, 10, 0, 4, 0, 0 },
+  { MODBUS_VENDOR_SENSECAP, SENSECAP_S1000_C,
+    "sensecap", "SenseCAP", "s1000-c", "S1000-C", 61, 9600, 10, 0, 4, 0, 0 },
+  { MODBUS_VENDOR_SISGEO, SISGEO_MODEL_H_LEVEL,
+    "sisgeo", "SISGEO", "h-level", "H-LEVEL digital", 1, 9600, 3, 0x0202, 4, 2, MODBUS_VALUE_FLOAT32 },
+  { MODBUS_VENDOR_CUSTOM, CUSTOM_MODEL_FLOAT32,
+    "custom", "Custom", "float32", "Generic 32-bit float", 1, 9600, 3, 0, 4, 2, MODBUS_VALUE_FLOAT32 }
+};
+
+static constexpr size_t MODBUS_PRESET_COUNT =
+  sizeof(MODBUS_PRESETS) / sizeof(MODBUS_PRESETS[0]);
+
+const ModbusPresetInfo* findModbusPreset(uint8_t vendor, uint8_t model) {
+  for (size_t i = 0; i < MODBUS_PRESET_COUNT; ++i) {
+    if (MODBUS_PRESETS[i].vendor == vendor && MODBUS_PRESETS[i].model == model) {
+      return &MODBUS_PRESETS[i];
+    }
+  }
+  return nullptr;
+}
+
+const ModbusPresetInfo* findModbusPreset(const String& vendorId,
+                                         const String& modelId) {
+  for (size_t i = 0; i < MODBUS_PRESET_COUNT; ++i) {
+    if (vendorId == MODBUS_PRESETS[i].vendorId &&
+        modelId == MODBUS_PRESETS[i].modelId) {
+      return &MODBUS_PRESETS[i];
+    }
+  }
+  return nullptr;
+}
+
+const char* modbusVendorId(uint8_t vendor) {
+  const ModbusPresetInfo* preset = findModbusPreset(vendor, 0);
+  return preset != nullptr ? preset->vendorId : "custom";
+}
+
+const char* modbusVendorLabel(uint8_t vendor) {
+  const ModbusPresetInfo* preset = findModbusPreset(vendor, 0);
+  return preset != nullptr ? preset->vendorLabel : "Custom";
+}
+
+const char* modbusModelId(uint8_t vendor, uint8_t model) {
+  const ModbusPresetInfo* preset = findModbusPreset(vendor, model);
+  return preset != nullptr ? preset->modelId : "float32";
+}
+
+const char* modbusModelLabel(uint8_t vendor, uint8_t model) {
+  const ModbusPresetInfo* preset = findModbusPreset(vendor, model);
+  return preset != nullptr ? preset->modelLabel : "Generic 32-bit float";
+}
+
+int parseModbusVendor(const String& value) {
+  for (size_t i = 0; i < MODBUS_PRESET_COUNT; ++i) {
+    if (value == MODBUS_PRESETS[i].vendorId) {
+      return MODBUS_PRESETS[i].vendor;
+    }
+  }
+  return -1;
+}
+
+int parseModbusModel(uint8_t vendor, const String& value) {
+  for (size_t i = 0; i < MODBUS_PRESET_COUNT; ++i) {
+    if (MODBUS_PRESETS[i].vendor == vendor && value == MODBUS_PRESETS[i].modelId) {
+      return MODBUS_PRESETS[i].model;
+    }
+  }
+  return -1;
+}
+
+void applyModbusPreset(ModbusDeviceConfig& device,
+                       uint8_t vendor,
+                       uint8_t model) {
+  const ModbusPresetInfo* preset = findModbusPreset(vendor, model);
+  if (preset == nullptr) return;
+
+  device.vendor = preset->vendor;
+  device.model = preset->model;
+  device.address = preset->defaultAddress;
+  device.baudRate = preset->defaultBaudRate;
+  device.warmupSeconds = preset->defaultWarmupSeconds;
+  device.valueRegister = preset->valueRegister;
+  device.functionCode = preset->functionCode;
+  device.registerCount = preset->registerCount;
+  device.valueFormat = preset->valueFormat;
+}
 
 const SenseCapModelInfo& senseCapModelInfo(uint8_t model) {
   if (model >= SENSECAP_MODEL_COUNT) model = SENSECAP_S700_BC;
@@ -247,6 +418,21 @@ struct LoraFieldInfo {
   uint8_t bytes;
 };
 
+struct SisgeoLoraFieldInfo {
+  const char* id;
+  const char* label;
+  const char* unit;
+  uint8_t bytes;
+};
+
+static constexpr SisgeoLoraFieldInfo SISGEO_LORA_FIELDS[SISGEO_LORA_FIELD_COUNT] = {
+  { "value1", "Value 1", "", 4 },
+  { "value2", "Value 2", "", 4 },
+  { "temperature_c", "Sensor temperature", "C", 4 },
+  { "humidity_pct", "Sensor humidity", "%RH", 4 },
+  { "supply_voltage_v", "Supply voltage", "V", 4 }
+};
+
 static constexpr uint32_t LORA_FIELD_MASK_ALL =
   (1UL << LORA_FIELD_COUNT) - 1UL;
 
@@ -288,6 +474,27 @@ uint32_t loraPayloadSize(uint32_t fieldMask) {
   uint32_t size = 6;
   for (uint8_t id = 0; id < LORA_FIELD_COUNT; ++id) {
     if ((fieldMask & (1UL << id)) != 0) size += LORA_FIELDS[id].bytes;
+  }
+  return size;
+}
+
+uint32_t loraPayloadSizeV6(uint32_t fieldMask,
+                           const uint8_t* sisgeoFieldMasks,
+                           uint16_t sisgeoDeviceMask) {
+  uint32_t size = 8;
+  for (uint8_t id = 0; id < LORA_FIELD_COUNT; ++id) {
+    if ((fieldMask & (1UL << id)) != 0) size += LORA_FIELDS[id].bytes;
+  }
+  for (uint8_t device = 0; device < MODBUS_MAX_DEVICES; ++device) {
+    if ((sisgeoDeviceMask & (1U << device)) == 0) continue;
+    size += 1;
+    const uint8_t fieldMaskForDevice =
+      sisgeoFieldMasks[device] & SISGEO_LORA_FIELD_MASK_ALL;
+    for (uint8_t field = 0; field < SISGEO_LORA_FIELD_COUNT; ++field) {
+      if ((fieldMaskForDevice & (1U << field)) != 0) {
+        size += SISGEO_LORA_FIELDS[field].bytes;
+      }
+    }
   }
   return size;
 }
@@ -342,11 +549,17 @@ struct Config {
   bool autoRedirectEnabled = false;
 
   bool modbusEnabled = true;
-  uint8_t modbusModel = SENSECAP_S700_BC;
-  uint8_t modbusAddress = 60;
-  uint32_t modbusBaudRate = 9600;
+  bool modbusAlwaysOn = false;
   uint16_t modbusPollSeconds = 2;
+  uint8_t modbusDeviceCount = 1;
+  ModbusDeviceConfig modbusDevices[MODBUS_MAX_DEVICES] = {
+    { 1, MODBUS_VENDOR_SENSECAP, SENSECAP_S700_BC, 60, 9600, 10, 0, 4, 0, 0 },
+    { 0, MODBUS_VENDOR_SENSECAP, SENSECAP_S700_BC, 60, 9600, 10, 0, 4, 0, 0 },
+    { 0, MODBUS_VENDOR_SENSECAP, SENSECAP_S700_BC, 60, 9600, 10, 0, 4, 0, 0 },
+    { 0, MODBUS_VENDOR_SENSECAP, SENSECAP_S700_BC, 60, 9600, 10, 0, 4, 0, 0 }
+  };
   uint32_t loraFieldMask = LORA_FIELD_MASK_ALL;
+  uint8_t loraSisgeoFieldMasks[MODBUS_MAX_DEVICES] = { 0 };
 
   int32_t wegRaw0 = 0;
   int32_t wegRaw1 = 8388607;
@@ -397,7 +610,8 @@ void decodeModbusWind(const uint32_t* values,
 void decodeModbusRain(const uint32_t* values, ModbusMeasurements& output);
 void decodeModbusParticles(const uint32_t* values, ModbusMeasurements& output);
 void decodeModbusSolar(const uint32_t* values, ModbusMeasurements& output);
-bool readSenseCapMeasurements(ModbusMeasurements& output);
+bool readSenseCapMeasurements(const ModbusDeviceConfig& device,
+                             ModbusMeasurements& output);
 
 struct Measurements {
   bool temperatureValid = false;
@@ -425,6 +639,23 @@ struct Measurements {
 
 Measurements cached;
 
+struct ModbusDeviceRuntime {
+  bool valid = false;
+  bool complete = false;
+  uint32_t lastAttemptMs = 0;
+  uint32_t lastSuccessMs = 0;
+  uint8_t lastException = 0;
+  String lastError;
+  String lastRequestHex;
+  String lastResponseHex;
+  ModbusMeasurements senseCap;
+  float value1 = NAN;
+  float value2 = NAN;
+  float temperatureC = NAN;
+  float humidityPct = NAN;
+  float supplyVoltageV = NAN;
+};
+
 // ============================== Objects =============================
 SPIClass adsSPI(HSPI);
 SPISettings adsSPISettings(500000, MSBFIRST, SPI_MODE1);
@@ -448,6 +679,8 @@ SSD1306Wire oled(
 WebServer server(80);
 DNSServer apDnsServer;
 bool apDnsReady = false;
+bool webServerReady = false;
+bool webServiceActive = false;
 
 bool adsAvailable = false;
 bool dsAvailable = false;
@@ -456,7 +689,14 @@ bool oledAvailable = false;
 bool sensorPowerEnabled = false;
 bool sensorInterfacesReady = false;
 bool fieldMeasurementPending = false;
+bool sensorReadInProgress = false;
+bool sensorReadRequested = false;
 bool modbusInterfaceReady = false;
+uint32_t modbusPowerOnAtMs = 0;
+ModbusDeviceRuntime modbusRuntime[MODBUS_MAX_DEVICES];
+ModbusDeviceConfig* activeModbusDevice = nullptr;
+ModbusDeviceRuntime* activeModbusRuntime = nullptr;
+uint8_t modbusPrimaryIndex = 0;
 uint32_t lastModbusPollMs = 0;
 uint32_t lastModbusSuccessMs = 0;
 uint8_t modbusLastException = 0;
@@ -468,6 +708,9 @@ void powerExternalSensorsOn();
 void powerExternalSensorsOff();
 void setExternalSensorMosfet(bool enabled);
 void prepareLoRaFemForSensorAccess();
+bool anyModbusDeviceEnabled();
+void serviceWebWhileWaiting();
+void cooperativeDelay(uint32_t durationMs);
 
 // ============================== Helpers =============================
 static inline uint32_t intervalMs() {
@@ -544,6 +787,139 @@ void copyConfigToLoRaGlobals() {
 }
 
 // ================================ NVS ===============================
+bool anyModbusDeviceEnabled() {
+  if (!cfg.modbusEnabled) return false;
+
+  for (uint8_t index = 0; index < cfg.modbusDeviceCount; ++index) {
+    if (cfg.modbusDevices[index].enabled != 0) return true;
+  }
+  return false;
+}
+
+bool anySenseCapDeviceEnabled() {
+  if (!cfg.modbusEnabled) return false;
+
+  for (uint8_t index = 0; index < cfg.modbusDeviceCount; ++index) {
+    const ModbusDeviceConfig& device = cfg.modbusDevices[index];
+    if (device.enabled != 0 && device.vendor == MODBUS_VENDOR_SENSECAP) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool anySenseCapDeviceEnabled(const Config& settings) {
+  if (!settings.modbusEnabled) return false;
+
+  for (uint8_t index = 0; index < settings.modbusDeviceCount; ++index) {
+    const ModbusDeviceConfig& device = settings.modbusDevices[index];
+    if (device.enabled != 0 && device.vendor == MODBUS_VENDOR_SENSECAP) {
+      return true;
+    }
+  }
+  return false;
+}
+
+uint16_t loraSisgeoDeviceMask(const Config& settings) {
+  if (!settings.modbusEnabled) return 0;
+
+  uint16_t deviceMask = 0;
+  for (uint8_t index = 0; index < settings.modbusDeviceCount; ++index) {
+    const ModbusDeviceConfig& device = settings.modbusDevices[index];
+    if (device.enabled != 0 && device.vendor == MODBUS_VENDOR_SISGEO &&
+        (settings.loraSisgeoFieldMasks[index] & SISGEO_LORA_FIELD_MASK_ALL) != 0) {
+      deviceMask |= static_cast<uint16_t>(1U << index);
+    }
+  }
+  return deviceMask;
+}
+
+uint32_t loraBaseFieldMask(const Config& settings) {
+  uint32_t fieldMask = settings.loraFieldMask & LORA_FIELD_MASK_ALL;
+  if (!anySenseCapDeviceEnabled(settings)) {
+    fieldMask &= (1UL << 9) - 1UL;
+  }
+  return fieldMask;
+}
+
+uint16_t loraSisgeoDeviceMask() {
+  return loraSisgeoDeviceMask(cfg);
+}
+
+uint32_t loraBaseFieldMask() {
+  return loraBaseFieldMask(cfg);
+}
+
+uint32_t configuredLoraPayloadSize(const Config& settings) {
+  const uint16_t sisgeoDeviceMask = loraSisgeoDeviceMask(settings);
+  if (sisgeoDeviceMask == 0) return loraPayloadSize(loraBaseFieldMask(settings));
+  return loraPayloadSizeV6(loraBaseFieldMask(settings),
+                           settings.loraSisgeoFieldMasks,
+                           sisgeoDeviceMask);
+}
+
+uint32_t configuredLoraPayloadSize() {
+  return configuredLoraPayloadSize(cfg);
+}
+
+bool anyModbusRuntimeValid() {
+  for (uint8_t index = 0; index < cfg.modbusDeviceCount; ++index) {
+    if (cfg.modbusDevices[index].enabled != 0 && modbusRuntime[index].valid) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool allEnabledModbusRuntimeComplete() {
+  bool hasEnabledDevice = false;
+  for (uint8_t index = 0; index < cfg.modbusDeviceCount; ++index) {
+    if (cfg.modbusDevices[index].enabled == 0) continue;
+    hasEnabledDevice = true;
+    if (!modbusRuntime[index].valid || !modbusRuntime[index].complete) return false;
+  }
+  return hasEnabledDevice;
+}
+
+bool modbusDeviceConfigEqual(const ModbusDeviceConfig& left,
+                             const ModbusDeviceConfig& right) {
+  return left.enabled == right.enabled &&
+         left.vendor == right.vendor &&
+         left.model == right.model &&
+         left.address == right.address &&
+         left.baudRate == right.baudRate &&
+         left.warmupSeconds == right.warmupSeconds &&
+         left.valueRegister == right.valueRegister &&
+         left.functionCode == right.functionCode &&
+         left.registerCount == right.registerCount &&
+         left.valueFormat == right.valueFormat;
+}
+
+void normalizeModbusDevice(ModbusDeviceConfig& device) {
+  if (device.vendor >= MODBUS_VENDOR_COUNT ||
+      findModbusPreset(device.vendor, device.model) == nullptr) {
+    applyModbusPreset(device, MODBUS_VENDOR_SENSECAP, SENSECAP_S700_BC);
+  }
+
+  device.enabled = device.enabled != 0 ? 1 : 0;
+  device.address = constrain(device.address,
+                             static_cast<uint8_t>(1),
+                             static_cast<uint8_t>(247));
+  if (!isSupportedModbusBaud(device.baudRate)) device.baudRate = 9600;
+  device.warmupSeconds = constrain(device.warmupSeconds,
+                                   static_cast<uint16_t>(0),
+                                   static_cast<uint16_t>(3600));
+  if (device.functionCode != 3 && device.functionCode != 4) {
+    device.functionCode = 4;
+  }
+  device.registerCount = constrain(device.registerCount,
+                                   static_cast<uint8_t>(1),
+                                   static_cast<uint8_t>(MODBUS_MAX_REGISTERS));
+  if (device.valueFormat > MODBUS_VALUE_UINT32) {
+    device.valueFormat = MODBUS_VALUE_FLOAT32;
+  }
+}
+
 void loadConfig() {
   preferences.begin("multiconnect", true);
 
@@ -564,13 +940,50 @@ void loadConfig() {
   cfg.batteryType = preferences.getUChar("batteryType", cfg.batteryType);
   cfg.autoRedirectEnabled = preferences.getBool("autoRedirect", cfg.autoRedirectEnabled);
   cfg.modbusEnabled = preferences.getBool("mbEnabled", cfg.modbusEnabled);
-  cfg.modbusModel = preferences.getUChar("mbModel", cfg.modbusModel);
-  cfg.modbusAddress = preferences.getUChar("mbAddress", cfg.modbusAddress);
-  cfg.modbusBaudRate = preferences.getUInt("mbBaud", cfg.modbusBaudRate);
+  cfg.modbusAlwaysOn = preferences.getBool("mbAlwaysOn", cfg.modbusAlwaysOn);
   cfg.modbusPollSeconds = static_cast<uint16_t>(
     preferences.getUInt("mbPoll", cfg.modbusPollSeconds)
   );
+  cfg.modbusDeviceCount = preferences.getUChar("mbCount", cfg.modbusDeviceCount);
+  const size_t storedModbusBytes = preferences.getBytesLength("mbDevices");
+  if (storedModbusBytes == sizeof(cfg.modbusDevices)) {
+    preferences.getBytes("mbDevices", cfg.modbusDevices, sizeof(cfg.modbusDevices));
+  } else if (storedModbusBytes ==
+             sizeof(ModbusDeviceConfig) * MODBUS_LEGACY_MAX_DEVICES) {
+    ModbusDeviceConfig legacyDevices[MODBUS_LEGACY_MAX_DEVICES] = {};
+    preferences.getBytes("mbDevices", legacyDevices, sizeof(legacyDevices));
+    for (uint8_t index = 0; index < MODBUS_LEGACY_MAX_DEVICES; ++index) {
+      cfg.modbusDevices[index] = legacyDevices[index];
+    }
+    cfg.modbusDeviceCount = constrain(cfg.modbusDeviceCount,
+                                      static_cast<uint8_t>(1),
+                                      MODBUS_LEGACY_MAX_DEVICES);
+  } else {
+    const uint8_t model = preferences.getUChar("mbModel", SENSECAP_S700_BC);
+    const uint8_t address = preferences.getUChar("mbAddress", 60);
+    const uint32_t baudRate = preferences.getUInt("mbBaud", 9600);
+    const uint16_t warmupSeconds = static_cast<uint16_t>(
+      preferences.getUInt("mbWarmup", 10)
+    );
+    cfg.modbusDevices[0] = {
+      static_cast<uint8_t>(cfg.modbusEnabled ? 1 : 0),
+      MODBUS_VENDOR_SENSECAP,
+      model,
+      address,
+      baudRate,
+      warmupSeconds,
+      0,
+      4,
+      0,
+      MODBUS_VALUE_FLOAT32
+    };
+  }
   cfg.loraFieldMask = preferences.getUInt("loraMask", cfg.loraFieldMask);
+  if (preferences.getBytesLength("loraSisgeo") == sizeof(cfg.loraSisgeoFieldMasks)) {
+    preferences.getBytes("loraSisgeo",
+                         cfg.loraSisgeoFieldMasks,
+                         sizeof(cfg.loraSisgeoFieldMasks));
+  }
   cfg.wegRaw0 = preferences.getInt("wegRaw0", cfg.wegRaw0);
   cfg.wegRaw1 = preferences.getInt("wegRaw1", cfg.wegRaw1);
   cfg.wegMm0_x1000 = preferences.getInt("wegMm0", cfg.wegMm0_x1000);
@@ -583,15 +996,19 @@ void loadConfig() {
   cfg.batteryType = constrain(cfg.batteryType,
                               BATTERY_TYPE_LIPO_18650,
                               BATTERY_TYPE_SAFT_36V);
-  if (cfg.modbusModel >= SENSECAP_MODEL_COUNT) cfg.modbusModel = SENSECAP_S700_BC;
-  cfg.modbusAddress = constrain(cfg.modbusAddress,
-                                static_cast<uint8_t>(1),
-                                static_cast<uint8_t>(247));
-  if (!isSupportedModbusBaud(cfg.modbusBaudRate)) cfg.modbusBaudRate = 9600;
+  cfg.modbusDeviceCount = constrain(cfg.modbusDeviceCount,
+                                    static_cast<uint8_t>(1),
+                                    MODBUS_MAX_DEVICES);
   cfg.modbusPollSeconds = constrain(cfg.modbusPollSeconds,
                                     static_cast<uint16_t>(2),
                                     static_cast<uint16_t>(3600));
+  for (uint8_t index = 0; index < MODBUS_MAX_DEVICES; ++index) {
+    normalizeModbusDevice(cfg.modbusDevices[index]);
+  }
   cfg.loraFieldMask &= LORA_FIELD_MASK_ALL;
+  for (uint8_t index = 0; index < MODBUS_MAX_DEVICES; ++index) {
+    cfg.loraSisgeoFieldMasks[index] &= SISGEO_LORA_FIELD_MASK_ALL;
+  }
 
   if (cfg.wegRaw0 == cfg.wegRaw1) {
     cfg.wegRaw0 = 0;
@@ -611,11 +1028,19 @@ void saveConfig() {
   preferences.putUChar("batteryType", cfg.batteryType);
   preferences.putBool("autoRedirect", cfg.autoRedirectEnabled);
   preferences.putBool("mbEnabled", cfg.modbusEnabled);
-  preferences.putUChar("mbModel", cfg.modbusModel);
-  preferences.putUChar("mbAddress", cfg.modbusAddress);
-  preferences.putUInt("mbBaud", cfg.modbusBaudRate);
+  preferences.putBool("mbAlwaysOn", cfg.modbusAlwaysOn);
   preferences.putUInt("mbPoll", cfg.modbusPollSeconds);
+  preferences.putUChar("mbCount", cfg.modbusDeviceCount);
+  preferences.putBytes("mbDevices", cfg.modbusDevices, sizeof(cfg.modbusDevices));
+  // Keep the legacy keys for older firmware builds that may be flashed later.
+  preferences.putUChar("mbModel", cfg.modbusDevices[0].model);
+  preferences.putUChar("mbAddress", cfg.modbusDevices[0].address);
+  preferences.putUInt("mbBaud", cfg.modbusDevices[0].baudRate);
+  preferences.putUInt("mbWarmup", cfg.modbusDevices[0].warmupSeconds);
   preferences.putUInt("loraMask", cfg.loraFieldMask);
+  preferences.putBytes("loraSisgeo",
+                       cfg.loraSisgeoFieldMasks,
+                       sizeof(cfg.loraSisgeoFieldMasks));
   preferences.putInt("wegRaw0", cfg.wegRaw0);
   preferences.putInt("wegRaw1", cfg.wegRaw1);
   preferences.putInt("wegMm0", cfg.wegMm0_x1000);
@@ -1026,9 +1451,7 @@ bool readInternalBattery(uint16_t& batteryMillivolts,
 
 // ============================== Modbus =============================
 static constexpr uint8_t MODBUS_READ_INPUT_REGISTERS = 0x04;
-static constexpr uint16_t MODBUS_MAX_REGISTERS = 32;
 static constexpr size_t MODBUS_RX_BUFFER_SIZE = 128;
-static constexpr uint32_t MODBUS_POWERUP_SETTLE_MS = 10000UL;
 static constexpr uint8_t MODBUS_DATA_READY_RETRIES = 3;
 static constexpr uint32_t MODBUS_DATA_READY_RETRY_DELAY_MS = 1000UL;
 static constexpr size_t MODBUS_FRAME_MAX_SIZE =
@@ -1049,6 +1472,9 @@ uint16_t modbusCrc16(const uint8_t* data, size_t length) {
 
 void setModbusError(const char* message) {
   modbusLastError = message;
+  if (activeModbusRuntime != nullptr) {
+    activeModbusRuntime->lastError = message;
+  }
 }
 
 uint32_t modbusResponseTimeoutMs(uint16_t quantity) {
@@ -1056,7 +1482,7 @@ uint32_t modbusResponseTimeoutMs(uint16_t quantity) {
   return 2000UL;
 }
 
-bool initializeModbusInterface() {
+bool initializeModbusInterface(const ModbusDeviceConfig& device) {
   rs485Serial.end();
 
   pinMode(PIN_RS485_RE_DE, OUTPUT);
@@ -1065,8 +1491,8 @@ bool initializeModbusInterface() {
   digitalWrite(PIN_RS485_DI, LOW);
   pinMode(PIN_RS485_RO, INPUT);
 
-  if (cfg.modbusEnabled) {
-    rs485Serial.begin(cfg.modbusBaudRate,
+  if (cfg.modbusEnabled && device.enabled != 0) {
+    rs485Serial.begin(device.baudRate,
                       SERIAL_8N1,
                       PIN_RS485_RO,
                       PIN_RS485_DI);
@@ -1091,7 +1517,8 @@ void disableModbusInterface() {
 bool modbusReadInputRegisters(uint16_t startAddress,
                               uint16_t quantity,
                               uint16_t* values) {
-  if (!cfg.modbusEnabled) {
+  if (!cfg.modbusEnabled || activeModbusDevice == nullptr ||
+      activeModbusDevice->enabled == 0) {
     setModbusError("disabled");
     return false;
   }
@@ -1104,9 +1531,11 @@ bool modbusReadInputRegisters(uint16_t startAddress,
     return false;
   }
 
+  const uint8_t address = activeModbusDevice->address;
+  const uint8_t functionCode = activeModbusDevice->functionCode;
   uint8_t request[8] = {
-    cfg.modbusAddress,
-    MODBUS_READ_INPUT_REGISTERS,
+    address,
+    functionCode,
     static_cast<uint8_t>(startAddress >> 8),
     static_cast<uint8_t>(startAddress & 0xFF),
     static_cast<uint8_t>(quantity >> 8),
@@ -1122,7 +1551,7 @@ bool modbusReadInputRegisters(uint16_t startAddress,
   modbusLastResponseHex = "";
   modbusLastException = 0;
   Serial.printf("[MODBUS] TX slave=%u start=0x%04X qty=%u: %s\n",
-                cfg.modbusAddress,
+                address,
                 startAddress,
                 quantity,
                 modbusLastRequestHex.c_str());
@@ -1143,6 +1572,7 @@ bool modbusReadInputRegisters(uint16_t startAddress,
   const uint32_t started = millis();
   const uint32_t timeoutMs = modbusResponseTimeoutMs(quantity);
 
+  uint32_t lastWebServiceMs = millis();
   while (millis() - started < timeoutMs) {
     while (rs485Serial.available() > 0) {
       if (receiveLength >= sizeof(receiveBuffer)) {
@@ -1157,13 +1587,13 @@ bool modbusReadInputRegisters(uint16_t startAddress,
       // Search the complete buffer so an echoed request or leading noise does
       // not prevent recognition of the real Modbus response.
       for (size_t position = 0; position + 2 < receiveLength; ++position) {
-        if (receiveBuffer[position] != cfg.modbusAddress) continue;
+        if (receiveBuffer[position] != address) continue;
 
         const uint8_t function = receiveBuffer[position + 1];
         size_t candidateLength = 0;
-        if (function == (MODBUS_READ_INPUT_REGISTERS | 0x80U)) {
+        if (function == (functionCode | 0x80U)) {
           candidateLength = 5;
-        } else if (function == MODBUS_READ_INPUT_REGISTERS) {
+        } else if (function == functionCode) {
           const uint8_t byteCount = receiveBuffer[position + 2];
           if (byteCount > MODBUS_MAX_REGISTERS * 2) continue;
           candidateLength = 5 + byteCount;
@@ -1190,6 +1620,10 @@ bool modbusReadInputRegisters(uint16_t startAddress,
     }
 
     if (validFrameFound) break;
+    if (millis() - lastWebServiceMs >= 5) {
+      serviceWebWhileWaiting();
+      lastWebServiceMs = millis();
+    }
     delay(1);
   }
 
@@ -1215,7 +1649,7 @@ bool modbusReadInputRegisters(uint16_t startAddress,
     setModbusError(error);
     return false;
   }
-  if (frame[1] != MODBUS_READ_INPUT_REGISTERS) {
+  if (frame[1] != functionCode) {
     setModbusError("unexpected function code");
     return false;
   }
@@ -1266,7 +1700,7 @@ bool readSenseCapCommonBlock(uint16_t quantity, uint32_t* values) {
                     static_cast<unsigned>(attempt + 1),
                     static_cast<unsigned>(MODBUS_DATA_READY_RETRIES));
       if (attempt + 1 < MODBUS_DATA_READY_RETRIES) {
-        delay(MODBUS_DATA_READY_RETRY_DELAY_MS);
+        cooperativeDelay(MODBUS_DATA_READY_RETRY_DELAY_MS);
         continue;
       }
       return false;
@@ -1281,7 +1715,7 @@ bool readSenseCapCommonBlock(uint16_t quantity, uint32_t* values) {
                   static_cast<unsigned>(attempt + 1),
                   static_cast<unsigned>(MODBUS_DATA_READY_RETRIES));
     if (attempt + 1 < MODBUS_DATA_READY_RETRIES) {
-      delay(MODBUS_DATA_READY_RETRY_DELAY_MS);
+      cooperativeDelay(MODBUS_DATA_READY_RETRY_DELAY_MS);
     }
   }
 
@@ -1329,7 +1763,8 @@ void decodeModbusSolar(const uint32_t* values, ModbusMeasurements& output) {
   output.sunshineDurationH = static_cast<float>(values[1]) / 1000.0f;
 }
 
-bool readSenseCapMeasurements(ModbusMeasurements& output) {
+bool readSenseCapMeasurements(const ModbusDeviceConfig& device,
+                              ModbusMeasurements& output) {
   output = ModbusMeasurements();
   lastModbusPollMs = millis();
   modbusLastError = "";
@@ -1348,7 +1783,7 @@ bool readSenseCapMeasurements(ModbusMeasurements& output) {
   bool primaryBlockValid = false;
   bool allBlocksValid = true;
 
-  switch (cfg.modbusModel) {
+  switch (device.model) {
     case SENSECAP_S200:
       if (readModbusBlock(0x0008, 12, values)) {
         decodeModbusWind(values, output);
@@ -1411,7 +1846,7 @@ bool readSenseCapMeasurements(ModbusMeasurements& output) {
       } else {
         allBlocksValid = false;
       }
-      delay(50);
+      cooperativeDelay(50);
       if (readModbusBlock(0x004A, 4, values)) {
         decodeModbusSolar(values, output);
         anyBlockValid = true;
@@ -1490,17 +1925,169 @@ bool readSenseCapMeasurements(ModbusMeasurements& output) {
 }
 
 bool modbusPollDue() {
-  if (!cfg.modbusEnabled) return false;
+  if (!anyModbusDeviceEnabled()) return false;
   if (lastModbusPollMs == 0) return true;
   return millis() - lastModbusPollMs >=
     static_cast<uint32_t>(cfg.modbusPollSeconds) * 1000UL;
+}
+
+bool readModbusFloat(uint16_t registerAddress, float& value) {
+  uint16_t registers[2] = { 0, 0 };
+  if (!modbusReadInputRegisters(registerAddress, 2, registers)) return false;
+
+  const uint32_t bits = (static_cast<uint32_t>(registers[0]) << 16) |
+                        static_cast<uint32_t>(registers[1]);
+  memcpy(&value, &bits, sizeof(value));
+  return isfinite(value);
+}
+
+bool readModbusValue(const ModbusDeviceConfig& device,
+                     uint16_t registerAddress,
+                     float& value) {
+  if (device.valueFormat == MODBUS_VALUE_FLOAT32) {
+    return readModbusFloat(registerAddress, value);
+  }
+
+  if (device.valueFormat == MODBUS_VALUE_UINT32) {
+    uint16_t registers[2] = { 0, 0 };
+    if (!modbusReadInputRegisters(registerAddress, 2, registers)) return false;
+    const uint32_t raw = (static_cast<uint32_t>(registers[0]) << 16) |
+                         static_cast<uint32_t>(registers[1]);
+    value = static_cast<float>(raw);
+    return true;
+  }
+
+  uint16_t registers[1] = { 0 };
+  if (!modbusReadInputRegisters(registerAddress, 1, registers)) return false;
+  value = device.valueFormat == MODBUS_VALUE_INT16
+    ? static_cast<float>(static_cast<int16_t>(registers[0]))
+    : static_cast<float>(registers[0]);
+  return true;
+}
+
+bool readGenericModbusDevice(const ModbusDeviceConfig& device,
+                             ModbusDeviceRuntime& runtime) {
+  const uint8_t requiredRegisters =
+    device.valueFormat == MODBUS_VALUE_FLOAT32 ||
+    device.valueFormat == MODBUS_VALUE_UINT32
+      ? 2
+      : 1;
+  if (device.registerCount < requiredRegisters) {
+    setModbusError("unsupported value format");
+    return false;
+  }
+
+  bool primaryValid = readModbusValue(device, device.valueRegister, runtime.value1);
+  bool complete = primaryValid;
+
+  if (device.vendor == MODBUS_VENDOR_SISGEO) {
+    if (!readModbusValue(device, device.valueRegister + 2, runtime.value2)) complete = false;
+    if (!readModbusValue(device, 0x021A, runtime.temperatureC)) complete = false;
+    if (!readModbusValue(device, 0x021C, runtime.humidityPct)) complete = false;
+    if (!readModbusValue(device, 0x021E, runtime.supplyVoltageV)) complete = false;
+  }
+
+  runtime.valid = primaryValid;
+  runtime.complete = complete;
+  return primaryValid;
+}
+
+void resetModbusRuntime(ModbusDeviceRuntime& runtime) {
+  runtime.valid = false;
+  runtime.complete = false;
+  runtime.lastAttemptMs = millis();
+  runtime.lastSuccessMs = 0;
+  runtime.lastException = 0;
+  runtime.lastError = "";
+  runtime.lastRequestHex = "";
+  runtime.lastResponseHex = "";
+  runtime.senseCap = ModbusMeasurements();
+  runtime.value1 = NAN;
+  runtime.value2 = NAN;
+  runtime.temperatureC = NAN;
+  runtime.humidityPct = NAN;
+  runtime.supplyVoltageV = NAN;
+}
+
+void waitForModbusDeviceWarmup(const ModbusDeviceConfig& device) {
+  if (cfg.modbusAlwaysOn || device.warmupSeconds == 0 || modbusPowerOnAtMs == 0) {
+    return;
+  }
+
+  const uint32_t requiredMs = static_cast<uint32_t>(device.warmupSeconds) * 1000UL;
+  const uint32_t elapsedMs = millis() - modbusPowerOnAtMs;
+  if (elapsedMs < requiredMs) {
+    const uint32_t remainingMs = requiredMs - elapsedMs;
+    Serial.printf("[MODBUS] %s warm-up: %lu ms\n",
+                  modbusModelLabel(device.vendor, device.model),
+                  static_cast<unsigned long>(remainingMs));
+    cooperativeDelay(remainingMs);
+  }
+}
+
+void pollModbusDevices(ModbusMeasurements& primaryMeasurements) {
+  primaryMeasurements = ModbusMeasurements();
+  lastModbusPollMs = millis();
+  bool primaryAssigned = false;
+  modbusPrimaryIndex = 0;
+
+  for (uint8_t index = 0; index < cfg.modbusDeviceCount; ++index) {
+    ModbusDeviceConfig& device = cfg.modbusDevices[index];
+    ModbusDeviceRuntime& runtime = modbusRuntime[index];
+    resetModbusRuntime(runtime);
+    if (device.enabled == 0) continue;
+
+    waitForModbusDeviceWarmup(device);
+    activeModbusDevice = &device;
+    activeModbusRuntime = &runtime;
+    modbusLastError = "";
+    modbusLastRequestHex = "";
+    modbusLastResponseHex = "";
+    modbusLastException = 0;
+
+    initializeModbusInterface(device);
+    bool valid = false;
+    if (device.vendor == MODBUS_VENDOR_SENSECAP) {
+      valid = readSenseCapMeasurements(device, runtime.senseCap);
+      runtime.valid = runtime.senseCap.valid;
+      runtime.complete = runtime.senseCap.complete;
+      if (valid && !primaryAssigned) {
+        primaryMeasurements = runtime.senseCap;
+        modbusPrimaryIndex = index;
+        primaryAssigned = true;
+      }
+    } else {
+      valid = readGenericModbusDevice(device, runtime);
+    }
+
+    runtime.lastError = modbusLastError;
+    runtime.lastException = modbusLastException;
+    runtime.lastRequestHex = modbusLastRequestHex;
+    runtime.lastResponseHex = modbusLastResponseHex;
+    if (valid) runtime.lastSuccessMs = millis();
+    Serial.printf("[MODBUS] device %u %s: %s\n",
+                  static_cast<unsigned>(index + 1),
+                  modbusModelLabel(device.vendor, device.model),
+                  valid ? "READY" : runtime.lastError.c_str());
+  }
+
+  activeModbusDevice = nullptr;
+  activeModbusRuntime = nullptr;
+  disableModbusInterface();
+
+  if (primaryAssigned) {
+    lastModbusSuccessMs = millis();
+    modbusLastError = "";
+  } else if (anyModbusDeviceEnabled()) {
+    modbusLastError = "no valid Modbus device";
+  }
 }
 
 void initializePoweredSensorInterfaces() {
   dsAvailable = initializeDS18B20();
   inaAvailable = initializeINA226();
   adsAvailable = initializeADS1220();
-  modbusInterfaceReady = initializeModbusInterface();
+  modbusInterfaceReady = false;
   sensorInterfacesReady = true;
 }
 
@@ -1515,13 +2102,9 @@ void powerExternalSensorsOn() {
   if (!sensorPowerEnabled) {
     prepareLoRaFemForSensorAccess();
     setExternalSensorMosfet(true);
-    delay(50);
+    cooperativeDelay(50);
+    modbusPowerOnAtMs = millis();
     sensorInterfacesReady = false;
-    if (cfg.modbusEnabled) {
-      Serial.printf("[MODBUS] sensor startup settle: %lu ms\n",
-                    static_cast<unsigned long>(MODBUS_POWERUP_SETTLE_MS));
-      delay(MODBUS_POWERUP_SETTLE_MS);
-    }
     Serial.println("[SENSORS] external power ON");
   }
 
@@ -1530,6 +2113,9 @@ void powerExternalSensorsOn() {
 
 // =========================== Sensor cache ===========================
 void readAllSensors() {
+  if (sensorReadInProgress) return;
+  sensorReadInProgress = true;
+
   powerExternalSensorsOn();
 
   Measurements next;
@@ -1538,10 +2124,10 @@ void readAllSensors() {
   next.wegValid = readWegsensor(next.wegRaw, next.wegVoltageV, next.wegPositionMm);
   next.inaValid = readINA226(next.inaBusVoltageV, next.inaShuntVoltageMv,
                                 next.inaCurrentMa, next.inaPowerW);
-  if (!cfg.modbusEnabled) {
+  if (!anyModbusDeviceEnabled()) {
     next.modbus = ModbusMeasurements();
   } else if (modbusPollDue()) {
-    (void)readSenseCapMeasurements(next.modbus);
+    pollModbusDevices(next.modbus);
   } else {
     next.modbus = cached.modbus;
   }
@@ -1565,18 +2151,21 @@ void readAllSensors() {
                                      cached.inaPowerW);
   if (cached.modbus.valid) {
     Serial.printf("  Modbus %s: %.2f C / %.2f %%RH / %.2f Pa / %.2f m/s\n",
-                  senseCapModelInfo(cfg.modbusModel).label,
+                  modbusModelLabel(cfg.modbusDevices[modbusPrimaryIndex].vendor,
+                                   cfg.modbusDevices[modbusPrimaryIndex].model),
                   cached.modbus.airTemperatureC,
                   cached.modbus.humidityPct,
                   cached.modbus.pressurePa,
                   cached.modbus.averageWindSpeedMs);
-  } else if (cfg.modbusEnabled) {
+  } else if (anyModbusDeviceEnabled()) {
     Serial.printf("  Modbus: %s\n", modbusLastError.c_str());
   }
   if (cached.batteryValid) Serial.printf("  battery: %u mV / %.3f V / %u %%\n",
                                          cached.batteryMillivolts,
                                          cached.batteryVoltageV,
                                          cached.batteryPercent);
+
+  sensorReadInProgress = false;
 }
 
 // ================================ OLED ==============================
@@ -1674,6 +2263,24 @@ void sendJson(const JsonDocument& doc, int status = 200) {
   server.send(status, "application/json", output);
 }
 
+void serviceWebWhileWaiting() {
+  if (!apMode || !webServerReady || webServiceActive) return;
+
+  webServiceActive = true;
+  if (apDnsReady) apDnsServer.processNextRequest();
+  server.handleClient();
+  webServiceActive = false;
+  yield();
+}
+
+void cooperativeDelay(uint32_t durationMs) {
+  const uint32_t started = millis();
+  while (millis() - started < durationMs) {
+    serviceWebWhileWaiting();
+    delay(1);
+  }
+}
+
 void apiState() {
   JsonDocument doc;
   doc["name"] = DEVICE_NAME;
@@ -1714,34 +2321,90 @@ void apiState() {
     doc["battery_percent"] = cached.batteryPercent;
   }
 
+  const uint8_t primaryIndex = modbusPrimaryIndex < cfg.modbusDeviceCount
+    ? modbusPrimaryIndex
+    : 0;
+  const ModbusDeviceConfig& primaryDevice = cfg.modbusDevices[primaryIndex];
+  const ModbusDeviceRuntime& primaryRuntime = modbusRuntime[primaryIndex];
+  const ModbusPresetInfo* primaryPreset =
+    findModbusPreset(primaryDevice.vendor, primaryDevice.model);
+  bool anyRuntimeValid = false;
+  for (uint8_t index = 0; index < cfg.modbusDeviceCount; ++index) {
+    if (modbusRuntime[index].valid) {
+      anyRuntimeValid = true;
+      break;
+    }
+  }
+
   JsonObject modbusState = doc["modbus"].to<JsonObject>();
   modbusState["enabled"] = cfg.modbusEnabled;
+  modbusState["always_on"] = cfg.modbusAlwaysOn;
+  modbusState["device_count"] = cfg.modbusDeviceCount;
   modbusState["interface_ready"] = modbusInterfaceReady;
-  modbusState["connected"] = sensorPowerEnabled && cached.modbus.valid;
-  modbusState["complete"] = cached.modbus.complete;
-  modbusState["model"] = senseCapModelInfo(cfg.modbusModel).id;
-  modbusState["model_label"] = senseCapModelInfo(cfg.modbusModel).label;
-  modbusState["factory_address"] = senseCapModelInfo(cfg.modbusModel).defaultAddress;
-  modbusState["address"] = cfg.modbusAddress;
-  modbusState["baud"] = cfg.modbusBaudRate;
+  modbusState["connected"] = sensorPowerEnabled &&
+    (cached.modbus.valid || anyRuntimeValid);
+  modbusState["complete"] = cached.modbus.valid
+    ? cached.modbus.complete
+    : primaryRuntime.complete;
+  modbusState["vendor"] = modbusVendorId(primaryDevice.vendor);
+  modbusState["vendor_label"] = modbusVendorLabel(primaryDevice.vendor);
+  modbusState["model"] = modbusModelId(primaryDevice.vendor, primaryDevice.model);
+  modbusState["model_label"] = modbusModelLabel(primaryDevice.vendor, primaryDevice.model);
+  modbusState["factory_address"] = primaryPreset != nullptr
+    ? primaryPreset->defaultAddress
+    : primaryDevice.address;
+  modbusState["address"] = primaryDevice.address;
+  modbusState["baud"] = primaryDevice.baudRate;
+  modbusState["warmup_seconds"] = primaryDevice.warmupSeconds;
   modbusState["poll_seconds"] = cfg.modbusPollSeconds;
   modbusState["protocol"] = "RS-485 Modbus RTU";
-  modbusState["function_code"] = MODBUS_READ_INPUT_REGISTERS;
+  modbusState["function_code"] = primaryDevice.functionCode;
   modbusState["format"] = "8N1";
   modbusState["re_de_pin"] = PIN_RS485_RE_DE;
   modbusState["tx_pin"] = PIN_RS485_DI;
   modbusState["rx_pin"] = PIN_RS485_RO;
-  modbusState["cable"] = "A pin 1 white | B pin 7 blue | +12-24 V pin 8 red | 0 V pin 2 brown";
-  modbusState["last_error"] = modbusLastError;
-  modbusState["last_exception"] = modbusLastException;
-  modbusState["last_request"] = modbusLastRequestHex;
-  modbusState["last_response"] = modbusLastResponseHex;
+  modbusState["cable"] = primaryDevice.vendor == MODBUS_VENDOR_SENSECAP
+    ? "SenseCAP M12: A pin 1 white | B pin 7 blue | power pin 8 red | 0 V pin 2 brown"
+    : primaryDevice.vendor == MODBUS_VENDOR_SISGEO
+      ? "SISGEO RS-485 cable: use the sensor wiring diagram"
+      : "Custom device: use the vendor wiring diagram";
+  modbusState["last_error"] = primaryRuntime.lastError.length() > 0
+    ? primaryRuntime.lastError
+    : modbusLastError;
+  modbusState["last_exception"] = primaryRuntime.lastException != 0
+    ? primaryRuntime.lastException
+    : modbusLastException;
+  modbusState["last_request"] = primaryRuntime.lastRequestHex.length() > 0
+    ? primaryRuntime.lastRequestHex
+    : modbusLastRequestHex;
+  modbusState["last_response"] = primaryRuntime.lastResponseHex.length() > 0
+    ? primaryRuntime.lastResponseHex
+    : modbusLastResponseHex;
   modbusState["last_attempt_age_s"] = lastModbusPollMs > 0
     ? (millis() - lastModbusPollMs) / 1000UL
     : 0;
-  modbusState["last_success_age_s"] = lastModbusSuccessMs > 0
-    ? (millis() - lastModbusSuccessMs) / 1000UL
-    : 0;
+  modbusState["last_success_age_s"] = primaryRuntime.lastSuccessMs > 0
+    ? (millis() - primaryRuntime.lastSuccessMs) / 1000UL
+    : (lastModbusSuccessMs > 0
+      ? (millis() - lastModbusSuccessMs) / 1000UL
+      : 0);
+
+  JsonArray presetCatalog = doc["modbus_presets"].to<JsonArray>();
+  for (size_t index = 0; index < MODBUS_PRESET_COUNT; ++index) {
+    const ModbusPresetInfo& preset = MODBUS_PRESETS[index];
+    JsonObject item = presetCatalog.add<JsonObject>();
+    item["vendor"] = preset.vendorId;
+    item["vendor_label"] = preset.vendorLabel;
+    item["model"] = preset.modelId;
+    item["model_label"] = preset.modelLabel;
+    item["address"] = preset.defaultAddress;
+    item["baud"] = preset.defaultBaudRate;
+    item["warmup_seconds"] = preset.defaultWarmupSeconds;
+    item["value_register"] = preset.valueRegister;
+    item["function_code"] = preset.functionCode;
+    item["register_count"] = preset.registerCount;
+    item["value_format"] = preset.valueFormat;
+  }
 
   JsonObject modbusData = modbusState["data"].to<JsonObject>();
   if (isfinite(cached.modbus.airTemperatureC)) {
@@ -1812,6 +2475,49 @@ void apiState() {
     modbusData["sunshine_duration_h"] = cached.modbus.sunshineDurationH;
   }
 
+  JsonArray modbusDevices = modbusState["devices"].to<JsonArray>();
+  for (uint8_t index = 0; index < cfg.modbusDeviceCount; ++index) {
+    const ModbusDeviceConfig& device = cfg.modbusDevices[index];
+    const ModbusDeviceRuntime& runtime = modbusRuntime[index];
+    JsonObject item = modbusDevices.add<JsonObject>();
+    item["index"] = index;
+    item["enabled"] = device.enabled != 0;
+    item["vendor"] = modbusVendorId(device.vendor);
+    item["vendor_label"] = modbusVendorLabel(device.vendor);
+    item["model"] = modbusModelId(device.vendor, device.model);
+    item["model_label"] = modbusModelLabel(device.vendor, device.model);
+    item["address"] = device.address;
+    item["baud"] = device.baudRate;
+    item["warmup_seconds"] = device.warmupSeconds;
+    item["lora_field_mask"] = cfg.loraSisgeoFieldMasks[index];
+    item["valid"] = runtime.valid;
+    item["complete"] = runtime.complete;
+    item["last_error"] = runtime.lastError;
+    item["last_request"] = runtime.lastRequestHex;
+    item["last_response"] = runtime.lastResponseHex;
+    item["last_success_age_s"] = runtime.lastSuccessMs > 0
+      ? (millis() - runtime.lastSuccessMs) / 1000UL
+      : 0;
+    JsonObject itemData = item["data"].to<JsonObject>();
+    if (device.vendor == MODBUS_VENDOR_SENSECAP) {
+      if (isfinite(runtime.senseCap.airTemperatureC)) {
+        itemData["air_temperature_c"] = runtime.senseCap.airTemperatureC;
+      }
+      if (isfinite(runtime.senseCap.humidityPct)) {
+        itemData["humidity_pct"] = runtime.senseCap.humidityPct;
+      }
+      if (isfinite(runtime.senseCap.pressurePa)) {
+        itemData["pressure_pa"] = runtime.senseCap.pressurePa;
+      }
+    } else {
+      if (isfinite(runtime.value1)) itemData["value1"] = runtime.value1;
+      if (isfinite(runtime.value2)) itemData["value2"] = runtime.value2;
+      if (isfinite(runtime.temperatureC)) itemData["temperature_c"] = runtime.temperatureC;
+      if (isfinite(runtime.humidityPct)) itemData["humidity_pct"] = runtime.humidityPct;
+      if (isfinite(runtime.supplyVoltageV)) itemData["supply_voltage_v"] = runtime.supplyVoltageV;
+    }
+  }
+
   JsonObject config = doc["cfg"].to<JsonObject>();
   config["devEui_msb"] = bytesToHex(cfg.devEui, sizeof(cfg.devEui));
   config["appEui_msb"] = bytesToHex(cfg.appEui, sizeof(cfg.appEui));
@@ -1827,15 +2533,43 @@ void apiState() {
 
   JsonObject modbusConfig = config["modbus"].to<JsonObject>();
   modbusConfig["enabled"] = cfg.modbusEnabled;
-  modbusConfig["model"] = senseCapModelInfo(cfg.modbusModel).id;
-  modbusConfig["address"] = cfg.modbusAddress;
-  modbusConfig["baud"] = cfg.modbusBaudRate;
+  modbusConfig["always_on"] = cfg.modbusAlwaysOn;
   modbusConfig["poll_seconds"] = cfg.modbusPollSeconds;
+  modbusConfig["device_count"] = cfg.modbusDeviceCount;
+  modbusConfig["vendor"] = modbusVendorId(primaryDevice.vendor);
+  modbusConfig["model"] = modbusModelId(primaryDevice.vendor, primaryDevice.model);
+  modbusConfig["address"] = primaryDevice.address;
+  modbusConfig["baud"] = primaryDevice.baudRate;
+  modbusConfig["warmup_seconds"] = primaryDevice.warmupSeconds;
+  JsonArray configDevices = modbusConfig["devices"].to<JsonArray>();
+  for (uint8_t index = 0; index < cfg.modbusDeviceCount; ++index) {
+    const ModbusDeviceConfig& device = cfg.modbusDevices[index];
+    JsonObject item = configDevices.add<JsonObject>();
+    item["enabled"] = device.enabled != 0;
+    item["vendor"] = modbusVendorId(device.vendor);
+    item["model"] = modbusModelId(device.vendor, device.model);
+    item["address"] = device.address;
+    item["baud"] = device.baudRate;
+    item["warmup_seconds"] = device.warmupSeconds;
+    item["lora_field_mask"] = cfg.loraSisgeoFieldMasks[index];
+    item["value_register"] = device.valueRegister;
+    item["function_code"] = device.functionCode;
+    item["register_count"] = device.registerCount;
+    item["value_format"] = device.valueFormat;
+  }
 
   JsonObject loraConfig = config["lora"].to<JsonObject>();
-  loraConfig["version"] = 5;
-  loraConfig["field_mask"] = cfg.loraFieldMask;
-  loraConfig["payload_bytes"] = loraPayloadSize(cfg.loraFieldMask);
+  const uint16_t sisgeoDeviceMask = loraSisgeoDeviceMask();
+  loraConfig["version"] = sisgeoDeviceMask != 0
+    ? LORA_PAYLOAD_VERSION_V6
+    : LORA_PAYLOAD_VERSION_V5;
+  loraConfig["field_mask"] = loraBaseFieldMask();
+  loraConfig["payload_bytes"] = configuredLoraPayloadSize();
+  loraConfig["sisgeo_device_mask"] = sisgeoDeviceMask;
+  JsonArray sisgeoMasks = loraConfig["sisgeo_field_masks"].to<JsonArray>();
+  for (uint8_t index = 0; index < MODBUS_MAX_DEVICES; ++index) {
+    sisgeoMasks.add(cfg.loraSisgeoFieldMasks[index]);
+  }
 
   JsonArray loraFields = doc["lora_fields"].to<JsonArray>();
   for (uint8_t id = 0; id < LORA_FIELD_COUNT; ++id) {
@@ -1845,7 +2579,16 @@ void apiState() {
     field["unit"] = LORA_FIELDS[id].unit;
     field["source"] = LORA_FIELDS[id].source;
     field["bytes"] = LORA_FIELDS[id].bytes;
-    field["selected"] = (cfg.loraFieldMask & (1UL << id)) != 0;
+    field["selected"] = (loraBaseFieldMask() & (1UL << id)) != 0;
+  }
+
+  JsonArray sisgeoFields = doc["lora_sisgeo_fields"].to<JsonArray>();
+  for (uint8_t id = 0; id < SISGEO_LORA_FIELD_COUNT; ++id) {
+    JsonObject field = sisgeoFields.add<JsonObject>();
+    field["id"] = SISGEO_LORA_FIELDS[id].id;
+    field["label"] = SISGEO_LORA_FIELDS[id].label;
+    field["unit"] = SISGEO_LORA_FIELDS[id].unit;
+    field["bytes"] = SISGEO_LORA_FIELDS[id].bytes;
   }
 
   JsonObject calibration = config["weg_cal"].to<JsonObject>();
@@ -1947,29 +2690,8 @@ void apiSaveConfig() {
     if (modbus["enabled"].is<bool>()) {
       updated.modbusEnabled = modbus["enabled"].as<bool>();
     }
-    if (modbus["model"].is<const char*>()) {
-      const int model = parseSenseCapModel(modbus["model"].as<String>());
-      if (model < 0) {
-        server.send(400, "text/plain", "invalid Modbus model");
-        return;
-      }
-      updated.modbusModel = static_cast<uint8_t>(model);
-    }
-    if (modbus["address"].is<int>()) {
-      const int value = modbus["address"].as<int>();
-      if (value < 1 || value > 247) {
-        server.send(400, "text/plain", "Modbus address range 1..247");
-        return;
-      }
-      updated.modbusAddress = static_cast<uint8_t>(value);
-    }
-    if (modbus["baud"].is<uint32_t>()) {
-      const uint32_t value = modbus["baud"].as<uint32_t>();
-      if (!isSupportedModbusBaud(value)) {
-        server.send(400, "text/plain", "unsupported Modbus baud rate");
-        return;
-      }
-      updated.modbusBaudRate = value;
+    if (modbus["always_on"].is<bool>()) {
+      updated.modbusAlwaysOn = modbus["always_on"].as<bool>();
     }
     if (modbus["poll_seconds"].is<uint32_t>()) {
       const uint32_t value = modbus["poll_seconds"].as<uint32_t>();
@@ -1979,21 +2701,199 @@ void apiSaveConfig() {
       }
       updated.modbusPollSeconds = static_cast<uint16_t>(value);
     }
+
+    if (modbus["devices"].is<JsonArrayConst>()) {
+      JsonArrayConst devices = modbus["devices"].as<JsonArrayConst>();
+      if (devices.size() == 0 || devices.size() > MODBUS_MAX_DEVICES) {
+        server.send(400, "text/plain", "Modbus device count range 1..12");
+        return;
+      }
+
+      updated.modbusDeviceCount = static_cast<uint8_t>(devices.size());
+      uint8_t senseCapCount = 0;
+      uint8_t sisgeoCount = 0;
+      uint8_t index = 0;
+      for (JsonObjectConst source : devices) {
+        ModbusDeviceConfig device = updated.modbusDevices[index];
+        if (!source["vendor"].is<const char*>() ||
+            !source["model"].is<const char*>()) {
+          server.send(400, "text/plain", "Modbus vendor and model are required");
+          return;
+        }
+
+        const int vendor = parseModbusVendor(source["vendor"].as<String>());
+        const int model = vendor < 0
+          ? -1
+          : parseModbusModel(static_cast<uint8_t>(vendor),
+                             source["model"].as<String>());
+        if (model < 0) {
+          server.send(400, "text/plain", "invalid Modbus vendor or model");
+          return;
+        }
+        if (vendor == MODBUS_VENDOR_SENSECAP &&
+            ++senseCapCount > MODBUS_MAX_SENSECAP_DEVICES) {
+          server.send(400, "text/plain", "only one SenseCAP weather station is supported");
+          return;
+        }
+        if (vendor == MODBUS_VENDOR_SISGEO &&
+            ++sisgeoCount > MODBUS_MAX_SISGEO_DEVICES) {
+          server.send(400, "text/plain", "maximum 12 SISGEO devices supported");
+          return;
+        }
+        applyModbusPreset(device,
+                          static_cast<uint8_t>(vendor),
+                          static_cast<uint8_t>(model));
+
+        if (source["enabled"].is<bool>()) {
+          device.enabled = source["enabled"].as<bool>() ? 1 : 0;
+        }
+        if (!source["address"].isNull()) {
+          const int value = source["address"].as<int>();
+          if (value < 1 || value > 247) {
+            server.send(400, "text/plain", "Modbus address range 1..247");
+            return;
+          }
+          device.address = static_cast<uint8_t>(value);
+        }
+        if (!source["baud"].isNull()) {
+          const uint32_t value = source["baud"].as<uint32_t>();
+          if (!isSupportedModbusBaud(value)) {
+            server.send(400, "text/plain", "unsupported Modbus baud rate");
+            return;
+          }
+          device.baudRate = value;
+        }
+        if (!source["warmup_seconds"].isNull()) {
+          const uint32_t value = source["warmup_seconds"].as<uint32_t>();
+          if (value > 3600) {
+            server.send(400, "text/plain", "Modbus warm-up range 0..3600 seconds");
+            return;
+          }
+          device.warmupSeconds = static_cast<uint16_t>(value);
+        }
+        if (!source["value_register"].isNull()) {
+          device.valueRegister = source["value_register"].as<uint16_t>();
+        }
+        if (!source["function_code"].isNull()) {
+          const uint8_t value = source["function_code"].as<uint8_t>();
+          if (value != 3 && value != 4) {
+            server.send(400, "text/plain", "Modbus function must be 3 or 4");
+            return;
+          }
+          device.functionCode = value;
+        }
+        if (!source["register_count"].isNull()) {
+          const uint8_t value = source["register_count"].as<uint8_t>();
+          if (value == 0 || value > MODBUS_MAX_REGISTERS) {
+            server.send(400, "text/plain", "Modbus register count range 1..32");
+            return;
+          }
+          device.registerCount = value;
+        }
+        if (!source["value_format"].isNull()) {
+          const uint8_t value = source["value_format"].as<uint8_t>();
+          if (value > MODBUS_VALUE_UINT32) {
+            server.send(400, "text/plain", "unsupported Modbus value format");
+            return;
+          }
+          device.valueFormat = value;
+        }
+
+        normalizeModbusDevice(device);
+        for (uint8_t previous = 0; previous < index; ++previous) {
+          if (device.enabled != 0 &&
+              updated.modbusDevices[previous].enabled != 0 &&
+              device.address == updated.modbusDevices[previous].address) {
+            server.send(400, "text/plain", "Modbus device addresses must be unique");
+            return;
+          }
+        }
+        updated.modbusDevices[index++] = device;
+      }
+    } else {
+      ModbusDeviceConfig& device = updated.modbusDevices[0];
+      uint8_t vendor = MODBUS_VENDOR_SENSECAP;
+      if (modbus["vendor"].is<const char*>()) {
+        const int parsedVendor = parseModbusVendor(modbus["vendor"].as<String>());
+        if (parsedVendor < 0) {
+          server.send(400, "text/plain", "invalid Modbus vendor");
+          return;
+        }
+        vendor = static_cast<uint8_t>(parsedVendor);
+      }
+      if (modbus["model"].is<const char*>()) {
+        const int model = parseModbusModel(vendor, modbus["model"].as<String>());
+        if (model < 0) {
+          server.send(400, "text/plain", "invalid Modbus model");
+          return;
+        }
+        applyModbusPreset(device, vendor, static_cast<uint8_t>(model));
+      }
+      if (modbus["address"].is<int>()) {
+        const int value = modbus["address"].as<int>();
+        if (value < 1 || value > 247) {
+          server.send(400, "text/plain", "Modbus address range 1..247");
+          return;
+        }
+        device.address = static_cast<uint8_t>(value);
+      }
+      if (modbus["baud"].is<uint32_t>()) {
+        const uint32_t value = modbus["baud"].as<uint32_t>();
+        if (!isSupportedModbusBaud(value)) {
+          server.send(400, "text/plain", "unsupported Modbus baud rate");
+          return;
+        }
+        device.baudRate = value;
+      }
+      if (modbus["warmup_seconds"].is<uint32_t>()) {
+        const uint32_t value = modbus["warmup_seconds"].as<uint32_t>();
+        if (value > 3600) {
+          server.send(400, "text/plain", "Modbus warm-up range 0..3600 seconds");
+          return;
+        }
+        device.warmupSeconds = static_cast<uint16_t>(value);
+      }
+      normalizeModbusDevice(device);
+    }
   }
 
   if (request["lora"].is<JsonObjectConst>()) {
     JsonObjectConst lora = request["lora"].as<JsonObjectConst>();
     if (lora["field_mask"].is<uint32_t>()) {
-      const uint32_t value = lora["field_mask"].as<uint32_t>();
+      uint32_t value = lora["field_mask"].as<uint32_t>();
       if ((value & ~LORA_FIELD_MASK_ALL) != 0) {
         server.send(400, "text/plain", "LoRa field selection is invalid");
         return;
       }
-      if (loraPayloadSize(value) > 242) {
-        server.send(400, "text/plain", "LoRa payload is too large");
-        return;
+      if (lora["sisgeo_field_masks"].is<JsonArrayConst>()) {
+        JsonArrayConst masks = lora["sisgeo_field_masks"].as<JsonArrayConst>();
+        if (masks.size() > MODBUS_MAX_DEVICES) {
+          server.send(400, "text/plain", "SISGEO field mask count is invalid");
+          return;
+        }
+        for (uint8_t index = 0; index < MODBUS_MAX_DEVICES; ++index) {
+          updated.loraSisgeoFieldMasks[index] = 0;
+        }
+        uint8_t index = 0;
+        for (JsonVariantConst source : masks) {
+          if (!source.is<uint32_t>()) {
+            server.send(400, "text/plain", "SISGEO field mask is invalid");
+            return;
+          }
+          const uint32_t mask = source.as<uint32_t>();
+          if ((mask & ~static_cast<uint32_t>(SISGEO_LORA_FIELD_MASK_ALL)) != 0) {
+            server.send(400, "text/plain", "SISGEO field selection is invalid");
+            return;
+          }
+          updated.loraSisgeoFieldMasks[index++] = static_cast<uint8_t>(mask);
+        }
       }
+      if (!anySenseCapDeviceEnabled(updated)) value &= (1UL << 9) - 1UL;
       updated.loraFieldMask = value;
+    }
+    if (configuredLoraPayloadSize(updated) > 242) {
+      server.send(400, "text/plain", "LoRa payload is too large");
+      return;
     }
   }
 
@@ -2025,12 +2925,17 @@ void apiSaveConfig() {
     }
   }
 
-  const bool modbusConfigChanged =
+  bool modbusConfigChanged =
     cfg.modbusEnabled != updated.modbusEnabled ||
-    cfg.modbusModel != updated.modbusModel ||
-    cfg.modbusAddress != updated.modbusAddress ||
-    cfg.modbusBaudRate != updated.modbusBaudRate ||
-    cfg.modbusPollSeconds != updated.modbusPollSeconds;
+    cfg.modbusAlwaysOn != updated.modbusAlwaysOn ||
+    cfg.modbusPollSeconds != updated.modbusPollSeconds ||
+    cfg.modbusDeviceCount != updated.modbusDeviceCount;
+  for (uint8_t index = 0; index < MODBUS_MAX_DEVICES; ++index) {
+    if (!modbusDeviceConfigEqual(cfg.modbusDevices[index], updated.modbusDevices[index])) {
+      modbusConfigChanged = true;
+      break;
+    }
+  }
 
   cfg = updated;
   saveConfig();
@@ -2042,11 +2947,14 @@ void apiSaveConfig() {
     cached.modbus = ModbusMeasurements();
     modbusInterfaceReady = false;
     sensorInterfacesReady = false;
+    for (uint8_t index = 0; index < MODBUS_MAX_DEVICES; ++index) {
+      resetModbusRuntime(modbusRuntime[index]);
+    }
   }
   if (cached.batteryValid) {
     cached.batteryPercent = batteryPercentFromMillivolts(cached.batteryMillivolts);
   }
-  if (sensorPowerEnabled) readAllSensors();
+  if (sensorPowerEnabled) sensorReadRequested = true;
 
   // AP loop refreshes the sensor cache independently. Keep this response fast
   // so the browser does not lose the connection while saving settings.
@@ -2067,7 +2975,8 @@ void apiSensorPower() {
   }
 
   if (request["enabled"].as<bool>()) {
-    readAllSensors();
+    powerExternalSensorsOn();
+    sensorReadRequested = true;
   } else {
     powerExternalSensorsOff();
   }
@@ -2083,15 +2992,19 @@ void apiReboot() {
   ESP.restart();
 }
 
-void redirectToCaptivePortal() {
-  if (server.uri().startsWith("/api/") || !cfg.autoRedirectEnabled) {
-    server.send(404, "text/plain", "Not found");
+void captivePortalProbe() {
+  if (!cfg.autoRedirectEnabled) {
+    server.send(204, "text/plain", "");
     return;
   }
 
   server.sendHeader("Cache-Control", "no-store");
-  server.sendHeader("Location", String("http://") + WiFi.softAPIP().toString() + "/", true);
+  server.sendHeader("Location", "/", true);
   server.send(302, "text/plain", "Redirecting to MultiConnect");
+}
+
+void handleNotFound() {
+  server.send(404, "text/plain", "Not found");
 }
 
 void attachWebRoutes() {
@@ -2130,18 +3043,19 @@ void attachWebRoutes() {
   server.on("/api/deveui/use-chip", HTTP_POST, apiUseChipDevEui);
   server.on("/api/reboot", HTTP_POST, apiReboot);
 
-  server.on("/generate_204", HTTP_ANY, redirectToCaptivePortal);
-  server.on("/gen_204", HTTP_ANY, redirectToCaptivePortal);
-  server.on("/hotspot-detect.html", HTTP_ANY, redirectToCaptivePortal);
-  server.on("/connecttest.txt", HTTP_ANY, redirectToCaptivePortal);
-  server.on("/ncsi.txt", HTTP_ANY, redirectToCaptivePortal);
-  server.on("/redirect", HTTP_ANY, redirectToCaptivePortal);
-  server.on("/canonical.html", HTTP_ANY, redirectToCaptivePortal);
-  server.on("/success.txt", HTTP_ANY, redirectToCaptivePortal);
-  server.on("/fwlink", HTTP_ANY, redirectToCaptivePortal);
-  server.onNotFound(redirectToCaptivePortal);
+  server.on("/generate_204", HTTP_ANY, captivePortalProbe);
+  server.on("/gen_204", HTTP_ANY, captivePortalProbe);
+  server.on("/hotspot-detect.html", HTTP_ANY, captivePortalProbe);
+  server.on("/connecttest.txt", HTTP_ANY, captivePortalProbe);
+  server.on("/ncsi.txt", HTTP_ANY, captivePortalProbe);
+  server.on("/redirect", HTTP_ANY, captivePortalProbe);
+  server.on("/canonical.html", HTTP_ANY, captivePortalProbe);
+  server.on("/success.txt", HTTP_ANY, captivePortalProbe);
+  server.on("/fwlink", HTTP_ANY, captivePortalProbe);
+  server.onNotFound(handleNotFound);
 
   server.begin();
+  webServerReady = true;
 }
 
 void startAccessPoint() {
@@ -2181,8 +3095,11 @@ void disableUnusedRadiosForFieldMode() {
 //           bit5 Modbus valid, bit6 Modbus complete
 // 2..5 selected field mask, bits 0..30
 // Remaining bytes contain selected fields in ascending field-id order.
-static constexpr uint8_t LORA_PAYLOAD_VERSION = 5;
-static constexpr uint8_t LORA_PAYLOAD_HEADER_SIZE = 6;
+// Payload V6 keeps the V5 fields and adds:
+// 6..7 SISGEO device mask, bits 0..11
+// For every selected SISGEO device: one field mask byte, then float32 values.
+static constexpr uint8_t LORA_PAYLOAD_HEADER_SIZE_V5 = 6;
+static constexpr uint8_t LORA_PAYLOAD_HEADER_SIZE_V6 = 8;
 static constexpr uint8_t LORA_STATUS_TEMP = 1U << 0;
 static constexpr uint8_t LORA_STATUS_POSITION = 1U << 1;
 static constexpr uint8_t LORA_STATUS_WEG = 1U << 2;
@@ -2265,22 +3182,58 @@ void putLoraUInt8(uint8_t& index, bool valid, uint8_t value) {
   appData[index++] = valid ? value : UINT8_MAX;
 }
 
+void putLoraFloat32(uint8_t& index, bool valid, float value) {
+  uint32_t bits = 0x7FC00000UL;
+  if (valid && isfinite(value)) memcpy(&bits, &value, sizeof(bits));
+  putUInt32BE(index, bits);
+}
+
+void putSisgeoLoraField(uint8_t& index,
+                        uint8_t field,
+                        const ModbusDeviceRuntime& runtime) {
+  switch (field) {
+    case SISGEO_LORA_FIELD_VALUE1:
+      putLoraFloat32(index, isfinite(runtime.value1), runtime.value1);
+      break;
+    case SISGEO_LORA_FIELD_VALUE2:
+      putLoraFloat32(index, isfinite(runtime.value2), runtime.value2);
+      break;
+    case SISGEO_LORA_FIELD_TEMPERATURE:
+      putLoraFloat32(index, isfinite(runtime.temperatureC), runtime.temperatureC);
+      break;
+    case SISGEO_LORA_FIELD_HUMIDITY:
+      putLoraFloat32(index, isfinite(runtime.humidityPct), runtime.humidityPct);
+      break;
+    case SISGEO_LORA_FIELD_SUPPLY_VOLTAGE:
+      putLoraFloat32(index, isfinite(runtime.supplyVoltageV), runtime.supplyVoltageV);
+      break;
+    default:
+      break;
+  }
+}
+
 static void prepareTxFrame(uint8_t port) {
   (void)port;
 
+  const uint16_t sisgeoDeviceMask = loraSisgeoDeviceMask();
+  const bool sisgeoPayload = sisgeoDeviceMask != 0;
   uint8_t index = 0;
-  appData[index++] = LORA_PAYLOAD_VERSION;
+  appData[index++] = sisgeoPayload
+    ? LORA_PAYLOAD_VERSION_V6
+    : LORA_PAYLOAD_VERSION_V5;
 
   uint8_t status = 0;
   if (cached.temperatureValid) status |= LORA_STATUS_TEMP;
   if (cached.wegValid) status |= LORA_STATUS_POSITION | LORA_STATUS_WEG;
   if (cached.inaValid) status |= LORA_STATUS_INA;
   if (cached.batteryValid) status |= LORA_STATUS_BATTERY;
-  if (cached.modbus.valid) status |= LORA_STATUS_MODBUS;
-  if (cached.modbus.complete) status |= LORA_STATUS_MODBUS_COMPLETE;
+  if (cached.modbus.valid || anyModbusRuntimeValid()) status |= LORA_STATUS_MODBUS;
+  if (cached.modbus.complete || allEnabledModbusRuntimeComplete()) {
+    status |= LORA_STATUS_MODBUS_COMPLETE;
+  }
   appData[index++] = status;
 
-  const uint32_t fieldMask = cfg.loraFieldMask & LORA_FIELD_MASK_ALL;
+  const uint32_t fieldMask = loraBaseFieldMask();
   putUInt32BE(index, fieldMask);
 
   for (uint8_t id = 0; id < LORA_FIELD_COUNT; ++id) {
@@ -2415,6 +3368,21 @@ static void prepareTxFrame(uint8_t port) {
     }
   }
 
+  if (sisgeoPayload) {
+    putUInt16BE(index, sisgeoDeviceMask);
+    for (uint8_t deviceIndex = 0; deviceIndex < cfg.modbusDeviceCount; ++deviceIndex) {
+      if ((sisgeoDeviceMask & (1U << deviceIndex)) == 0) continue;
+
+      const uint8_t fieldMaskForDevice =
+        cfg.loraSisgeoFieldMasks[deviceIndex] & SISGEO_LORA_FIELD_MASK_ALL;
+      appData[index++] = fieldMaskForDevice;
+      for (uint8_t field = 0; field < SISGEO_LORA_FIELD_COUNT; ++field) {
+        if ((fieldMaskForDevice & (1U << field)) == 0) continue;
+        putSisgeoLoraField(index, field, modbusRuntime[deviceIndex]);
+      }
+    }
+  }
+
   appDataSize = index;
 
   Serial.print("[LORA] cached payload: ");
@@ -2481,6 +3449,7 @@ void powerExternalSensorsOff() {
   inaAvailable = false;
   adsAvailable = false;
   modbusInterfaceReady = false;
+  modbusPowerOnAtMs = 0;
   lastModbusPollMs = 0;
   lastModbusSuccessMs = 0;
   modbusLastError = "sensor power off";
@@ -2491,9 +3460,17 @@ void preparePeripheralsForLowPower() {
   // OLED and Wi-Fi/Bluetooth are already disabled in FIELD mode.
   digitalWrite(PIN_BATTERY_CTRL, LOW);
   digitalWrite(PIN_RS485_RE_DE, LOW);
-  // Q1/Q2 are disabled during the sleep phase and enabled immediately
-  // before the next measurement.
-  powerExternalSensorsOff();
+  // Q1/Q2 are disabled during sleep unless the installation explicitly uses
+  // an always-on Modbus supply.
+  if (cfg.modbusAlwaysOn && anyModbusDeviceEnabled()) {
+    disableSensorInterfacesForSleep();
+    sensorInterfacesReady = false;
+    dsAvailable = false;
+    inaAvailable = false;
+    adsAvailable = false;
+  } else {
+    powerExternalSensorsOff();
+  }
   digitalWrite(PIN_BOARD_LED, LOW);
 
   // The Heltec radio driver disables the V4.3 FEM after TX/RX windows.
@@ -2577,16 +3554,17 @@ void setup() {
                 inaAvailable ? "CONNECTED" : "NOT CONNECTED",
                 cfg.lowPowerEnabled ? "ON" : "OFF");
 
-  // Initial cached measurement is prepared before LoRaWAN initialization.
-  readAllSensors();
-
   if (apMode) {
     startAccessPoint();
+    sensorReadRequested = true;
   } else {
-    // FIELD mode: OLED remains physically powered off from boot onward and
-    // Q1/Q2 are disabled until the next measurement. Force a fresh SenseCAP
-    // warm-up after LoRaWAN has joined before the first uplink.
-    powerExternalSensorsOff();
+    // FIELD mode performs its initial measurement before LoRaWAN starts.
+    readAllSensors();
+    // FIELD mode: OLED remains physically powered off from boot onward. Keep
+    // the Modbus rail on only when the installation selected always-on power.
+    if (!(cfg.modbusAlwaysOn && anyModbusDeviceEnabled())) {
+      powerExternalSensorsOff();
+    }
     fieldMeasurementPending = true;
     pinMode(Vext, OUTPUT);
     digitalWrite(Vext, HIGH);
@@ -2605,9 +3583,13 @@ void loop() {
     static uint32_t lastPageChange = 0;
     static bool sensorPage = false;
 
-    if (millis() - lastSensorRead >= 2000) {
+    if ((sensorReadRequested || millis() - lastSensorRead >= 2000) &&
+        !sensorReadInProgress) {
       lastSensorRead = millis();
-      if (sensorPowerEnabled) readAllSensors();
+      if (sensorPowerEnabled) {
+        sensorReadRequested = false;
+        readAllSensors();
+      }
     }
 
     if (millis() - lastPageChange >= 5000) {
@@ -2665,16 +3647,21 @@ void loop() {
       // The cache was measured before SEND. Do not access sensors here:
       // LoRaWAN still owns the radio for its TX/RX windows.
       appTxDutyCycle = intervalMs();
-      if (cfg.lowPowerEnabled) preparePeripheralsForLowPower();
-      else powerExternalSensorsOff();
+      if (cfg.lowPowerEnabled ||
+          (cfg.modbusAlwaysOn && anyModbusDeviceEnabled())) {
+        preparePeripheralsForLowPower();
+      } else {
+        powerExternalSensorsOff();
+      }
       LoRaWAN.cycle(appTxDutyCycle);
       fieldMeasurementPending = true;
       deviceState = DEVICE_STATE_SLEEP;
       break;
 
     case DEVICE_STATE_SLEEP:
-      // Keep the Q1/Q2 gate low throughout the entire sleep interval.
-      setExternalSensorMosfet(false);
+      // Keep the Q1/Q2 gate low throughout sleep unless the bus is externally
+      // powered and the user selected the always-on policy.
+      setExternalSensorMosfet(cfg.modbusAlwaysOn && anyModbusDeviceEnabled());
       if (cfg.lowPowerEnabled) {
         LoRaWAN.sleep(loraWanClass);
       } else {

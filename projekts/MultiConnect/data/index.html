@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="de" translate="no" class="notranslate" data-theme="light" data-view="user" data-menu="closed">
+<html lang="de" translate="no" class="notranslate" data-theme="light" data-menu="closed">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -7,6 +7,7 @@
 <meta name="google" content="notranslate">
 <title>MKP MultiConnect</title>
 <style>
+.legacy-modbus-field{display:none!important}.live-lower{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(290px,.65fr);gap:28px;margin-top:28px}.connected-sensors{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 22px}.connected-sensor{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;border-top:1px solid var(--line)}.connected-sensor span{min-width:0;color:var(--ink);overflow-wrap:anywhere}.connected-sensor b{color:var(--primary);font-size:13px;font-weight:500;text-align:right;white-space:nowrap}.sensor-dot{display:inline-block;width:8px;height:8px;margin-right:7px;border-radius:50%;background:var(--bad);vertical-align:1px}.sensor-dot.ok{background:var(--ok)}.live-interval{min-width:0}.live-interval .field{margin-bottom:16px}.modbus-device-list{display:grid;gap:16px}.modbus-device-card{padding:16px;background:var(--field);border:1px solid var(--line);border-radius:4px}.modbus-device-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;color:var(--primary)}.modbus-device-heading strong{font-size:15px;font-weight:500}.modbus-device-actions{display:flex;align-items:center;gap:8px}.modbus-device-actions .icon{width:32px;height:32px;font-size:18px}.modbus-device-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 16px}.modbus-device-status{margin-top:14px;padding-top:12px;border-top:1px solid var(--line);color:var(--muted);font-size:12px}.modbus-device-status strong{color:var(--primary);font-weight:500}.modbus-device-data{margin-top:6px;color:var(--ink);overflow-wrap:anywhere}.modbus-add-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:16px}.modbus-add{width:100%}@media(max-width:850px){.live-lower{grid-template-columns:1fr}}@media(max-width:600px){.connected-sensors{grid-template-columns:1fr}.modbus-device-grid{grid-template-columns:1fr}.modbus-add-actions{grid-template-columns:1fr}}
 :root{--primary:#004972;--accent:#42c0eb;--accent-soft:#e4f5fb;--page:#fff;--surface:#f8f9fa;--field:#edf3f6;--ink:rgba(0,0,0,.87);--muted:#9aabb4;--line:rgba(0,0,0,.12);--ok:#278a61;--bad:#c95050;--shadow:0 2px 3px rgba(0,0,0,.16),0 1px 1px rgba(0,0,0,.10)}
 html[data-theme=dark]{--page:#0e1b22;--surface:#172a33;--field:#203842;--ink:#edf6f9;--muted:#9db5bf;--line:rgba(220,240,246,.18);--primary:#8bd8ef;--accent:#42c0eb;--accent-soft:#164b61;--shadow:0 2px 5px rgba(0,0,0,.34)}
 *{box-sizing:border-box}html{min-width:320px}body{margin:0;background:var(--page);color:var(--ink);font:14px/1.45 "HCo Gotham Rounded",Arial,Helvetica,sans-serif}button,input,select{font:inherit}button{cursor:pointer}.header{position:fixed;z-index:20;top:0;left:0;right:0;height:64px;display:flex;align-items:center;background:var(--surface);color:var(--primary);box-shadow:0 2px 8px rgba(0,0,0,.20)}.logo{display:flex;align-items:center;width:252px;height:35px;margin-left:26px}.logo img{display:block;width:100%;height:100%;object-fit:contain}.header-spacer{flex:1}.actions{display:flex;align-items:center;gap:2px;margin-right:14px}.icon{width:48px;height:48px;padding:0;border:0;border-radius:50%;background:transparent;color:var(--primary);display:grid;place-items:center;font-weight:500}.icon:hover,.icon:focus-visible{background:var(--accent-soft);outline:0}.icon.active{background:var(--accent-soft);color:var(--primary)}.menu-trigger{margin-left:4px;font-size:22px;line-height:1}.page{width:min(1190px,calc(100% - 32px));margin:0 auto;padding:88px 0 28px}.breadcrumb{display:flex;align-items:center;gap:12px;min-height:36px;margin:0 4px 18px;color:var(--ink);font-size:14px}.breadcrumb .slash{color:var(--muted)}.breadcrumb .current{color:var(--muted)}.panel{margin-top:16px;padding:20px;background:var(--surface);border:1px solid var(--line);border-radius:4px;box-shadow:var(--shadow)}.live-panel{margin-top:0}.panel-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:0 0 20px;color:var(--primary)}.panel-title{display:flex;align-items:center;gap:12px;min-width:0}.panel-title h2{margin:0;font-size:21px;line-height:1.2;font-weight:400;color:var(--primary)}.section-icon{display:grid;place-items:center;width:28px;height:28px;border:2px solid var(--accent);border-radius:50%;color:var(--accent);font-size:16px;font-weight:700;flex:none}.overview{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}.metric-panel{min-width:0;padding:18px;background:var(--page);border:1px solid var(--line);border-radius:4px}.kicker{display:block;margin-bottom:8px;color:var(--muted);font-size:12px}.big{color:var(--primary);font-size:28px;line-height:1.2;font-weight:400;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.small{display:block;margin-top:8px;color:var(--muted);font-size:13px}.bar{height:6px;margin-top:18px;overflow:hidden;background:var(--field);border-radius:3px}.bar>span{display:block;width:0;height:100%;background:var(--accent);transition:width .25s ease}.gauge{position:relative;height:42px;margin-top:14px;overflow:hidden;background:var(--field);border-radius:4px}.gauge:before{content:"";position:absolute;inset:0 auto 0 0;width:calc(var(--p,0)*1%);background:var(--accent);opacity:.9;transition:width .25s ease}.gauge span{position:absolute;z-index:1;inset:0;display:grid;place-items:center;color:var(--primary);font-size:18px;font-weight:500}.settings-layout{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(260px,.8fr);gap:28px}.settings-side{padding-left:28px;border-left:1px solid var(--line)}.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 20px}.field{min-width:0}.field label{display:block;margin-bottom:5px;color:var(--muted);font-size:12px}.field input,.field select{width:100%;height:42px;padding:8px 12px;border:0;border-bottom:1px dotted var(--muted);border-radius:4px 4px 0 0;background:var(--field);color:var(--ink);outline:0}.field input:focus,.field select:focus{border-bottom:2px solid var(--accent)}.expert-credentials{margin-top:20px;padding-top:20px;border-top:1px solid var(--line)}.buttons{display:flex;flex-wrap:wrap;gap:10px}.btn{min-height:38px;padding:8px 14px;border:1px solid transparent;border-radius:4px;background:var(--accent-soft);color:var(--accent);font-weight:500;transition:background .15s ease,box-shadow .15s ease}.btn:hover,.btn:focus-visible{background:#cfeef8;box-shadow:0 1px 3px rgba(0,73,114,.18);outline:0}.btn.primary{background:var(--accent);color:#fff}.btn:disabled{cursor:not-allowed;opacity:.55;box-shadow:none}.metrics{display:grid;gap:0}.metric{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:44px;padding:7px 0;border-bottom:1px dotted var(--line)}.metric:last-child{border-bottom:0}.metric>span:first-child{color:var(--muted);font-size:13px}.metric>b{color:var(--primary);font-weight:500;text-align:right;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.status-pill{display:inline-flex;align-items:center;gap:8px}.dot{width:9px;height:9px;border-radius:50%;background:var(--bad)}.dot.ok{background:var(--ok)}.switch{display:flex;align-items:center;gap:10px;margin-top:18px;color:var(--ink);font-size:13px}.switch input{accent-color:var(--accent)}.expert-only{display:none!important}html[data-view=expert] .expert-only{display:block!important}html[data-view=expert] .expert-grid.expert-only{display:grid!important}.expert-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}.subpanel{min-width:0;padding:18px;background:var(--page);border:1px solid var(--line);border-radius:4px}.subpanel .panel-heading{margin-bottom:14px}.subpanel .panel-title{gap:9px}.subpanel .panel-title h2{font-size:18px}.subpanel .section-icon{width:24px;height:24px;font-size:13px}.help{margin:0 0 16px;color:var(--muted);font-size:13px}.calibration-grid{display:grid;gap:14px}.calibration-grid .buttons input{flex:1 1 120px;min-width:0}.save-panel{display:flex;align-items:center;gap:18px;min-height:76px}.message{color:var(--primary);font-size:13px}.footer{padding:10px 4px;color:var(--muted);font-size:12px}.drawer{position:fixed;z-index:30;top:64px;bottom:0;left:0;width:256px;padding:12px 8px;background:var(--surface);box-shadow:0 8px 10px -5px rgba(0,0,0,.2),0 16px 24px 2px rgba(0,0,0,.14);transform:translateX(-105%);transition:transform .2s ease}.drawer-title{padding:14px 16px 18px;color:var(--primary);font-size:17px}.drawer-item{display:flex;align-items:center;width:100%;min-height:48px;padding:10px 16px;border:0;border-radius:4px;background:transparent;color:var(--primary);text-align:left}.drawer-item:hover,.drawer-item:focus-visible{background:var(--accent-soft);outline:0}.drawer-item.active{background:var(--accent-soft);color:var(--accent)}.drawer-footer{position:absolute;right:16px;bottom:14px;left:16px;padding-top:12px;border-top:1px solid var(--line);color:var(--muted);font-size:12px}.drawer-scrim{position:fixed;z-index:25;inset:64px 0 0;background:rgba(0,0,0,.32);opacity:0;pointer-events:none;transition:opacity .2s ease}.drawer-scrim[hidden]{display:block}.drawer-scrim:not([hidden]){opacity:1;pointer-events:auto}html[data-menu=open] .drawer{transform:translateX(0)}@media(max-width:850px){.logo{width:210px;margin-left:12px}.settings-layout{grid-template-columns:1fr}.settings-side{padding:20px 0 0;border-top:1px solid var(--line);border-left:0}.expert-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:600px){.header{height:60px}.drawer{top:60px}.drawer-scrim{inset:60px 0 0}.page{width:calc(100% - 20px);padding-top:78px}.breadcrumb{margin-bottom:12px}.logo{width:170px;height:28px;margin-left:4px}.actions{margin-right:4px}.actions .icon{width:40px;height:40px}.menu-trigger{width:42px;height:42px}.panel{padding:14px;margin-top:12px}.overview,.form-grid,.expert-grid{grid-template-columns:1fr}.panel-heading{margin-bottom:15px}.panel-title h2{font-size:19px}.big{font-size:26px}.save-panel{align-items:stretch;flex-direction:column;gap:10px}.save-panel .btn{width:100%}}
@@ -28,7 +29,6 @@ html[data-theme=dark]{--page:#0e1b22;--surface:#172a33;--field:#203842;--ink:#ed
   <div class="actions">
     <button id="langBtn" class="icon" type="button" title="Language">EN</button>
     <button id="themeBtn" class="icon" type="button" title="Theme">&#9790;</button>
-    <button id="expertBtn" class="icon" type="button" title="Expert mode" aria-pressed="false">&#9881;</button>
   </div>
 </header>
 
@@ -36,11 +36,11 @@ html[data-theme=dark]{--page:#0e1b22;--surface:#172a33;--field:#203842;--ink:#ed
   <div class="drawer-title">MKP MultiConnect</div>
   <button id="drawerLive" class="drawer-item" type="button" data-page-target="live">Live data</button>
   <button id="drawerLora" class="drawer-item" type="button" data-page-target="settings">Connection settings</button>
+  <button id="drawerModbus" class="drawer-item" type="button" data-page-target="modbus">Modbus devices</button>
   <button id="drawerPayload" class="drawer-item" type="button" data-page-target="payload">LoRa payload</button>
-  <button id="drawerModbus" class="drawer-item" type="button" data-page-target="modbus">Modbus / RS-485</button>
-  <button id="drawerCharts" class="drawer-item" type="button" data-page-target="charts" data-expert>Charts</button>
-  <button id="drawerDiagnostics" class="drawer-item" type="button" data-page-target="diagnostics" data-expert>Expert diagnostics</button>
-  <button id="drawerCalibration" class="drawer-item" type="button" data-page-target="diagnostics" data-expert>Calibration</button>
+  <button id="drawerCharts" class="drawer-item" type="button" data-page-target="charts">Charts</button>
+  <button id="drawerDiagnostics" class="drawer-item" type="button" data-page-target="diagnostics">Diagnostics</button>
+  <button id="drawerCalibration" class="drawer-item" type="button" data-page-target="calibration">Calibration</button>
   <div class="drawer-footer">FW <span id="drawerFirmware">—</span></div>
 </aside>
 <div id="drawerScrim" class="drawer-scrim" hidden></div>
@@ -59,6 +59,17 @@ html[data-theme=dark]{--page:#0e1b22;--surface:#172a33;--field:#203842;--ink:#ed
       <article class="metric-panel"><span class="kicker" id="positionLabel">Position</span><div class="big" id="position">—</div><div class="bar"><span id="positionBar"></span></div><span class="small" id="positionHint">Measured displacement</span></article>
       <article class="metric-panel"><span class="kicker" id="batteryLabel">Battery</span><div class="gauge" id="batteryGauge"><span id="batteryPercent">—</span></div><div class="small" id="batteryVoltage">—</div></article>
     </div>
+    <div class="live-lower">
+      <div>
+        <div class="panel-heading"><div class="panel-title"><span class="section-icon">&#10003;</span><h2 id="connectedSensorsTitle">Connected sensors</h2></div></div>
+        <div id="connectedSensors" class="connected-sensors"></div>
+      </div>
+      <div class="live-interval">
+        <div class="panel-heading"><div class="panel-title"><span class="section-icon">&#8767;</span><h2 id="liveIntervalTitle">Transmission</h2></div></div>
+        <div class="field"><label id="intervalLabel">Send every (minutes)</label><input id="interval" type="number" min="1" max="1440"></div>
+        <button id="saveLiveBtn" class="btn primary" type="button">Save transmission interval</button>
+      </div>
+    </div>
   </section>
 
   <section id="settingsPanel" class="panel page-section" data-page-section="settings">
@@ -66,10 +77,9 @@ html[data-theme=dark]{--page:#0e1b22;--surface:#172a33;--field:#203842;--ink:#ed
       <div>
         <div class="panel-heading"><div class="panel-title"><span class="section-icon">&#8767;</span><h2 id="loraTitle">Connection settings</h2></div></div>
         <div class="form-grid">
-          <div class="field"><label id="intervalLabel">Send every (minutes)</label><input id="interval" type="number" min="1" max="1440"></div>
           <div class="field"><label id="dataRateLabel">Range / speed</label><select id="dr"><option value="auto">Automatic</option><option value="0">Maximum range</option><option value="1">Long range</option><option value="2">Long range / faster</option><option value="3">Balanced</option><option value="4">Fast</option><option value="5">Very fast</option></select></div>
         </div>
-        <div class="expert-only expert-credentials">
+        <div class="connection-credentials">
           <div class="buttons"><button class="btn" id="readChipBtn" type="button">Read DevEUI</button><button class="btn" id="useChipBtn" type="button">Use chip DevEUI</button></div>
           <div class="form-grid" style="margin-top:16px"><div class="field"><label>DevEUI</label><input id="devEui" maxlength="16"></div><div class="field"><label>JoinEUI</label><input id="joinEui" maxlength="16"></div><div class="field"><label>AppKey</label><input id="appKey" maxlength="32"></div></div>
         </div>
@@ -93,8 +103,14 @@ html[data-theme=dark]{--page:#0e1b22;--surface:#172a33;--field:#203842;--ink:#ed
         </div>
         <div class="payload-section-heading"><h3 id="localFieldsTitle">Controller measurements</h3><span id="localFieldsHint">Local</span></div>
         <div id="localLoraFields" class="payload-field-grid"></div>
-        <div class="payload-section-heading"><h3 id="weatherFieldsTitle">SenseCAP measurements</h3><span id="weatherFieldsHint">Modbus</span></div>
-        <div id="modbusLoraFields" class="payload-field-grid"></div>
+        <div id="sensecapPayloadFields">
+          <div class="payload-section-heading"><h3 id="weatherFieldsTitle">SenseCAP measurements</h3><span id="weatherFieldsHint">Modbus</span></div>
+          <div id="modbusLoraFields" class="payload-field-grid"></div>
+        </div>
+        <div id="sisgeoPayloadSection" hidden>
+          <div class="payload-section-heading"><h3 id="sisgeoFieldsTitle">SISGEO measurements</h3><span id="sisgeoFieldsHint">Modbus</span></div>
+          <div id="sisgeoLoraFields"></div>
+        </div>
       </div>
       <aside class="payload-side">
         <div class="panel-heading"><div class="panel-title"><span class="section-icon">&#10003;</span><h2 id="payloadSelectionTitle">Field selection</h2></div></div>
@@ -108,14 +124,21 @@ html[data-theme=dark]{--page:#0e1b22;--surface:#172a33;--field:#203842;--ink:#ed
   </section>
 
   <section id="modbusPanel" class="panel modbus-panel page-section" data-page-section="modbus">
-    <div class="panel-heading"><div class="panel-title"><span class="section-icon">&#8644;</span><h2 id="modbusTitle">Modbus / RS-485</h2></div></div>
+    <div class="panel-heading"><div class="panel-title"><span class="section-icon">&#8644;</span><h2 id="modbusTitle">Modbus devices</h2></div></div>
     <div class="modbus-layout">
       <div class="modbus-form">
-        <div class="switch"><input id="modbusEnabled" type="checkbox"><label id="modbusEnabledLabel">Enable SenseCAP Modbus polling</label></div>
+        <div class="switch"><input id="modbusEnabled" type="checkbox"><label id="modbusEnabledLabel">Enable Modbus polling</label></div>
+        <div class="switch"><input id="modbusAlwaysOn" type="checkbox"><label id="modbusAlwaysOnLabel">Keep Modbus sensor power on between measurements</label></div>
+        <div class="modbus-device-list" id="modbusDevicesList"></div>
+        <div id="addModbusActions" class="modbus-add-actions">
+          <button id="addSenseCapDeviceBtn" class="btn modbus-add" type="button">Add SenseCAP weather station</button>
+          <button id="addSisgeoDeviceBtn" class="btn modbus-add" type="button">Add SISGEO sensor</button>
+          <button id="addCustomDeviceBtn" class="btn modbus-add" type="button">Add custom device</button>
+        </div>
         <div class="form-grid">
-          <div class="field"><label id="modbusModelLabel">SenseCAP model</label><select id="modbusModel"><option value="s200">S200</option><option value="s500">S500</option><option value="s600-a">S600-A</option><option value="s700-a">S700-A</option><option value="s700-bc">S700-B/C</option><option value="s800">S800</option><option value="s1000">S1000</option><option value="s1000-c">S1000-C</option></select></div>
-          <div class="field"><label id="modbusAddressLabel">Slave address</label><input id="modbusAddress" type="number" min="1" max="247" step="1"></div>
-          <div class="field"><label id="modbusBaudLabel">RS-485 baud rate</label><select id="modbusBaud"><option value="1200">1200</option><option value="2400">2400</option><option value="4800">4800</option><option value="9600">9600</option><option value="19200">19200</option><option value="38400">38400</option><option value="57600">57600</option><option value="115200">115200</option></select></div>
+          <div class="field legacy-modbus-field"><label id="modbusModelLabel">SenseCAP model</label><select id="modbusModel"><option value="s200">S200</option><option value="s500">S500</option><option value="s600-a">S600-A</option><option value="s700-a">S700-A</option><option value="s700-bc">S700-B/C</option><option value="s800">S800</option><option value="s1000">S1000</option><option value="s1000-c">S1000-C</option></select></div>
+          <div class="field legacy-modbus-field"><label id="modbusAddressLabel">Slave address</label><input id="modbusAddress" type="number" min="1" max="247" step="1"></div>
+          <div class="field legacy-modbus-field"><label id="modbusBaudLabel">RS-485 baud rate</label><select id="modbusBaud"><option value="1200">1200</option><option value="2400">2400</option><option value="4800">4800</option><option value="9600">9600</option><option value="19200">19200</option><option value="38400">38400</option><option value="57600">57600</option><option value="115200">115200</option></select></div>
           <div class="field"><label id="modbusPollLabel">Poll interval (seconds)</label><input id="modbusPoll" type="number" min="2" max="3600" step="1"></div>
         </div>
         <h3 id="modbusTransportTitle" class="modbus-subtitle">Transport</h3>
@@ -142,6 +165,7 @@ html[data-theme=dark]{--page:#0e1b22;--surface:#172a33;--field:#203842;--ink:#ed
         <button id="saveModbusBtn" class="btn primary payload-download" type="button">Save Modbus settings</button>
       </div>
     </div>
+    <div id="sensecapMeasurements">
     <h3 id="modbusMeasurementsTitle" class="modbus-subtitle">SenseCAP measurements</h3>
     <div class="modbus-data-grid">
       <div class="modbus-data-item"><span id="modbusAirTemperatureLabel">Air temperature</span><b id="modbusAirTemperature">—</b></div>
@@ -167,17 +191,21 @@ html[data-theme=dark]{--page:#0e1b22;--surface:#172a33;--field:#203842;--ink:#ed
       <div class="modbus-data-item"><span id="modbusSolarLabel">Global solar radiation</span><b id="modbusSolar">—</b></div>
       <div class="modbus-data-item"><span id="modbusSunshineLabel">Sunshine duration</span><b id="modbusSunshine">—</b></div>
     </div>
+    </div>
   </section>
 
-  <section id="expertPanel" class="panel expert-only expert-grid page-section" data-page-section="diagnostics">
+  <section id="diagnosticsPanel" class="panel diagnostics-grid page-section" data-page-section="diagnostics">
     <article class="subpanel">
-      <div class="panel-heading"><div class="panel-title"><span class="section-icon">i</span><h2 id="diagnosticsTitle">Expert diagnostics</h2></div></div>
+      <div class="panel-heading"><div class="panel-title"><span class="section-icon">i</span><h2 id="diagnosticsTitle">Diagnostics</h2></div></div>
       <div class="metrics"><div class="metric"><span>ADS1220 RAW</span><b id="raw">—</b></div><div class="metric"><span>Wegsensor voltage</span><b id="wegVoltage">—</b></div><div class="metric"><span>INA226</span><b class="status-pill"><i id="inaDot" class="dot"></i><span id="inaStatus">—</span></b></div><div class="metric"><span>INA bus</span><b id="inaBus">—</b></div><div class="metric"><span>INA current</span><b id="inaCurrent">—</b></div><div class="metric"><span>INA power</span><b id="inaPower">—</b></div><div class="metric"><span>IP</span><b id="ip">—</b></div><div class="metric"><span>Firmware</span><b id="firmware">—</b></div><div class="metric"><span>Free heap</span><b id="heap">—</b></div></div>
       <div class="field battery-type-field"><label id="batteryTypeLabel">Battery type</label><select id="batteryType"><option id="batteryTypeLipo" value="lipo-18650">LiPo / 18650 (4.2 V)</option><option id="batteryTypeSaft" value="saft-36v">Saft 3.6 V Li-SOCl2</option></select></div>
       <div class="switch"><input id="lowPower" type="checkbox"><label id="lowPowerLabel">Maximum low-power field mode</label></div>
       <div class="switch"><input id="autoRedirect" type="checkbox"><label id="autoRedirectLabel">Automatic captive portal redirect</label></div>
       <button class="btn" id="rebootBtn" type="button" style="width:100%;margin-top:16px">Reboot controller</button>
     </article>
+  </section>
+
+  <section id="calibrationPanel" class="panel calibration-panel page-section" data-page-section="calibration">
     <article class="subpanel">
       <div class="panel-heading"><div class="panel-title"><span class="section-icon">&#8767;</span><h2 id="calibrationTitle">Wegsensor calibration</h2></div></div>
       <p class="help" id="calibrationHelp">Set two known mechanical positions. The raw value may increase or decrease with movement.</p>
@@ -190,7 +218,7 @@ html[data-theme=dark]{--page:#0e1b22;--surface:#172a33;--field:#203842;--ink:#ed
     </article>
   </section>
 
-  <section id="chartsPanel" class="panel expert-only charts-panel page-section" data-page-section="charts">
+  <section id="chartsPanel" class="panel charts-panel page-section" data-page-section="charts">
     <div class="panel-heading"><div class="panel-title"><span class="section-icon">&#8767;</span><h2 id="chartsTitle">Trends</h2></div></div>
     <div class="chart-grid">
       <div class="chart-slot"><div class="chart-heading"><h3 id="temperatureChartTitle">Temperature history</h3><span id="temperatureChartValue" class="chart-value">—</span></div><canvas id="temperatureChart" class="chart-canvas" role="img" aria-label="Temperature history">Waiting for data</canvas></div>
@@ -222,10 +250,7 @@ async function setSensorPower(){try{await req('/api/sensor-power',{method:'POST'
 async function save(){const d=$('dr').value,p={minutes:Number($('interval').value),adr:d==='auto',dr:d==='auto'?3:Number(d),low_power:$('lowPower').checked,devEui_msb:$('devEui').value,appEui_msb:$('joinEui').value,appKey_msb:$('appKey').value,weg_cal:{raw0:Number($('raw0').value),mm0:Number($('mm0').value),raw1:Number($('raw1').value),mm1:Number($('mm1').value)}};try{await req('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});set('message',tr('saved'));document.querySelectorAll('input,select').forEach(e=>delete e.dataset.dirty);await load()}catch(e){set('message',e.message)}}
 async function save(){const d=$('dr').value,p={minutes:Number($('interval').value),adr:d==='auto',dr:d==='auto'?3:Number(d),low_power:$('lowPower').checked,battery_type:$('batteryType').value,devEui_msb:$('devEui').value,appEui_msb:$('joinEui').value,appKey_msb:$('appKey').value,weg_cal:{raw0:Number($('raw0').value),mm0:Number($('mm0').value),raw1:Number($('raw1').value),mm1:Number($('mm1').value)}};try{await req('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});set('message',tr('saved'));document.querySelectorAll('input,select').forEach(e=>delete e.dataset.dirty);await load()}catch(e){set('message',e.message)}}
 function setMenu(open){document.documentElement.dataset.menu=open?'open':'closed';$('drawer').setAttribute('aria-hidden',String(!open));$('drawerScrim').hidden=!open}
-async function init(){try{dict=await req('/i18n.json')}catch(_){dict={en:{}}}applyLang();const theme=localStorage.getItem('mc-theme')||'light';document.documentElement.dataset.theme=theme;$('themeBtn').textContent=theme==='dark'?'☀':'☾';const expert=localStorage.getItem('mc-view')==='expert';document.documentElement.dataset.view=expert?'expert':'user';$('expertBtn').classList.toggle('active',expert);$('expertBtn').setAttribute('aria-pressed',String(expert));$('menuBtn').onclick=()=>setMenu(document.documentElement.dataset.menu!=='open');$('drawerScrim').onclick=()=>setMenu(false);document.querySelectorAll('[data-scroll]').forEach(e=>e.onclick=()=>{const target=$(e.dataset.scroll);if(target)target.scrollIntoView({behavior:'smooth',block:'start'});setMenu(false)});$('expertBtn').onclick=()=>{const e=document.documentElement.dataset.view!=='expert';document.documentElement.dataset.view=e?'expert':'user';localStorage.setItem('mc-view',e?'expert':'user');$('expertBtn').classList.toggle('active',e);$('expertBtn').setAttribute('aria-pressed',String(e));drawCharts()};$('themeBtn').onclick=()=>{const t=document.documentElement.dataset.theme==='dark'?'light':'dark';document.documentElement.dataset.theme=t;localStorage.setItem('mc-theme',t);$('themeBtn').textContent=t==='dark'?'☀':'☾';drawCharts()};$('langBtn').onclick=()=>{lang=LANGS[(LANGS.indexOf(lang)+1)%LANGS.length];localStorage.setItem('mc-lang',lang);applyLang();render()};document.querySelectorAll('input,select').forEach(e=>{e.oninput=()=>e.dataset.dirty='1';e.onchange=()=>e.dataset.dirty='1'});$('saveBtn').onclick=save;$('sensorPowerBtn').onclick=setSensorPower;$('capture0Btn').onclick=()=>{$('raw0').value=state.weg_raw??0;$('raw0').dataset.dirty='1'};$('capture1Btn').onclick=()=>{$('raw1').value=state.weg_raw??0;$('raw1').dataset.dirty='1'};$('readChipBtn').onclick=async()=>{const d=await req('/api/deveui');$('devEui').value=d.chip_devEui_msb;$('devEui').dataset.dirty='1'};$('useChipBtn').onclick=async()=>{await req('/api/deveui/use-chip',{method:'POST'});await load()};$('rebootBtn').onclick=async()=>{await req('/api/reboot',{method:'POST'});set('message',tr('restarting'))};window.addEventListener('resize',drawCharts);document.addEventListener('keydown',e=>{if(e.key==='Escape')setMenu(false)});await load();setInterval(load,1500)}init();
-</script>
-<script>
-document.addEventListener('click',event=>{const item=event.target.closest('[data-expert]');if(!item)return;document.documentElement.dataset.view='expert';localStorage.setItem('mc-view','expert');$('expertBtn').classList.add('active');$('expertBtn').setAttribute('aria-pressed','true');drawCharts()},true);
+async function init(){try{dict=await req('/i18n.json')}catch(_){dict={en:{}}}applyLang();const theme=localStorage.getItem('mc-theme')||'light';document.documentElement.dataset.theme=theme;$('themeBtn').textContent=theme==='dark'?'☀':'☾';$('menuBtn').onclick=()=>setMenu(document.documentElement.dataset.menu!=='open');$('drawerScrim').onclick=()=>setMenu(false);document.querySelectorAll('[data-scroll]').forEach(e=>e.onclick=()=>{const target=$(e.dataset.scroll);if(target)target.scrollIntoView({behavior:'smooth',block:'start'});setMenu(false)});$('themeBtn').onclick=()=>{const t=document.documentElement.dataset.theme==='dark'?'light':'dark';document.documentElement.dataset.theme=t;localStorage.setItem('mc-theme',t);$('themeBtn').textContent=t==='dark'?'☀':'☾';drawCharts()};$('langBtn').onclick=()=>{lang=LANGS[(LANGS.indexOf(lang)+1)%LANGS.length];localStorage.setItem('mc-lang',lang);applyLang();render()};document.querySelectorAll('input,select').forEach(e=>{e.oninput=()=>e.dataset.dirty='1';e.onchange=()=>e.dataset.dirty='1'});$('saveBtn').onclick=save;$('sensorPowerBtn').onclick=setSensorPower;$('capture0Btn').onclick=()=>{$('raw0').value=state.weg_raw??0;$('raw0').dataset.dirty='1'};$('capture1Btn').onclick=()=>{$('raw1').value=state.weg_raw??0;$('raw1').dataset.dirty='1'};$('readChipBtn').onclick=async()=>{const d=await req('/api/deveui');$('devEui').value=d.chip_devEui_msb;$('devEui').dataset.dirty='1'};$('useChipBtn').onclick=async()=>{await req('/api/deveui/use-chip',{method:'POST'});await load()};$('rebootBtn').onclick=async()=>{await req('/api/reboot',{method:'POST'});set('message',tr('restarting'))};window.addEventListener('resize',drawCharts);document.addEventListener('keydown',e=>{if(e.key==='Escape')setMenu(false)});await load();setInterval(load,1500)}init();
 </script>
 <script>
 function syncDocumentLanguage(){document.documentElement.lang=lang;document.documentElement.setAttribute('translate','no')};syncDocumentLanguage();document.addEventListener('click',event=>{if(event.target.closest('#langBtn'))setTimeout(syncDocumentLanguage,0)},true);
@@ -259,7 +284,7 @@ function syncDocumentLanguage(){document.documentElement.lang=lang;document.docu
 </script>
 <script>
 (function(){
-  const PAGE_LABELS={live:'live_data',settings:'lora_simple',payload:'lora_payload',modbus:'modbus',charts:'charts',diagnostics:'diagnostics'};
+  const PAGE_LABELS={live:'live_data',settings:'lora_simple',payload:'lora_payload',modbus:'modbus',charts:'charts',diagnostics:'diagnostics',calibration:'calibration'};
   const LORA_FIELD_MASK_ALL=0x7FFFFFFF;
   const payloadFieldCatalog=[
     {id:'temperature_c',label:'temperature',unit:'C',source:'local',bytes:2},
@@ -294,11 +319,32 @@ function syncDocumentLanguage(){document.documentElement.lang=lang;document.docu
     {id:'solar_radiation_wm2',label:'modbus_solar',unit:'W/m2',source:'modbus',bytes:4},
     {id:'sunshine_duration_h',label:'modbus_sunshine',unit:'h',source:'modbus',bytes:4}
   ];
+  const sisgeoFieldCatalog=[
+    {id:'value1',label:'sisgeo_value1',unit:'',bytes:4},
+    {id:'value2',label:'sisgeo_value2',unit:'',bytes:4},
+    {id:'temperature_c',label:'sisgeo_temperature',unit:'C',bytes:4},
+    {id:'humidity_pct',label:'sisgeo_humidity',unit:'%RH',bytes:4},
+    {id:'supply_voltage_v',label:'sisgeo_supply_voltage',unit:'V',bytes:4}
+  ];
+  const SISGEO_LORA_FIELD_MASK_ALL=0x1F;
   const recommendedIds=['temperature_c','position_mm','battery_v','battery_percent','air_temperature_c','humidity_pct','pressure_pa','average_wind_direction_deg','average_wind_speed_ms','rain_intensity_mm_h','solar_radiation_wm2'];
   function bitFor(index){return Math.pow(2,index)}
   function maskForIds(ids){return payloadFieldCatalog.reduce((mask,field,index)=>ids.includes(field.id)?mask+bitFor(index):mask,0)}
-  function payloadMaskFromControls(){const controls=[...document.querySelectorAll('[data-lora-field]')];if(!controls.length)return Number((state.cfg||{}).lora?.field_mask??LORA_FIELD_MASK_ALL)>>>0;return controls.reduce((mask,control)=>control.checked?mask+bitFor(Number(control.dataset.loraField)):mask,0)}
-  function payloadSize(mask){return 6+payloadFieldCatalog.reduce((size,field,index)=>(mask&bitFor(index))!==0?size+field.bytes:size,0)}
+  function payloadDevices(){
+    if(typeof window.getModbusDeviceDrafts==='function')return window.getModbusDeviceDrafts();
+    const config=(state.cfg||{}).modbus||{};const masks=(state.cfg||{}).lora?.sisgeo_field_masks||[];
+    return (Array.isArray(config.devices)?config.devices:[]).map((device,index)=>Object.assign({},device,{lora_field_mask:Number(masks[index]??device.lora_field_mask??0)}));
+  }
+  function payloadHasSenseCap(){return payloadDevices().some(device=>device.enabled!==false&&device.vendor==='sensecap')}
+  function payloadMaskFromControls(){const controls=[...document.querySelectorAll('[data-lora-field]')];let mask=controls.length?controls.reduce((value,control)=>control.checked?value+bitFor(Number(control.dataset.loraField)):value,0):Number((state.cfg||{}).lora?.field_mask??LORA_FIELD_MASK_ALL)>>>0;return payloadHasSenseCap()?mask:mask&0x1FF}
+  function sisgeoMasksFromControls(){
+    const devices=payloadDevices();const controls=[...document.querySelectorAll('[data-sisgeo-device-field]')];const masks=devices.map(device=>Number(device.lora_field_mask??0)&SISGEO_LORA_FIELD_MASK_ALL);
+    if(!controls.length)return masks;
+    devices.forEach((device,index)=>{if(device.vendor==='sisgeo')masks[index]=0});
+    controls.forEach(control=>{if(control.checked){const index=Number(control.dataset.sisgeoDevice);masks[index]=(masks[index]||0)|bitFor(Number(control.dataset.sisgeoField))}});return masks;
+  }
+  function sisgeoDeviceMask(masks){return payloadDevices().reduce((mask,device,index)=>device.enabled!==false&&device.vendor==='sisgeo'&&(masks[index]||0)!==0?mask+bitFor(index):mask,0)}
+  function payloadSize(mask){const masks=sisgeoMasksFromControls();const deviceMask=sisgeoDeviceMask(masks);let size=6+payloadFieldCatalog.reduce((total,field,index)=>(mask&bitFor(index))!==0?total+field.bytes:total,0);if(deviceMask===0)return size;size+=2;payloadDevices().forEach((device,index)=>{if((deviceMask&bitFor(index))===0)return;size+=1;sisgeoFieldCatalog.forEach((field,fieldIndex)=>{if((masks[index]&bitFor(fieldIndex))!==0)size+=field.bytes})});return size}
   function payloadFieldsFromState(){
     const apiFields=Array.isArray(state.lora_fields)?state.lora_fields:[];
     return payloadFieldCatalog.map((field,index)=>Object.assign({},field,apiFields[index]||{}));
@@ -317,35 +363,47 @@ function syncDocumentLanguage(){document.documentElement.lang=lang;document.docu
       (field.source==='modbus'?modbus:local).append(row);
     });
   }
+  function buildSisgeoPayloadFields(){
+    const section=$('sisgeoPayloadSection');const target=$('sisgeoLoraFields');if(!section||!target)return;
+    const devices=payloadDevices().map((device,index)=>Object.assign({},device,{index})).filter(device=>device.enabled!==false&&device.vendor==='sisgeo');
+    section.hidden=devices.length===0;target.innerHTML='';if(!devices.length)return;
+    const apiFields=Array.isArray(state.lora_sisgeo_fields)?state.lora_sisgeo_fields:[];
+    devices.forEach(device=>{
+      const heading=document.createElement('div');heading.className='payload-section-heading';const title=document.createElement('h3');title.textContent=`${tr('modbus_device')} ${device.index+1} · ${device.model_label||device.model||'SISGEO'}`;const hint=document.createElement('span');hint.textContent=`${tr('modbus_address')} ${device.address??'—'}`;heading.append(title,hint);target.append(heading);
+      const grid=document.createElement('div');grid.className='payload-field-grid';const mask=Number(device.lora_field_mask??0)&SISGEO_LORA_FIELD_MASK_ALL;
+      sisgeoFieldCatalog.forEach((fallback,fieldIndex)=>{
+        const field=Object.assign({},fallback,apiFields[fieldIndex]||{});const row=document.createElement('div');row.className='payload-field';const checkbox=document.createElement('input');checkbox.type='checkbox';checkbox.id=`sisgeoLoraField_${device.index}_${field.id}`;checkbox.dataset.sisgeoDevice=String(device.index);checkbox.dataset.sisgeoField=String(fieldIndex);checkbox.dataset.sisgeoDeviceField='1';checkbox.checked=(mask&bitFor(fieldIndex))!==0;const label=document.createElement('label');label.htmlFor=checkbox.id;const name=document.createElement('span');name.className='payload-field-name';name.textContent=tr(field.label||fallback.label);const meta=document.createElement('span');meta.className='payload-field-meta';meta.textContent=[field.unit,field.bytes+' B'].filter(Boolean).join(' · ');label.append(name,meta);row.append(checkbox,label);checkbox.addEventListener('change',()=>{const current=payloadDevices()[device.index];if(current){const controls=[...document.querySelectorAll(`[data-sisgeo-device="${device.index}"]`)];current.lora_field_mask=controls.reduce((value,control)=>control.checked?value+bitFor(Number(control.dataset.sisgeoField)):value,0)}updatePayloadSummary()});grid.append(row);
+      });
+      target.append(grid);
+    });
+  }
   function updatePayloadSummary(){
-    const mask=payloadMaskFromControls();const bytes=payloadSize(mask);const selected=payloadFieldCatalog.filter((field,index)=>(mask&bitFor(index))!==0);
-    set('payloadBytes',bytes+' B');set('payloadSelected',selected.length);set('payloadPreviewStatus',bytes===6?tr('payload_no_fields'):bytes<=51?tr('payload_fit_dr0'):bytes<=115?tr('payload_fit_dr3'):bytes<=242?tr('payload_fit_dr4'):tr('payload_too_large'));
-    const maskHex=(mask>>>0).toString(16).toUpperCase().padStart(8,'0');set('payloadPreview','V5  |  mask 0x'+maskHex+'  |  '+bytes+' bytes\n'+(selected.length?selected.map(field=>field.id).join(', '):tr('payload_no_fields')));
+    const mask=payloadMaskFromControls();const masks=sisgeoMasksFromControls();const devices=payloadDevices();const deviceMask=sisgeoDeviceMask(masks);const bytes=payloadSize(mask);const selected=payloadFieldCatalog.filter((field,index)=>(mask&bitFor(index))!==0);const sisgeoSelected=masks.reduce((total,value,index)=>devices[index]?.enabled!==false&&devices[index]?.vendor==='sisgeo'?total+value.toString(2).split('1').length-1:total,0);const version=deviceMask===0?'V5':'V6';
+    set('payloadVersion',version);set('payloadBytes',bytes+' B');set('payloadSelected',selected.length+sisgeoSelected);set('payloadPreviewStatus',bytes===6||bytes===8?tr('payload_no_fields'):bytes<=51?tr('payload_fit_dr0'):bytes<=115?tr('payload_fit_dr3'):bytes<=242?tr('payload_fit_dr4'):tr('payload_too_large'));
+    const maskHex=(mask>>>0).toString(16).toUpperCase().padStart(8,'0');const sisgeoHex=(deviceMask>>>0).toString(16).toUpperCase().padStart(4,'0');set('payloadPreview',version+'  |  mask 0x'+maskHex+(deviceMask?'  |  SISGEO 0x'+sisgeoHex:'')+'  |  '+bytes+' bytes\n'+(selected.length?selected.map(field=>field.id).join(', '):'')+(sisgeoSelected?`\n${sisgeoSelected} SISGEO field(s)`:selected.length?'':tr('payload_no_fields')));
   }
   function renderPayload(){
     const config=(state.cfg||{}).lora||{};const controls=[...document.querySelectorAll('[data-lora-field]')];const dirty=controls.some(control=>control.dataset.dirty);
     const mask=Number(config.field_mask??LORA_FIELD_MASK_ALL)>>>0;
     if(!controls.length||!dirty)buildPayloadFields(mask&LORA_FIELD_MASK_ALL);
-    set('payloadVersion','V5');set('payloadBudget',tr('payload_eu868'));updatePayloadSummary();
+    buildSisgeoPayloadFields();set('payloadBudget',tr('payload_eu868'));updatePayloadSummary();
   }
-  function setPayloadMask(mask){document.querySelectorAll('[data-lora-field]').forEach(control=>{control.checked=(mask&bitFor(Number(control.dataset.loraField)))!==0;control.dataset.dirty='1'});updatePayloadSummary()}
+  function setPayloadMask(mask,sisgeoMask){document.querySelectorAll('[data-lora-field]').forEach(control=>{control.checked=(mask&bitFor(Number(control.dataset.loraField)))!==0;control.dataset.dirty='1'});document.querySelectorAll('[data-sisgeo-device-field]').forEach(control=>{control.checked=(sisgeoMask&bitFor(Number(control.dataset.sisgeoField)))!==0;control.dataset.dirty='1'});payloadDevices().forEach(device=>{if(device.vendor==='sisgeo')device.lora_field_mask=sisgeoMask&SISGEO_LORA_FIELD_MASK_ALL});updatePayloadSummary()}
   function setPage(page){
     if(!PAGE_LABELS[page])page='live';
-    if((page==='charts'||page==='diagnostics')&&document.documentElement.dataset.view!=='expert'){
-      document.documentElement.dataset.view='expert';localStorage.setItem('mc-view','expert');$('expertBtn').classList.add('active');$('expertBtn').setAttribute('aria-pressed','true');
-    }
     document.querySelectorAll('[data-page-section]').forEach(section=>section.classList.toggle('page-active',section.dataset.pageSection===page));
     document.querySelectorAll('[data-page-target]').forEach(item=>item.classList.toggle('active',item.dataset.pageTarget===page));
     document.documentElement.dataset.page=page;localStorage.setItem('mc-page',page);set('pageLabel',tr(PAGE_LABELS[page]));setMenu(false);window.scrollTo(0,0);
     if(page==='payload')renderPayload();if(page==='charts')drawCharts();
   }
   const baseRender=render;render=function(){baseRender();renderPayload()};
-  const baseApplyLang=applyLang;applyLang=function(){baseApplyLang();set('localFieldsTitle',tr('payload_local'));set('localFieldsHint',tr('payload_local_hint'));set('weatherFieldsTitle',tr('payload_modbus'));set('weatherFieldsHint',tr('payload_modbus_hint'));set('decoderLinkText',tr('payload_decoder'));set('payloadSelectionTitle',tr('payload_selection'));set('payloadPreviewLabel',tr('payload_preview'));set('payloadTitle',tr('lora_payload'));setPage(document.documentElement.dataset.page||localStorage.getItem('mc-page')||'live');renderPayload()};
+  const baseApplyLang=applyLang;applyLang=function(){baseApplyLang();set('localFieldsTitle',tr('payload_local'));set('localFieldsHint',tr('payload_local_hint'));set('weatherFieldsTitle',tr('payload_modbus'));set('weatherFieldsHint',tr('payload_modbus_hint'));set('sisgeoFieldsTitle',tr('sisgeo_measurements'));set('sisgeoFieldsHint',tr('payload_modbus_hint'));set('decoderLinkText',tr('payload_decoder'));set('payloadSelectionTitle',tr('payload_selection'));set('payloadPreviewLabel',tr('payload_preview'));set('payloadTitle',tr('lora_payload'));setPage(document.documentElement.dataset.page||localStorage.getItem('mc-page')||'live');renderPayload()};
   const baseRequest=req;req=async function(url,options){if(url==='/api/config'&&options?.body){try{const payload=JSON.parse(options.body);payload.lora={field_mask:payloadMaskFromControls()};options={...options,body:JSON.stringify(payload)}}catch(_){}}return baseRequest(url,options)};
   document.querySelectorAll('[data-page-target]').forEach(item=>item.addEventListener('click',()=>setPage(item.dataset.pageTarget)));
   $('savePayloadBtn').onclick=save;
   $('saveModbusBtn').onclick=save;
-  $('selectAllLoraBtn').onclick=()=>setPayloadMask(LORA_FIELD_MASK_ALL);$('selectRecommendedLoraBtn').onclick=()=>setPayloadMask(maskForIds(recommendedIds));$('clearLoraBtn').onclick=()=>setPayloadMask(0);
+  $('selectAllLoraBtn').onclick=()=>setPayloadMask(LORA_FIELD_MASK_ALL,SISGEO_LORA_FIELD_MASK_ALL);$('selectRecommendedLoraBtn').onclick=()=>setPayloadMask(maskForIds(recommendedIds),bitFor(0)+bitFor(2));$('clearLoraBtn').onclick=()=>setPayloadMask(0,0);
+  window.refreshPayloadFields=renderPayload;
   applyLang();renderPayload();setPage(document.documentElement.dataset.page||localStorage.getItem('mc-page')||'live');
 })();
 </script>
@@ -354,6 +412,125 @@ function syncDocumentLanguage(){document.documentElement.lang=lang;document.docu
   const labels={drawerPayload:'lora_payload',drawerModbus:'modbus',payloadVersionLabel:'payload_format',payloadBytesLabel:'payload_bytes',payloadSelectedLabel:'payload_selected',payloadBudgetLabel:'payload_budget',savePayloadBtn:'payload_save',saveModbusBtn:'modbus_save'};
   function applyPayloadLabels(){Object.entries(labels).forEach(([id,key])=>set(id,tr(key)))}
   const baseApplyLang=applyLang;applyLang=function(){baseApplyLang();applyPayloadLabels()};applyPayloadLabels();
+})();
+</script>
+<script>
+(function(){
+  let deviceCatalog={
+    sensecap:[
+      {id:'s200',label:'S200',address:44,warmup_seconds:10},
+      {id:'s500',label:'S500',address:10,warmup_seconds:10},
+      {id:'s600-a',label:'S600-A',address:69,warmup_seconds:10},
+      {id:'s700-a',label:'S700-A',address:20,warmup_seconds:10},
+      {id:'s700-bc',label:'S700-B/C',address:60,warmup_seconds:10},
+      {id:'s800',label:'S800',address:46,warmup_seconds:10},
+      {id:'s1000',label:'S1000',address:43,warmup_seconds:10},
+      {id:'s1000-c',label:'S1000-C',address:61,warmup_seconds:10}
+    ],
+    sisgeo:[{id:'h-level',label:'H-LEVEL digital',address:1,warmup_seconds:3,value_register:514,function_code:4,register_count:2,value_format:0}],
+    custom:[{id:'float32',label:'Generic 32-bit float',address:1,warmup_seconds:3,value_register:0,function_code:4,register_count:2,value_format:0}]
+  };
+  let vendors=[{id:'sensecap',label:'SenseCAP'},{id:'sisgeo',label:'SISGEO'},{id:'custom',label:'Custom'}];
+  const MAX_MODBUS_DEVICES=12;const MAX_SENSECAP_DEVICES=1;const MAX_SISGEO_DEVICES=12;
+  const SISGEO_LORA_MASK_LIMIT=0x1F;
+  let deviceDrafts=null;let deviceDraftsDirty=false;let deviceSourceSignature='';
+  const defaultDevice=(vendor='sensecap')=>{const preset=(deviceCatalog[vendor]||[])[0]||{};return {enabled:true,vendor,model:preset.id||'s700-bc',address:preset.address??(vendor==='sensecap'?60:1),baud:9600,warmup_seconds:preset.warmup_seconds??(vendor==='sensecap'?10:3),value_register:preset.value_register??0,function_code:preset.function_code??4,register_count:preset.register_count??2,value_format:preset.value_format??0}};
+  function syncDeviceCatalog(){
+    const presets=Array.isArray(state.modbus_presets)?state.modbus_presets:[];if(!presets.length)return;
+    const next={};const nextVendors=[];presets.forEach(preset=>{if(!next[preset.vendor]){next[preset.vendor]=[];nextVendors.push({id:preset.vendor,label:preset.vendor_label})}next[preset.vendor].push({id:preset.model,label:preset.model_label,address:preset.address,warmup_seconds:preset.warmup_seconds,value_register:preset.value_register,function_code:preset.function_code,register_count:preset.register_count,value_format:preset.value_format})});if(Object.keys(next).length){deviceCatalog=next;vendors=nextVendors}
+  }
+  function configuredDevices(){
+    syncDeviceCatalog();
+    const config=(state.cfg||{}).modbus||{};
+    const masks=(state.cfg||{}).lora?.sisgeo_field_masks||[];
+    if(Array.isArray(config.devices)&&config.devices.length)return config.devices.map((device,index)=>Object.assign(defaultDevice(),device,{lora_field_mask:Number(masks[index]??device.lora_field_mask??0)}));
+    return [Object.assign(defaultDevice(),{enabled:config.enabled!==false,vendor:config.vendor||'sensecap',model:config.model||'s700-bc',address:config.address??60,baud:config.baud??9600,warmup_seconds:config.warmup_seconds??10})];
+  }
+  function sourceDevices(){return JSON.stringify(configuredDevices())}
+  function drafts(){
+    if(!state.cfg||!state.cfg.modbus){if(!deviceDrafts)deviceDrafts=[defaultDevice()];return deviceDrafts}
+    const signature=sourceDevices();
+    if(!deviceDrafts||(!deviceDraftsDirty&&signature!==deviceSourceSignature)){
+      deviceDrafts=configuredDevices();deviceSourceSignature=signature;deviceDraftsDirty=false;
+    }
+    return deviceDrafts;
+  }
+  function markDeviceDraftsDirty(){deviceDraftsDirty=true}
+  function countDevices(vendor){return drafts().filter(device=>device.vendor===vendor).length}
+  function hasSenseCapDevice(){return drafts().some(device=>device.vendor==='sensecap'&&device.enabled!==false)}
+  function hasSisgeoDevice(){return drafts().some(device=>device.enabled!==false&&device.vendor==='sisgeo')}
+  function updateSensorSpecificVisibility(){const sensecapVisible=hasSenseCapDevice();const sisgeoVisible=hasSisgeoDevice();['sensecapMeasurements','sensecapPayloadFields'].forEach(id=>{const element=$(id);if(element)element.hidden=!sensecapVisible});const sisgeoSection=$('sisgeoPayloadSection');if(sisgeoSection&&!sisgeoVisible)sisgeoSection.hidden=true;if(typeof window.refreshPayloadFields==='function')window.refreshPayloadFields()}
+  function nextFreeAddress(devices,preferred){const used=new Set(devices.filter(device=>device.enabled!==false).map(device=>Number(device.address)));for(let offset=0;offset<247;offset++){const candidate=((Number(preferred||1)-1+offset)%247)+1;if(!used.has(candidate))return candidate}return Number(preferred||1)}
+  function optionList(select,items,value){select.innerHTML='';items.forEach(item=>{const option=document.createElement('option');option.value=item.id;option.textContent=item.label;select.append(option)});select.value=value}
+  function makeField(labelText,control){const wrapper=document.createElement('div');wrapper.className='field';const label=document.createElement('label');label.textContent=labelText;wrapper.append(label,control);return wrapper}
+  function makeNumber(value,min,max,step){const control=document.createElement('input');control.type='number';control.value=value??'';if(min!==undefined)control.min=min;if(max!==undefined)control.max=max;if(step!==undefined)control.step=step;return control}
+  function bindValue(control,device,key,number){
+    const update=()=>{device[key]=number?Number(control.value):control.value;markDeviceDraftsDirty()};
+    control.addEventListener('input',update);control.addEventListener('change',update);
+  }
+  function presetFor(vendor,model){return (deviceCatalog[vendor]||[]).find(item=>item.id===model)||deviceCatalog[vendor]?.[0]||{} }
+  function renderDeviceEditor(force){
+    const list=$('modbusDevicesList');if(!list)return;
+    const devices=drafts();updateSensorSpecificVisibility();if(!devices.length)return;if(!force&&deviceDraftsDirty&&list.children.length)return;
+    const config=(state.cfg||{}).modbus||{};const alwaysOn=$('modbusAlwaysOn');const enabled=$('modbusEnabled');
+    if(alwaysOn&&!alwaysOn.dataset.dirty)alwaysOn.checked=config.always_on===true;
+    if(enabled&&!enabled.dataset.dirty)enabled.checked=config.enabled!==false;
+    const first=devices[0];
+    if($('modbusModel'))$('modbusModel').value=first.model;
+    if($('modbusAddress'))$('modbusAddress').value=first.address;
+    if($('modbusBaud'))$('modbusBaud').value=first.baud;
+    list.innerHTML='';
+    devices.forEach((device,index)=>{
+      const runtime=(state.modbus?.devices||[])[index]||{};const card=document.createElement('article');card.className='modbus-device-card';
+      const heading=document.createElement('div');heading.className='modbus-device-heading';const title=document.createElement('strong');title.textContent=`${tr('modbus_device')} ${index+1}`;const actions=document.createElement('div');actions.className='modbus-device-actions';
+      const toggle=document.createElement('input');toggle.type='checkbox';toggle.checked=device.enabled!==false;toggle.setAttribute('aria-label',tr('modbus_enabled'));toggle.addEventListener('change',()=>{device.enabled=toggle.checked;markDeviceDraftsDirty();renderDeviceEditor(true)});
+      const remove=document.createElement('button');remove.type='button';remove.className='icon';remove.textContent='x';remove.title=tr('remove_device');remove.disabled=devices.length<=1;remove.addEventListener('click',()=>{devices.splice(index,1);markDeviceDraftsDirty();renderDeviceEditor(true)});actions.append(toggle,remove);heading.append(title,actions);card.append(heading);
+      const grid=document.createElement('div');grid.className='modbus-device-grid';
+      const vendor=document.createElement('select');optionList(vendor,vendors,device.vendor);const senseCapLimitReached=countDevices('sensecap')>=MAX_SENSECAP_DEVICES&&device.vendor!=='sensecap';[...vendor.options].forEach(option=>{if(option.value==='sensecap')option.disabled=senseCapLimitReached});vendor.addEventListener('change',()=>{const nextVendor=vendor.value;const preset=presetFor(nextVendor,device.model);device.vendor=nextVendor;device.model=preset.id;Object.assign(device,{address:preset.address??1,warmup_seconds:preset.warmup_seconds??3,value_register:preset.value_register??0,function_code:preset.function_code??4,register_count:preset.register_count??2,value_format:preset.value_format??0});markDeviceDraftsDirty();renderDeviceEditor(true)});grid.append(makeField(tr('modbus_vendor'),vendor));
+      const model=document.createElement('select');optionList(model,deviceCatalog[device.vendor]||deviceCatalog.custom,device.model);model.addEventListener('change',()=>{const preset=presetFor(device.vendor,model.value);device.model=preset.id;Object.assign(device,{address:preset.address??device.address,warmup_seconds:preset.warmup_seconds??device.warmup_seconds,value_register:preset.value_register??device.value_register,function_code:preset.function_code??device.function_code,register_count:preset.register_count??device.register_count,value_format:preset.value_format??device.value_format});markDeviceDraftsDirty();renderDeviceEditor(true)});grid.append(makeField(tr('modbus_model'),model));
+      const address=makeNumber(device.address,1,247,1);bindValue(address,device,'address',true);grid.append(makeField(tr('modbus_address'),address));
+      const baud=document.createElement('select');optionList(baud,[1200,2400,4800,9600,19200,38400,57600,115200].map(value=>({id:String(value),label:String(value)})),String(device.baud??9600));baud.addEventListener('change',()=>{device.baud=Number(baud.value);markDeviceDraftsDirty()});grid.append(makeField(tr('modbus_baud'),baud));
+      const warmup=makeNumber(device.warmup_seconds??0,0,3600,1);bindValue(warmup,device,'warmup_seconds',true);grid.append(makeField(tr('modbus_warmup'),warmup));
+      if(device.vendor==='custom'){
+        const register=makeNumber(device.value_register??0,0,65535,1);bindValue(register,device,'value_register',true);grid.append(makeField(tr('modbus_value_register'),register));
+        const functionCode=document.createElement('select');optionList(functionCode,[{id:'3',label:'3'},{id:'4',label:'4'}],String(device.function_code??4));functionCode.addEventListener('change',()=>{device.function_code=Number(functionCode.value);markDeviceDraftsDirty()});grid.append(makeField(tr('modbus_function_code'),functionCode));
+        const registerCount=makeNumber(device.register_count??2,2,32,2);bindValue(registerCount,device,'register_count',true);grid.append(makeField(tr('modbus_register_count'),registerCount));
+        const valueFormat=document.createElement('select');optionList(valueFormat,[{id:'0',label:'float32'},{id:'1',label:'uint16'},{id:'2',label:'int16'},{id:'3',label:'uint32'}],String(device.value_format??0));valueFormat.addEventListener('change',()=>{device.value_format=Number(valueFormat.value);markDeviceDraftsDirty()});grid.append(makeField(tr('modbus_value_format'),valueFormat));
+      }
+      card.append(grid);
+      const status=document.createElement('div');status.className='modbus-device-status';const stateText=!device.enabled?tr('modbus_disabled'):runtime.valid?(runtime.complete?tr('connected'):tr('modbus_partial')):(runtime.last_error||tr('not_connected'));status.innerHTML='';const statusStrong=document.createElement('strong');statusStrong.textContent=stateText;status.append(statusStrong);const data=runtime.data||{};const dataText=device.vendor==='sensecap'?[data.air_temperature_c,data.humidity_pct,data.pressure_pa].every(value=>value===undefined)?'':`${data.air_temperature_c??'—'} C · ${data.humidity_pct??'—'} %RH · ${data.pressure_pa??'—'} Pa`:[data.value1,data.temperature_c,data.supply_voltage_v].some(value=>value!==undefined)?`${data.value1??'—'} · ${data.temperature_c??'—'} C · ${data.supply_voltage_v??'—'} V`:'';if(dataText){const dataLine=document.createElement('div');dataLine.className='modbus-device-data';dataLine.textContent=dataText;status.append(dataLine)}card.append(status);list.append(card);
+    });
+    const addSenseCap=$('addSenseCapDeviceBtn');if(addSenseCap)addSenseCap.disabled=devices.length>=MAX_MODBUS_DEVICES||countDevices('sensecap')>=MAX_SENSECAP_DEVICES;
+    const addSisgeo=$('addSisgeoDeviceBtn');if(addSisgeo)addSisgeo.disabled=devices.length>=MAX_MODBUS_DEVICES||countDevices('sisgeo')>=MAX_SISGEO_DEVICES;
+    const addCustom=$('addCustomDeviceBtn');if(addCustom)addCustom.disabled=devices.length>=MAX_MODBUS_DEVICES;
+  }
+  function renderConnectedSensors(){
+    const target=$('connectedSensors');if(!target)return;target.innerHTML='';
+    const entries=[
+      [tr('temperature'),state.temperature_valid, state.temperature_valid?fmt(state.temperature_c,1,'C'):tr('not_connected')],
+      [tr('position'),state.weg_valid, state.weg_valid?fmt(state.position_mm,3,'mm'):tr('not_connected')],
+      ['INA226',state.ina_connected&&state.ina_valid,state.ina_valid?fmt(state.ina_current_ma,1,'mA'):tr('not_connected')],
+      [tr('battery'),state.battery_valid,state.battery_valid?fmt(state.battery_v,3,'V'):tr('not_connected')]
+    ];
+    (state.modbus?.devices||[]).forEach((device,index)=>{if(device.enabled===false)return;entries.push([`${tr('modbus_device')} ${index+1} · ${device.model_label||device.model||''}`,device.valid===true,device.valid?((device.data||{}).value1!==undefined?String(device.data.value1):((device.data||{}).air_temperature_c!==undefined?fmt(device.data.air_temperature_c,2,'C'):tr('connected'))):tr('not_connected')])});
+    entries.forEach(entry=>{const row=document.createElement('div');row.className='connected-sensor';const name=document.createElement('span');const dot=document.createElement('i');dot.className='sensor-dot'+(entry[1]?' ok':'');name.append(dot,document.createTextNode(entry[0]));const value=document.createElement('b');value.textContent=entry[2];row.append(name,value);target.append(row)});
+  }
+  function loraMask(){const controls=[...document.querySelectorAll('[data-lora-field]')];let mask=controls.length?controls.reduce((value,control)=>control.checked?value+Math.pow(2,Number(control.dataset.loraField)):value,0):Number((state.cfg||{}).lora?.field_mask??0x7FFFFFFF)>>>0;return hasSenseCapDevice()?mask:mask&0x1FF}
+  async function saveAllSettings(){
+    const dr=$('dr')?.value||'auto';const devices=drafts().map(device=>Object.assign({},device,{enabled:device.enabled!==false,address:Number(device.address),baud:Number(device.baud),warmup_seconds:Number(device.warmup_seconds),value_register:Number(device.value_register||0),function_code:Number(device.function_code||4),register_count:Number(device.register_count||2),value_format:Number(device.value_format||0)}));
+    const sisgeoMasks=Array.from({length:12},(_,index)=>{const device=devices[index];return device&&device.vendor==='sisgeo'?Number(device.lora_field_mask||0)&SISGEO_LORA_MASK_LIMIT:0});
+    const payload={minutes:Number($('interval')?.value||1),adr:dr==='auto',dr:dr==='auto'?3:Number(dr),low_power:$('lowPower')?.checked!==false,battery_type:$('batteryType')?.value||'lipo-18650',auto_redirect:$('autoRedirect')?.checked===true,devEui_msb:$('devEui')?.value||'',appEui_msb:$('joinEui')?.value||'',appKey_msb:$('appKey')?.value||'',weg_cal:{raw0:Number($('raw0')?.value||0),mm0:Number($('mm0')?.value||0),raw1:Number($('raw1')?.value||0),mm1:Number($('mm1')?.value||0)},lora:{field_mask:loraMask(),sisgeo_field_masks:sisgeoMasks},modbus:{enabled:$('modbusEnabled')?.checked!==false,always_on:$('modbusAlwaysOn')?.checked===true,poll_seconds:Number($('modbusPoll')?.value||2),devices}};
+    try{const response=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});if(!response.ok)throw new Error(await response.text());set('message',tr('saved'));document.querySelectorAll('input,select').forEach(element=>delete element.dataset.dirty);deviceDrafts=null;deviceDraftsDirty=false;deviceSourceSignature='';await load()}catch(error){set('message',error.message)}
+  }
+  const baseRender=window.render;window.render=function(){baseRender();renderConnectedSensors();renderDeviceEditor()};
+  const baseApplyLang=window.applyLang;window.applyLang=function(){baseApplyLang();set('connectedSensorsTitle',tr('connected_sensors'));set('liveIntervalTitle',tr('transmission'));set('saveLiveBtn',tr('save_transmission'));set('addSenseCapDeviceBtn',tr('modbus_add_sensecap'));set('addSisgeoDeviceBtn',tr('modbus_add_sisgeo'));set('addCustomDeviceBtn',tr('modbus_add_custom'));set('drawerModbus',tr('modbus_devices'));set('modbusTitle',tr('modbus_devices'));set('modbusAlwaysOnLabel',tr('modbus_always_on'));renderConnectedSensors();renderDeviceEditor()};
+  window.save=saveAllSettings;
+  window.getModbusDeviceDrafts=()=>drafts();
+  ['saveBtn','saveLiveBtn','savePayloadBtn','saveModbusBtn'].forEach(id=>{const button=$(id);if(button)button.onclick=saveAllSettings});
+  function addDevice(vendor){const devices=drafts();if(devices.length>=MAX_MODBUS_DEVICES)return;if(vendor==='sensecap'&&countDevices('sensecap')>=MAX_SENSECAP_DEVICES)return;if(vendor==='sisgeo'&&countDevices('sisgeo')>=MAX_SISGEO_DEVICES)return;const device=defaultDevice(vendor);device.address=nextFreeAddress(devices,device.address);devices.push(device);markDeviceDraftsDirty();renderDeviceEditor(true)}
+  const addSenseCap=$('addSenseCapDeviceBtn');if(addSenseCap)addSenseCap.onclick=()=>addDevice('sensecap');const addSisgeo=$('addSisgeoDeviceBtn');if(addSisgeo)addSisgeo.onclick=()=>addDevice('sisgeo');const addCustom=$('addCustomDeviceBtn');if(addCustom)addCustom.onclick=()=>addDevice('custom');
+  ['modbusEnabled','modbusAlwaysOn','modbusPoll'].forEach(id=>{const control=$(id);if(control){control.addEventListener('input',markDeviceDraftsDirty);control.addEventListener('change',markDeviceDraftsDirty)}});
+  renderConnectedSensors();renderDeviceEditor();
 })();
 </script>
 </body>

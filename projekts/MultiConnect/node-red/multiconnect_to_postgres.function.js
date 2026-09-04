@@ -9,7 +9,7 @@
  *   msg.query  = parameterized PostgreSQL INSERT statement
  *   msg.params = values for node-red-contrib-postgresql
  *
- * Run the database migration that adds the Modbus and LoRa V5 columns before
+ * Run the database migration that adds the Modbus and LoRa V5/V6 columns before
  * deploying this Function node.
  */
 
@@ -252,6 +252,10 @@ const hasModbusValue = [
     modbusSolar,
     modbusSunshine
 ].some(hasValue);
+const sisgeoDevices = Array.isArray(decoded.sisgeo_devices)
+    ? decoded.sisgeo_devices.filter(value => isObject(value))
+    : [];
+const hasSisgeoValue = sisgeoDevices.length > 0;
 
 const temperatureValid = safeBoolean(firstDefined(
     decoded.temperature_valid,
@@ -296,7 +300,7 @@ const modbusValid = safeBoolean(firstDefined(
     decoded.modbus_valid,
     modbus.modbus_valid,
     status.modbus_valid,
-    hasModbusValue ? true : null
+    hasModbusValue || hasSisgeoValue ? true : null
 ));
 const modbusComplete = safeBoolean(firstDefined(
     decoded.modbus_complete,
@@ -401,7 +405,8 @@ const columns = [
     "modbus_solar_radiation_wm2",
     "modbus_sunshine_duration_h",
     "lora_field_mask",
-    "lora_selected_fields"
+    "lora_selected_fields",
+    "lora_sisgeo_devices"
 ];
 
 const params = [
@@ -481,7 +486,8 @@ const params = [
     modbusSolar,
     modbusSunshine,
     fieldMask,
-    JSON.stringify(selectedFields)
+    JSON.stringify(selectedFields),
+    JSON.stringify(sisgeoDevices)
 ];
 
 const sqlColumns = columns.map(column => `"${column}"`).join(",\n    ");
