@@ -15,6 +15,10 @@ html[data-theme=dark]{--page:#0e1b22;--surface:#172a33;--field:#203842;--ink:#ed
 <style>
 .chart-value{color:var(--primary);font-size:13px;font-weight:500;font-variant-numeric:tabular-nums;text-align:right;overflow-wrap:anywhere}
 </style>
+<style>
+.modbus-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,.85fr);gap:28px}.modbus-form{min-width:0}.modbus-form .switch{margin:0 0 18px}.modbus-data-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0 22px;margin-top:8px}.modbus-data-item{display:flex;align-items:baseline;justify-content:space-between;gap:12px;min-width:0;padding:9px 0;border-top:1px solid var(--line)}.modbus-data-item span{color:var(--muted);font-size:12px;min-width:0}.modbus-data-item b{color:var(--primary);font-size:13px;font-weight:500;text-align:right;overflow-wrap:anywhere}.modbus-subtitle{margin:24px 0 8px;color:var(--primary);font-size:15px;font-weight:400}.modbus-status{min-width:0}.modbus-status .metric{min-height:38px}.modbus-wire{margin-top:16px;padding:10px 12px;background:var(--field);border:1px solid var(--line);border-radius:4px;color:var(--ink);font:12px/1.45 ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;white-space:pre-wrap;overflow-wrap:anywhere}.modbus-wire-label{display:block;margin-top:14px;color:var(--muted);font-size:12px}.modbus-panel input:disabled,.modbus-panel select:disabled{opacity:.6}@media(max-width:850px){.modbus-layout{grid-template-columns:1fr}.modbus-data-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:520px){.modbus-data-grid{grid-template-columns:1fr}}
+.page-section{display:none}.page-section.page-active{display:block;animation:pageEnter .24s ease-out both}@keyframes pageEnter{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}.drawer-item.active{background:var(--accent-soft);color:var(--primary);font-weight:500}.payload-layout{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(290px,.65fr);gap:28px}.payload-summary{margin-bottom:20px}.payload-section-heading,.payload-preview-heading{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin:20px 0 8px;color:var(--primary)}.payload-section-heading h3{margin:0;font-size:15px;font-weight:400}.payload-section-heading span,.payload-preview-heading span:last-child{color:var(--muted);font-size:12px}.payload-field-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 22px}.payload-field{display:flex;align-items:center;gap:10px;min-width:0;padding:10px 0;border-top:1px solid var(--line)}.payload-field input{width:18px;height:18px;accent-color:var(--accent);flex:none}.payload-field label{display:flex;align-items:baseline;justify-content:space-between;gap:12px;min-width:0;width:100%;cursor:pointer}.payload-field-name{min-width:0;color:var(--ink);font-size:13px;overflow-wrap:anywhere}.payload-field-meta{color:var(--muted);font-size:11px;white-space:nowrap}.payload-side{min-width:0}.payload-side>.panel-heading{margin-bottom:16px}.payload-actions{flex-wrap:wrap}.payload-actions .btn{flex:1 1 90px}.payload-preview-heading{margin-top:24px}.payload-preview{min-height:110px;max-height:220px;margin:0;padding:12px;background:var(--field);border:1px solid var(--line);border-radius:4px;color:var(--ink);font:12px/1.55 ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;white-space:pre-wrap;overflow:auto}.payload-download{display:block;margin-top:16px;text-align:center;text-decoration:none}@media(max-width:900px){.payload-layout{grid-template-columns:1fr}}@media(max-width:600px){.payload-field-grid{grid-template-columns:1fr}}
+</style>
 </head>
 <body>
 <header class="header">
@@ -30,11 +34,13 @@ html[data-theme=dark]{--page:#0e1b22;--surface:#172a33;--field:#203842;--ink:#ed
 
 <aside id="drawer" class="drawer" aria-hidden="true">
   <div class="drawer-title">MKP MultiConnect</div>
-  <button id="drawerLive" class="drawer-item" type="button" data-scroll="livePanel">Live data</button>
-  <button id="drawerLora" class="drawer-item" type="button" data-scroll="settingsPanel">Connection settings</button>
-  <button id="drawerCharts" class="drawer-item" type="button" data-scroll="chartsPanel" data-expert>Charts</button>
-  <button id="drawerDiagnostics" class="drawer-item" type="button" data-scroll="expertPanel" data-expert>Expert diagnostics</button>
-  <button id="drawerCalibration" class="drawer-item" type="button" data-scroll="expertPanel" data-expert>Calibration</button>
+  <button id="drawerLive" class="drawer-item" type="button" data-page-target="live">Live data</button>
+  <button id="drawerLora" class="drawer-item" type="button" data-page-target="settings">Connection settings</button>
+  <button id="drawerPayload" class="drawer-item" type="button" data-page-target="payload">LoRa payload</button>
+  <button id="drawerModbus" class="drawer-item" type="button" data-page-target="modbus">Modbus / RS-485</button>
+  <button id="drawerCharts" class="drawer-item" type="button" data-page-target="charts" data-expert>Charts</button>
+  <button id="drawerDiagnostics" class="drawer-item" type="button" data-page-target="diagnostics" data-expert>Expert diagnostics</button>
+  <button id="drawerCalibration" class="drawer-item" type="button" data-page-target="diagnostics" data-expert>Calibration</button>
   <div class="drawer-footer">FW <span id="drawerFirmware">—</span></div>
 </aside>
 <div id="drawerScrim" class="drawer-scrim" hidden></div>
@@ -46,7 +52,7 @@ html[data-theme=dark]{--page:#0e1b22;--surface:#172a33;--field:#203842;--ink:#ed
     <span id="pageLabel" class="current">Live data</span>
   </nav>
 
-  <section id="livePanel" class="panel live-panel">
+  <section id="livePanel" class="panel live-panel page-section" data-page-section="live">
     <div class="panel-heading"><div class="panel-title"><span class="section-icon">i</span><h2 id="liveTitle">Live data</h2></div></div>
     <div class="overview">
       <article class="metric-panel"><span class="kicker" id="temperatureLabel">Temperature</span><div class="big" id="temperature">—</div><span class="small" id="temperatureHint">Current temperature</span></article>
@@ -55,7 +61,7 @@ html[data-theme=dark]{--page:#0e1b22;--surface:#172a33;--field:#203842;--ink:#ed
     </div>
   </section>
 
-  <section id="settingsPanel" class="panel">
+  <section id="settingsPanel" class="panel page-section" data-page-section="settings">
     <div class="settings-layout">
       <div>
         <div class="panel-heading"><div class="panel-title"><span class="section-icon">&#8767;</span><h2 id="loraTitle">Connection settings</h2></div></div>
@@ -75,7 +81,95 @@ html[data-theme=dark]{--page:#0e1b22;--surface:#172a33;--field:#203842;--ink:#ed
     </div>
   </section>
 
-  <section id="expertPanel" class="panel expert-only expert-grid">
+  <section id="payloadPanel" class="panel page-section payload-panel" data-page-section="payload">
+    <div class="panel-heading"><div class="panel-title"><span class="section-icon">&#8599;</span><h2 id="payloadTitle">LoRa payload</h2></div></div>
+    <div class="payload-layout">
+      <div>
+        <div class="metrics payload-summary">
+          <div class="metric"><span id="payloadVersionLabel">Payload format</span><b id="payloadVersion">V5</b></div>
+          <div class="metric"><span id="payloadBytesLabel">Payload size</span><b id="payloadBytes">—</b></div>
+          <div class="metric"><span id="payloadSelectedLabel">Selected fields</span><b id="payloadSelected">—</b></div>
+          <div class="metric"><span id="payloadBudgetLabel">EU868 reference</span><b id="payloadBudget">—</b></div>
+        </div>
+        <div class="payload-section-heading"><h3 id="localFieldsTitle">Controller measurements</h3><span id="localFieldsHint">Local</span></div>
+        <div id="localLoraFields" class="payload-field-grid"></div>
+        <div class="payload-section-heading"><h3 id="weatherFieldsTitle">SenseCAP measurements</h3><span id="weatherFieldsHint">Modbus</span></div>
+        <div id="modbusLoraFields" class="payload-field-grid"></div>
+      </div>
+      <aside class="payload-side">
+        <div class="panel-heading"><div class="panel-title"><span class="section-icon">&#10003;</span><h2 id="payloadSelectionTitle">Field selection</h2></div></div>
+        <div class="buttons payload-actions"><button class="btn" id="selectAllLoraBtn" type="button">Select all</button><button class="btn" id="selectRecommendedLoraBtn" type="button">Recommended</button><button class="btn" id="clearLoraBtn" type="button">Clear</button></div>
+        <div class="payload-preview-heading"><span id="payloadPreviewLabel">Frame preview</span><span id="payloadPreviewStatus">—</span></div>
+        <pre id="payloadPreview" class="payload-preview">—</pre>
+        <a id="decoderLink" class="btn payload-download" href="/chirpstack_decoder.js" download="chirpstack_decoder.js"><span id="decoderLinkText">Download ChirpStack decoder</span></a>
+        <button id="savePayloadBtn" class="btn primary payload-download" type="button">Save payload settings</button>
+      </aside>
+    </div>
+  </section>
+
+  <section id="modbusPanel" class="panel modbus-panel page-section" data-page-section="modbus">
+    <div class="panel-heading"><div class="panel-title"><span class="section-icon">&#8644;</span><h2 id="modbusTitle">Modbus / RS-485</h2></div></div>
+    <div class="modbus-layout">
+      <div class="modbus-form">
+        <div class="switch"><input id="modbusEnabled" type="checkbox"><label id="modbusEnabledLabel">Enable SenseCAP Modbus polling</label></div>
+        <div class="form-grid">
+          <div class="field"><label id="modbusModelLabel">SenseCAP model</label><select id="modbusModel"><option value="s200">S200</option><option value="s500">S500</option><option value="s600-a">S600-A</option><option value="s700-a">S700-A</option><option value="s700-bc">S700-B/C</option><option value="s800">S800</option><option value="s1000">S1000</option><option value="s1000-c">S1000-C</option></select></div>
+          <div class="field"><label id="modbusAddressLabel">Slave address</label><input id="modbusAddress" type="number" min="1" max="247" step="1"></div>
+          <div class="field"><label id="modbusBaudLabel">RS-485 baud rate</label><select id="modbusBaud"><option value="1200">1200</option><option value="2400">2400</option><option value="4800">4800</option><option value="9600">9600</option><option value="19200">19200</option><option value="38400">38400</option><option value="57600">57600</option><option value="115200">115200</option></select></div>
+          <div class="field"><label id="modbusPollLabel">Poll interval (seconds)</label><input id="modbusPoll" type="number" min="2" max="3600" step="1"></div>
+        </div>
+        <h3 id="modbusTransportTitle" class="modbus-subtitle">Transport</h3>
+        <div class="metrics">
+          <div class="metric"><span id="modbusProtocolLabel">Protocol</span><b id="modbusProtocol">—</b></div>
+          <div class="metric"><span id="modbusFunctionLabel">Read function</span><b id="modbusFunction">—</b></div>
+          <div class="metric"><span id="modbusFormatLabel">Frame format</span><b id="modbusFormat">—</b></div>
+          <div class="metric"><span id="modbusPinsLabel">UART pins</span><b id="modbusPins">—</b></div>
+          <div class="metric"><span id="modbusCableLabel">SenseCAP M12 cable</span><b id="modbusCable">—</b></div>
+          <div class="metric"><span id="modbusPowerLabel">Peripheral power</span><b id="modbusPower">—</b></div>
+        </div>
+      </div>
+      <div class="modbus-status">
+        <h3 id="modbusStatusTitle" class="modbus-subtitle" style="margin-top:0">Connection status</h3>
+        <div class="metrics">
+          <div class="metric"><span id="modbusConnectionLabel">Device</span><b class="status-pill"><i id="modbusDot" class="dot"></i><span id="modbusConnection">—</span></b></div>
+          <div class="metric"><span id="modbusModelStatusLabel">Selected model</span><b id="modbusModelStatus">—</b></div>
+          <div class="metric"><span id="modbusFactoryAddressLabel">Factory address</span><b id="modbusFactoryAddress">—</b></div>
+          <div class="metric"><span id="modbusLastReadLabel">Last read</span><b id="modbusLastRead">—</b></div>
+          <div class="metric"><span id="modbusLastErrorLabel">Last error</span><b id="modbusLastError">—</b></div>
+        </div>
+        <span id="modbusRequestLabel" class="modbus-wire-label">Last request</span><pre id="modbusRequest" class="modbus-wire">—</pre>
+        <span id="modbusResponseLabel" class="modbus-wire-label">Last response</span><pre id="modbusResponse" class="modbus-wire">—</pre>
+        <button id="saveModbusBtn" class="btn primary payload-download" type="button">Save Modbus settings</button>
+      </div>
+    </div>
+    <h3 id="modbusMeasurementsTitle" class="modbus-subtitle">SenseCAP measurements</h3>
+    <div class="modbus-data-grid">
+      <div class="modbus-data-item"><span id="modbusAirTemperatureLabel">Air temperature</span><b id="modbusAirTemperature">—</b></div>
+      <div class="modbus-data-item"><span id="modbusHumidityLabel">Humidity</span><b id="modbusHumidity">—</b></div>
+      <div class="modbus-data-item"><span id="modbusPressureLabel">Pressure</span><b id="modbusPressure">—</b></div>
+      <div class="modbus-data-item"><span id="modbusLightLabel">Light intensity</span><b id="modbusLight">—</b></div>
+      <div class="modbus-data-item"><span id="modbusMinWindDirectionLabel">Minimum wind direction</span><b id="modbusMinWindDirection">—</b></div>
+      <div class="modbus-data-item"><span id="modbusMaxWindDirectionLabel">Maximum wind direction</span><b id="modbusMaxWindDirection">—</b></div>
+      <div class="modbus-data-item"><span id="modbusAverageWindDirectionLabel">Average wind direction</span><b id="modbusAverageWindDirection">—</b></div>
+      <div class="modbus-data-item"><span id="modbusMinWindSpeedLabel">Minimum wind speed</span><b id="modbusMinWindSpeed">—</b></div>
+      <div class="modbus-data-item"><span id="modbusMaxWindSpeedLabel">Maximum wind speed</span><b id="modbusMaxWindSpeed">—</b></div>
+      <div class="modbus-data-item"><span id="modbusAverageWindSpeedLabel">Average wind speed</span><b id="modbusAverageWindSpeed">—</b></div>
+      <div class="modbus-data-item"><span id="modbusAccumulatedRainfallLabel">Accumulated rainfall</span><b id="modbusAccumulatedRainfall">—</b></div>
+      <div class="modbus-data-item"><span id="modbusRainDurationLabel">Rainfall duration</span><b id="modbusRainDuration">—</b></div>
+      <div class="modbus-data-item"><span id="modbusRainIntensityLabel">Rain intensity</span><b id="modbusRainIntensity">—</b></div>
+      <div class="modbus-data-item"><span id="modbusMaxRainIntensityLabel">Maximum rain intensity</span><b id="modbusMaxRainIntensity">—</b></div>
+      <div class="modbus-data-item"><span id="modbusHeatingTemperatureLabel">Heating temperature</span><b id="modbusHeatingTemperature">—</b></div>
+      <div class="modbus-data-item"><span id="modbusTiltLabel">Tilt state</span><b id="modbusTilt">—</b></div>
+      <div class="modbus-data-item"><span id="modbusPm25Label">PM2.5</span><b id="modbusPm25">—</b></div>
+      <div class="modbus-data-item"><span id="modbusPm10Label">PM10</span><b id="modbusPm10">—</b></div>
+      <div class="modbus-data-item"><span id="modbusCo2Label">CO2</span><b id="modbusCo2">—</b></div>
+      <div class="modbus-data-item"><span id="modbusNoiseLabel">Noise intensity</span><b id="modbusNoise">—</b></div>
+      <div class="modbus-data-item"><span id="modbusSolarLabel">Global solar radiation</span><b id="modbusSolar">—</b></div>
+      <div class="modbus-data-item"><span id="modbusSunshineLabel">Sunshine duration</span><b id="modbusSunshine">—</b></div>
+    </div>
+  </section>
+
+  <section id="expertPanel" class="panel expert-only expert-grid page-section" data-page-section="diagnostics">
     <article class="subpanel">
       <div class="panel-heading"><div class="panel-title"><span class="section-icon">i</span><h2 id="diagnosticsTitle">Expert diagnostics</h2></div></div>
       <div class="metrics"><div class="metric"><span>ADS1220 RAW</span><b id="raw">—</b></div><div class="metric"><span>Wegsensor voltage</span><b id="wegVoltage">—</b></div><div class="metric"><span>INA226</span><b class="status-pill"><i id="inaDot" class="dot"></i><span id="inaStatus">—</span></b></div><div class="metric"><span>INA bus</span><b id="inaBus">—</b></div><div class="metric"><span>INA current</span><b id="inaCurrent">—</b></div><div class="metric"><span>INA power</span><b id="inaPower">—</b></div><div class="metric"><span>IP</span><b id="ip">—</b></div><div class="metric"><span>Firmware</span><b id="firmware">—</b></div><div class="metric"><span>Free heap</span><b id="heap">—</b></div></div>
@@ -96,7 +190,7 @@ html[data-theme=dark]{--page:#0e1b22;--surface:#172a33;--field:#203842;--ink:#ed
     </article>
   </section>
 
-  <section id="chartsPanel" class="panel expert-only charts-panel">
+  <section id="chartsPanel" class="panel expert-only charts-panel page-section" data-page-section="charts">
     <div class="panel-heading"><div class="panel-title"><span class="section-icon">&#8767;</span><h2 id="chartsTitle">Trends</h2></div></div>
     <div class="chart-grid">
       <div class="chart-slot"><div class="chart-heading"><h3 id="temperatureChartTitle">Temperature history</h3><span id="temperatureChartValue" class="chart-value">—</span></div><canvas id="temperatureChart" class="chart-canvas" role="img" aria-label="Temperature history">Waiting for data</canvas></div>
@@ -104,7 +198,7 @@ html[data-theme=dark]{--page:#0e1b22;--surface:#172a33;--field:#203842;--ink:#ed
     </div>
   </section>
 
-  <section class="panel save-panel"><button id="saveBtn" class="btn primary" type="button">Save all settings</button><div id="message" class="message"></div></section>
+  <section class="panel save-panel page-section" data-page-section="settings"><button id="saveBtn" class="btn primary" type="button">Save all settings</button><div id="message" class="message"></div></section>
   <footer class="footer">MKP GmbH · MultiConnect</footer>
 </main>
 
@@ -138,6 +232,129 @@ function syncDocumentLanguage(){document.documentElement.lang=lang;document.docu
 </script>
 <script>
 (function(){const baseRender=render;render=function(){baseRender();const control=$('autoRedirect');if(control&&!control.dataset.dirty)control.checked=(state.cfg||{}).auto_redirect===true};const baseRequest=req;req=async function(url,options){if(url==='/api/config'&&options?.body&&$('autoRedirect')){try{const payload=JSON.parse(options.body);payload.auto_redirect=$('autoRedirect').checked;options={...options,body:JSON.stringify(payload)}}catch(_){}}return baseRequest(url,options)};const baseApplyLang=applyLang;applyLang=function(){baseApplyLang();set('autoRedirectLabel',tr('auto_redirect'))};applyLang()})();
+</script>
+<script>
+(function(){
+  const modbusText={
+    drawerModbus:'modbus',modbusTitle:'modbus',modbusEnabledLabel:'modbus_enabled',modbusModelLabel:'modbus_model',modbusAddressLabel:'modbus_address',modbusBaudLabel:'modbus_baud',modbusPollLabel:'modbus_poll',modbusTransportTitle:'modbus_transport',modbusProtocolLabel:'modbus_protocol',modbusFunctionLabel:'modbus_function',modbusFormatLabel:'modbus_format',modbusPinsLabel:'modbus_pins',modbusCableLabel:'modbus_cable',modbusPowerLabel:'modbus_power',modbusStatusTitle:'modbus_status',modbusConnectionLabel:'modbus_device',modbusModelStatusLabel:'modbus_selected_model',modbusFactoryAddressLabel:'modbus_factory_address',modbusLastReadLabel:'modbus_last_read',modbusLastErrorLabel:'modbus_last_error',modbusRequestLabel:'modbus_request',modbusResponseLabel:'modbus_response',modbusMeasurementsTitle:'modbus_measurements',modbusAirTemperatureLabel:'modbus_air_temperature',modbusHumidityLabel:'modbus_humidity',modbusPressureLabel:'modbus_pressure',modbusLightLabel:'modbus_light',modbusMinWindDirectionLabel:'modbus_min_wind_direction',modbusMaxWindDirectionLabel:'modbus_max_wind_direction',modbusAverageWindDirectionLabel:'modbus_average_wind_direction',modbusMinWindSpeedLabel:'modbus_min_wind_speed',modbusMaxWindSpeedLabel:'modbus_max_wind_speed',modbusAverageWindSpeedLabel:'modbus_average_wind_speed',modbusAccumulatedRainfallLabel:'modbus_accumulated_rainfall',modbusRainDurationLabel:'modbus_rain_duration',modbusRainIntensityLabel:'modbus_rain_intensity',modbusMaxRainIntensityLabel:'modbus_max_rain_intensity',modbusHeatingTemperatureLabel:'modbus_heating_temperature',modbusTiltLabel:'modbus_tilt',modbusPm25Label:'modbus_pm25',modbusPm10Label:'modbus_pm10',modbusCo2Label:'modbus_co2',modbusNoiseLabel:'modbus_noise',modbusSolarLabel:'modbus_solar',modbusSunshineLabel:'modbus_sunshine'
+  };
+  const modbusFields=[
+    ['modbusAirTemperature','air_temperature_c',2,'°C'],['modbusHumidity','humidity_pct',2,'%RH'],['modbusPressure','pressure_pa',1,'Pa'],['modbusLight','light_lux',1,'Lux'],['modbusMinWindDirection','min_wind_direction_deg',1,'°'],['modbusMaxWindDirection','max_wind_direction_deg',1,'°'],['modbusAverageWindDirection','average_wind_direction_deg',1,'°'],['modbusMinWindSpeed','min_wind_speed_ms',2,'m/s'],['modbusMaxWindSpeed','max_wind_speed_ms',2,'m/s'],['modbusAverageWindSpeed','average_wind_speed_ms',2,'m/s'],['modbusAccumulatedRainfall','accumulated_rainfall_mm',2,'mm'],['modbusRainDuration','accumulated_rainfall_duration_s',0,'s'],['modbusRainIntensity','rain_intensity_mm_h',2,'mm/h'],['modbusMaxRainIntensity','max_rain_intensity_mm_h',2,'mm/h'],['modbusHeatingTemperature','heating_temperature_c',2,'°C'],['modbusPm25','pm25_ug_m3',1,'µg/m³'],['modbusPm10','pm10_ug_m3',1,'µg/m³'],['modbusCo2','co2_ppm',0,'ppm'],['modbusNoise','noise_db',1,'dB'],['modbusSolar','solar_radiation_wm2',1,'W/m²'],['modbusSunshine','sunshine_duration_h',2,'h']
+  ];
+  function renderModbus(){
+    const config=(state.cfg||{}).modbus||{};const status=state.modbus||{};const data=status.data||{};const control=$('modbusEnabled');
+    if(control&&!control.dataset.dirty)control.checked=config.enabled!==false;
+    input('modbusModel',config.model||status.model||'s700-bc');input('modbusAddress',config.address??status.address??60);input('modbusPoll',config.poll_seconds??status.poll_seconds??2);
+    const baud=$('modbusBaud');if(baud&&!baud.dataset.dirty)baud.value=String(config.baud??status.baud??9600);
+    set('modbusProtocol',status.protocol||'—');set('modbusFunction',status.function_code!=null?`0x${Number(status.function_code).toString(16).toUpperCase().padStart(2,'0')}`:'—');set('modbusFormat',status.format||'—');set('modbusPins',status.re_de_pin!=null?`RE/DE ${status.re_de_pin} · TX ${status.tx_pin} · RX ${status.rx_pin}`:'—');set('modbusCable',status.cable||'—');set('modbusPower',state.sensor_power_enabled===true?tr('modbus_power_on'):tr('modbus_power_off'));
+    const enabled=status.enabled!==false&&config.enabled!==false;const connected=status.connected===true;const partial=connected&&status.complete!==true;const connection=!enabled?tr('modbus_disabled'):connected?(partial?tr('modbus_partial'):tr('connected')):tr('not_connected');set('modbusConnection',connection);$('modbusDot').classList.toggle('ok',connected);set('modbusModelStatus',status.model_label||config.model||'—');set('modbusFactoryAddress',status.factory_address??'—');
+    const successAge=Number(status.last_success_age_s);set('modbusLastRead',connected&&Number.isFinite(successAge)?(successAge<1?tr('just_now'):`${Math.round(successAge)} s`):'—');set('modbusLastError',enabled?(status.last_error||'—'):'—');set('modbusRequest',status.last_request||'—');set('modbusResponse',status.last_response||'—');
+    modbusFields.forEach(([id,key,decimals,unit])=>set(id,fmt(data[key],decimals,unit)));const tilt=Number(data.tilt_state);set('modbusTilt',Number.isFinite(tilt)?`${tilt.toFixed(0)} · ${tilt>=0.5?tr('tilt_fallen'):tr('tilt_upright')}`:'—');
+  }
+  const baseRender=render;render=function(){baseRender();renderModbus()};
+  const baseApplyLang=applyLang;applyLang=function(){baseApplyLang();Object.entries(modbusText).forEach(([id,key])=>set(id,tr(key)));renderModbus()};
+  const baseRequest=req;req=async function(url,options){if(url==='/api/config'&&options?.body){try{const payload=JSON.parse(options.body);payload.modbus={enabled:$('modbusEnabled').checked,model:$('modbusModel').value,address:Number($('modbusAddress').value),baud:Number($('modbusBaud').value),poll_seconds:Number($('modbusPoll').value)};options={...options,body:JSON.stringify(payload)}}catch(_){}}return baseRequest(url,options)};
+  applyLang();renderModbus();
+})();
+</script>
+<script>
+(function(){
+  const PAGE_LABELS={live:'live_data',settings:'lora_simple',payload:'lora_payload',modbus:'modbus',charts:'charts',diagnostics:'diagnostics'};
+  const LORA_FIELD_MASK_ALL=0x7FFFFFFF;
+  const payloadFieldCatalog=[
+    {id:'temperature_c',label:'temperature',unit:'C',source:'local',bytes:2},
+    {id:'position_mm',label:'position',unit:'mm',source:'local',bytes:2},
+    {id:'weg_raw',label:'raw',unit:'raw',source:'local',bytes:4},
+    {id:'ina_bus_v',label:'ina_bus',unit:'V',source:'local',bytes:2},
+    {id:'ina_shunt_mv',label:'ina_shunt',unit:'mV',source:'local',bytes:2},
+    {id:'ina_current_ma',label:'ina_current',unit:'mA',source:'local',bytes:4},
+    {id:'ina_power_w',label:'ina_power',unit:'W',source:'local',bytes:4},
+    {id:'battery_v',label:'battery_voltage',unit:'V',source:'local',bytes:2},
+    {id:'battery_percent',label:'battery_percent',unit:'%',source:'local',bytes:1},
+    {id:'air_temperature_c',label:'modbus_air_temperature',unit:'C',source:'modbus',bytes:2},
+    {id:'humidity_pct',label:'modbus_humidity',unit:'%RH',source:'modbus',bytes:2},
+    {id:'pressure_pa',label:'modbus_pressure',unit:'Pa',source:'modbus',bytes:4},
+    {id:'light_lux',label:'modbus_light',unit:'Lux',source:'modbus',bytes:4},
+    {id:'min_wind_direction_deg',label:'modbus_min_wind_direction',unit:'deg',source:'modbus',bytes:2},
+    {id:'max_wind_direction_deg',label:'modbus_max_wind_direction',unit:'deg',source:'modbus',bytes:2},
+    {id:'average_wind_direction_deg',label:'modbus_average_wind_direction',unit:'deg',source:'modbus',bytes:2},
+    {id:'min_wind_speed_ms',label:'modbus_min_wind_speed',unit:'m/s',source:'modbus',bytes:2},
+    {id:'max_wind_speed_ms',label:'modbus_max_wind_speed',unit:'m/s',source:'modbus',bytes:2},
+    {id:'average_wind_speed_ms',label:'modbus_average_wind_speed',unit:'m/s',source:'modbus',bytes:2},
+    {id:'accumulated_rainfall_mm',label:'modbus_accumulated_rainfall',unit:'mm',source:'modbus',bytes:4},
+    {id:'accumulated_rainfall_duration_s',label:'modbus_rain_duration',unit:'s',source:'modbus',bytes:4},
+    {id:'rain_intensity_mm_h',label:'modbus_rain_intensity',unit:'mm/h',source:'modbus',bytes:2},
+    {id:'max_rain_intensity_mm_h',label:'modbus_max_rain_intensity',unit:'mm/h',source:'modbus',bytes:2},
+    {id:'heating_temperature_c',label:'modbus_heating_temperature',unit:'C',source:'modbus',bytes:2},
+    {id:'tilt_state',label:'modbus_tilt',unit:'',source:'modbus',bytes:1},
+    {id:'pm25_ug_m3',label:'modbus_pm25',unit:'ug/m3',source:'modbus',bytes:4},
+    {id:'pm10_ug_m3',label:'modbus_pm10',unit:'ug/m3',source:'modbus',bytes:4},
+    {id:'co2_ppm',label:'modbus_co2',unit:'ppm',source:'modbus',bytes:2},
+    {id:'noise_db',label:'modbus_noise',unit:'dB',source:'modbus',bytes:2},
+    {id:'solar_radiation_wm2',label:'modbus_solar',unit:'W/m2',source:'modbus',bytes:4},
+    {id:'sunshine_duration_h',label:'modbus_sunshine',unit:'h',source:'modbus',bytes:4}
+  ];
+  const recommendedIds=['temperature_c','position_mm','battery_v','battery_percent','air_temperature_c','humidity_pct','pressure_pa','average_wind_direction_deg','average_wind_speed_ms','rain_intensity_mm_h','solar_radiation_wm2'];
+  function bitFor(index){return Math.pow(2,index)}
+  function maskForIds(ids){return payloadFieldCatalog.reduce((mask,field,index)=>ids.includes(field.id)?mask+bitFor(index):mask,0)}
+  function payloadMaskFromControls(){const controls=[...document.querySelectorAll('[data-lora-field]')];if(!controls.length)return Number((state.cfg||{}).lora?.field_mask??LORA_FIELD_MASK_ALL)>>>0;return controls.reduce((mask,control)=>control.checked?mask+bitFor(Number(control.dataset.loraField)):mask,0)}
+  function payloadSize(mask){return 6+payloadFieldCatalog.reduce((size,field,index)=>(mask&bitFor(index))!==0?size+field.bytes:size,0)}
+  function payloadFieldsFromState(){
+    const apiFields=Array.isArray(state.lora_fields)?state.lora_fields:[];
+    return payloadFieldCatalog.map((field,index)=>Object.assign({},field,apiFields[index]||{}));
+  }
+  function buildPayloadFields(mask){
+    const local=$('localLoraFields');const modbus=$('modbusLoraFields');if(!local||!modbus)return;
+    local.innerHTML='';modbus.innerHTML='';
+    payloadFieldsFromState().forEach((field,index)=>{
+      const row=document.createElement('div');row.className='payload-field';
+      const checkbox=document.createElement('input');checkbox.type='checkbox';checkbox.id='loraField_'+field.id;checkbox.dataset.loraField=String(index);checkbox.checked=(mask&bitFor(index))!==0;
+      const label=document.createElement('label');label.htmlFor=checkbox.id;
+      const name=document.createElement('span');name.className='payload-field-name';name.textContent=tr(field.label||field.id);
+      const meta=document.createElement('span');meta.className='payload-field-meta';meta.textContent=[field.unit,field.bytes+' B'].filter(Boolean).join(' · ');
+      label.append(name,meta);row.append(checkbox,label);
+      checkbox.addEventListener('change',()=>{checkbox.dataset.dirty='1';updatePayloadSummary()});
+      (field.source==='modbus'?modbus:local).append(row);
+    });
+  }
+  function updatePayloadSummary(){
+    const mask=payloadMaskFromControls();const bytes=payloadSize(mask);const selected=payloadFieldCatalog.filter((field,index)=>(mask&bitFor(index))!==0);
+    set('payloadBytes',bytes+' B');set('payloadSelected',selected.length);set('payloadPreviewStatus',bytes===6?tr('payload_no_fields'):bytes<=51?tr('payload_fit_dr0'):bytes<=115?tr('payload_fit_dr3'):bytes<=242?tr('payload_fit_dr4'):tr('payload_too_large'));
+    const maskHex=(mask>>>0).toString(16).toUpperCase().padStart(8,'0');set('payloadPreview','V5  |  mask 0x'+maskHex+'  |  '+bytes+' bytes\n'+(selected.length?selected.map(field=>field.id).join(', '):tr('payload_no_fields')));
+  }
+  function renderPayload(){
+    const config=(state.cfg||{}).lora||{};const controls=[...document.querySelectorAll('[data-lora-field]')];const dirty=controls.some(control=>control.dataset.dirty);
+    const mask=Number(config.field_mask??LORA_FIELD_MASK_ALL)>>>0;
+    if(!controls.length||!dirty)buildPayloadFields(mask&LORA_FIELD_MASK_ALL);
+    set('payloadVersion','V5');set('payloadBudget',tr('payload_eu868'));updatePayloadSummary();
+  }
+  function setPayloadMask(mask){document.querySelectorAll('[data-lora-field]').forEach(control=>{control.checked=(mask&bitFor(Number(control.dataset.loraField)))!==0;control.dataset.dirty='1'});updatePayloadSummary()}
+  function setPage(page){
+    if(!PAGE_LABELS[page])page='live';
+    if((page==='charts'||page==='diagnostics')&&document.documentElement.dataset.view!=='expert'){
+      document.documentElement.dataset.view='expert';localStorage.setItem('mc-view','expert');$('expertBtn').classList.add('active');$('expertBtn').setAttribute('aria-pressed','true');
+    }
+    document.querySelectorAll('[data-page-section]').forEach(section=>section.classList.toggle('page-active',section.dataset.pageSection===page));
+    document.querySelectorAll('[data-page-target]').forEach(item=>item.classList.toggle('active',item.dataset.pageTarget===page));
+    document.documentElement.dataset.page=page;localStorage.setItem('mc-page',page);set('pageLabel',tr(PAGE_LABELS[page]));setMenu(false);window.scrollTo(0,0);
+    if(page==='payload')renderPayload();if(page==='charts')drawCharts();
+  }
+  const baseRender=render;render=function(){baseRender();renderPayload()};
+  const baseApplyLang=applyLang;applyLang=function(){baseApplyLang();set('localFieldsTitle',tr('payload_local'));set('localFieldsHint',tr('payload_local_hint'));set('weatherFieldsTitle',tr('payload_modbus'));set('weatherFieldsHint',tr('payload_modbus_hint'));set('decoderLinkText',tr('payload_decoder'));set('payloadSelectionTitle',tr('payload_selection'));set('payloadPreviewLabel',tr('payload_preview'));set('payloadTitle',tr('lora_payload'));setPage(document.documentElement.dataset.page||localStorage.getItem('mc-page')||'live');renderPayload()};
+  const baseRequest=req;req=async function(url,options){if(url==='/api/config'&&options?.body){try{const payload=JSON.parse(options.body);payload.lora={field_mask:payloadMaskFromControls()};options={...options,body:JSON.stringify(payload)}}catch(_){}}return baseRequest(url,options)};
+  document.querySelectorAll('[data-page-target]').forEach(item=>item.addEventListener('click',()=>setPage(item.dataset.pageTarget)));
+  $('savePayloadBtn').onclick=save;
+  $('saveModbusBtn').onclick=save;
+  $('selectAllLoraBtn').onclick=()=>setPayloadMask(LORA_FIELD_MASK_ALL);$('selectRecommendedLoraBtn').onclick=()=>setPayloadMask(maskForIds(recommendedIds));$('clearLoraBtn').onclick=()=>setPayloadMask(0);
+  applyLang();renderPayload();setPage(document.documentElement.dataset.page||localStorage.getItem('mc-page')||'live');
+})();
+</script>
+<script>
+(function(){
+  const labels={drawerPayload:'lora_payload',drawerModbus:'modbus',payloadVersionLabel:'payload_format',payloadBytesLabel:'payload_bytes',payloadSelectedLabel:'payload_selected',payloadBudgetLabel:'payload_budget',savePayloadBtn:'payload_save',saveModbusBtn:'modbus_save'};
+  function applyPayloadLabels(){Object.entries(labels).forEach(([id,key])=>set(id,tr(key)))}
+  const baseApplyLang=applyLang;applyLang=function(){baseApplyLang();applyPayloadLabels()};applyPayloadLabels();
+})();
 </script>
 </body>
 </html>

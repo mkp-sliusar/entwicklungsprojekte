@@ -285,6 +285,43 @@ RO        -> Heltec IO38 / T-SIM GPIO18
 
 `!RE` and `DE` are tied together. This supports half-duplex direction control, but it does not provide independent receiver disable and driver enable control.
 
+### 4.8.1 SenseCAP ONE connection
+
+The SenseCAP ONE M12 cable uses this pin and wire assignment for Modbus-RTU:
+
+| SenseCAP M12 pin | Wire | Function |
+|---|---|---|
+| 1 | white | RS485 A |
+| 7 | blue | RS485 B |
+| 8 | red | 12-24 V operating supply positive |
+| 2 | brown | Operating supply negative |
+| 3 | green | Data ground, optional according to the SenseCAP manual |
+| 4 | yellow | SDI-12, unused for Modbus |
+| 5 | gray | Heating negative, unused for normal Modbus operation |
+| 6 | pink | Heating positive, unused for normal Modbus operation |
+
+The MultiConnect J7 pin assignment is different from the SenseCAP M12 pin
+numbering. Do not mate the cable directly with J7 unless an adapter implements
+the following mapping:
+
+| MultiConnect J7 pin | Function |
+|---|---|
+| 1 or 3 | AGND / SenseCAP brown operating-supply negative |
+| 4 | Switched 24 V / SenseCAP red operating-supply positive |
+| 5 | RS485 A / SenseCAP white |
+| 6 | RS485 B / SenseCAP blue |
+
+The SenseCAP heating wires require a separate 24 V supply and are not connected
+to J7. The board's GPIO34 switch must be enabled before the switched 24 V and
+3V3 peripheral rails are available to the sensor interface.
+
+The firmware defaults to `9600 8N1`, Modbus function `0x04` (Read Input
+Registers), big-endian 32-bit values, and a scale factor of `1/1000`. The AP
+interface provides model-specific factory addresses, manual slave address and
+baud-rate settings, poll interval, connection status, raw frames, and decoded
+values. The actual sensor model must still be selected because each SenseCAP
+variant exposes a different register block.
+
 ### 4.9 24 V switched external branch
 
 The high-side 24 V switch consists of Q1 and Q2:

@@ -2,11 +2,9 @@
  * =====================================================================
  *  MKP MultiConnect V1.4.5
  *  Universal LoRaWAN / NB-IoT-ready sensor controller
- *  Current firmware profile: LoRaWAN + KCT8103L FEM + optional DS18B20 + ADS1220 Wegsensor + INA226
+ *  Current firmware profile: LoRaWAN + KCT8103L FEM + optional DS18B20 + ADS1220 Wegsensor + INA226 + SenseCAP Modbus
  *
- *  RELEASE NOTES - V1.4.5
- *  This revision replaces the older V1.4.1/V1.4.2 firmware. Do not mix this
- *  sketch with an older binary when comparing field measurements.
+ *  RELEASE NOTES - V1.5.0
  *    - KCT8103L FEM is selected in Arduino IDE and controlled only by the
  *      Heltec radio driver during TX and RX windows.
  *    - External sensor power and ADS1220 measurements are kept separate from
@@ -86,6 +84,7 @@
 #include <ArduinoJson.h>
 #include <DallasTemperature.h>
 #include <DNSServer.h>
+#include <HardwareSerial.h>
 #include <LittleFS.h>
 #include <OneWire.h>
 #include <Preferences.h>
@@ -97,7 +96,7 @@
 #include <math.h>
 
 // ============================= Firmware =============================
-static constexpr const char* FW_VERSION = "1.4.5";
+static constexpr const char* FW_VERSION = "1.5.0";
 static constexpr const char* DEVICE_NAME = "MKP MultiConnect";
 
 // ============================== Modes ===============================
@@ -144,6 +143,154 @@ static constexpr uint8_t BATTERY_TYPE_SAFT_36V = 1;
 static constexpr uint8_t PIN_RS485_RE_DE = 40;
 static constexpr uint8_t PIN_RS485_DI = 39;
 static constexpr uint8_t PIN_RS485_RO = 38;
+
+// SenseCAP ONE model identifiers and factory Modbus addresses.
+enum SenseCapModel : uint8_t {
+  SENSECAP_S200 = 0,
+  SENSECAP_S500,
+  SENSECAP_S600_A,
+  SENSECAP_S700_A,
+  SENSECAP_S700_BC,
+  SENSECAP_S800,
+  SENSECAP_S1000,
+  SENSECAP_S1000_C
+};
+
+struct SenseCapModelInfo {
+  const char* id;
+  const char* label;
+  uint8_t defaultAddress;
+};
+
+static constexpr SenseCapModelInfo SENSECAP_MODELS[] = {
+  { "s200", "S200", 44 },
+  { "s500", "S500", 10 },
+  { "s600-a", "S600-A", 69 },
+  { "s700-a", "S700-A", 20 },
+  { "s700-bc", "S700-B/C", 60 },
+  { "s800", "S800", 46 },
+  { "s1000", "S1000", 43 },
+  { "s1000-c", "S1000-C", 61 }
+};
+
+static constexpr size_t SENSECAP_MODEL_COUNT =
+  sizeof(SENSECAP_MODELS) / sizeof(SENSECAP_MODELS[0]);
+
+const SenseCapModelInfo& senseCapModelInfo(uint8_t model) {
+  if (model >= SENSECAP_MODEL_COUNT) model = SENSECAP_S700_BC;
+  return SENSECAP_MODELS[model];
+}
+
+int parseSenseCapModel(const String& value) {
+  for (size_t i = 0; i < SENSECAP_MODEL_COUNT; ++i) {
+    if (value == SENSECAP_MODELS[i].id) return static_cast<int>(i);
+  }
+  return -1;
+}
+
+bool isSupportedModbusBaud(uint32_t baudRate) {
+  switch (baudRate) {
+    case 1200:
+    case 2400:
+    case 4800:
+    case 9600:
+    case 19200:
+    case 38400:
+    case 57600:
+    case 115200:
+      return true;
+    default:
+      return false;
+  }
+}
+
+enum LoraFieldId : uint8_t {
+  LORA_FIELD_TEMPERATURE = 0,
+  LORA_FIELD_POSITION,
+  LORA_FIELD_WEG_RAW,
+  LORA_FIELD_INA_BUS,
+  LORA_FIELD_INA_SHUNT,
+  LORA_FIELD_INA_CURRENT,
+  LORA_FIELD_INA_POWER,
+  LORA_FIELD_BATTERY_VOLTAGE,
+  LORA_FIELD_BATTERY_PERCENT,
+  LORA_FIELD_AIR_TEMPERATURE,
+  LORA_FIELD_HUMIDITY,
+  LORA_FIELD_PRESSURE,
+  LORA_FIELD_LIGHT,
+  LORA_FIELD_MIN_WIND_DIRECTION,
+  LORA_FIELD_MAX_WIND_DIRECTION,
+  LORA_FIELD_AVERAGE_WIND_DIRECTION,
+  LORA_FIELD_MIN_WIND_SPEED,
+  LORA_FIELD_MAX_WIND_SPEED,
+  LORA_FIELD_AVERAGE_WIND_SPEED,
+  LORA_FIELD_ACCUMULATED_RAINFALL,
+  LORA_FIELD_RAIN_DURATION,
+  LORA_FIELD_RAIN_INTENSITY,
+  LORA_FIELD_MAX_RAIN_INTENSITY,
+  LORA_FIELD_HEATING_TEMPERATURE,
+  LORA_FIELD_TILT,
+  LORA_FIELD_PM25,
+  LORA_FIELD_PM10,
+  LORA_FIELD_CO2,
+  LORA_FIELD_NOISE,
+  LORA_FIELD_SOLAR_RADIATION,
+  LORA_FIELD_SUNSHINE_DURATION,
+  LORA_FIELD_COUNT
+};
+
+struct LoraFieldInfo {
+  const char* id;
+  const char* label;
+  const char* unit;
+  const char* source;
+  uint8_t bytes;
+};
+
+static constexpr uint32_t LORA_FIELD_MASK_ALL =
+  (1UL << LORA_FIELD_COUNT) - 1UL;
+
+static constexpr LoraFieldInfo LORA_FIELDS[LORA_FIELD_COUNT] = {
+  { "temperature_c", "Temperature", "C", "local", 2 },
+  { "position_mm", "Position", "mm", "local", 2 },
+  { "weg_raw", "Wegsensor raw", "raw", "local", 4 },
+  { "ina_bus_v", "INA226 bus voltage", "V", "local", 2 },
+  { "ina_shunt_mv", "INA226 shunt voltage", "mV", "local", 2 },
+  { "ina_current_ma", "INA226 current", "mA", "local", 4 },
+  { "ina_power_w", "INA226 power", "W", "local", 4 },
+  { "battery_v", "Battery voltage", "V", "local", 2 },
+  { "battery_percent", "Battery level", "%", "local", 1 },
+  { "air_temperature_c", "Air temperature", "C", "modbus", 2 },
+  { "humidity_pct", "Humidity", "%RH", "modbus", 2 },
+  { "pressure_pa", "Pressure", "Pa", "modbus", 4 },
+  { "light_lux", "Light intensity", "Lux", "modbus", 4 },
+  { "min_wind_direction_deg", "Minimum wind direction", "deg", "modbus", 2 },
+  { "max_wind_direction_deg", "Maximum wind direction", "deg", "modbus", 2 },
+  { "average_wind_direction_deg", "Average wind direction", "deg", "modbus", 2 },
+  { "min_wind_speed_ms", "Minimum wind speed", "m/s", "modbus", 2 },
+  { "max_wind_speed_ms", "Maximum wind speed", "m/s", "modbus", 2 },
+  { "average_wind_speed_ms", "Average wind speed", "m/s", "modbus", 2 },
+  { "accumulated_rainfall_mm", "Accumulated rainfall", "mm", "modbus", 4 },
+  { "accumulated_rainfall_duration_s", "Rainfall duration", "s", "modbus", 4 },
+  { "rain_intensity_mm_h", "Rain intensity", "mm/h", "modbus", 2 },
+  { "max_rain_intensity_mm_h", "Maximum rain intensity", "mm/h", "modbus", 2 },
+  { "heating_temperature_c", "Heating temperature", "C", "modbus", 2 },
+  { "tilt_state", "Tilt state", "", "modbus", 1 },
+  { "pm25_ug_m3", "PM2.5", "ug/m3", "modbus", 4 },
+  { "pm10_ug_m3", "PM10", "ug/m3", "modbus", 4 },
+  { "co2_ppm", "CO2", "ppm", "modbus", 2 },
+  { "noise_db", "Noise intensity", "dB", "modbus", 2 },
+  { "solar_radiation_wm2", "Global solar radiation", "W/m2", "modbus", 4 },
+  { "sunshine_duration_h", "Sunshine duration", "h", "modbus", 4 }
+};
+
+uint32_t loraPayloadSize(uint32_t fieldMask) {
+  uint32_t size = 6;
+  for (uint8_t id = 0; id < LORA_FIELD_COUNT; ++id) {
+    if ((fieldMask & (1UL << id)) != 0) size += LORA_FIELDS[id].bytes;
+  }
+  return size;
+}
 
 // ============================ LoRaWAN ================================
 // Defaults are overwritten from NVS during setup.
@@ -194,6 +341,13 @@ struct Config {
   uint8_t batteryType = BATTERY_TYPE_LIPO_18650;
   bool autoRedirectEnabled = false;
 
+  bool modbusEnabled = true;
+  uint8_t modbusModel = SENSECAP_S700_BC;
+  uint8_t modbusAddress = 60;
+  uint32_t modbusBaudRate = 9600;
+  uint16_t modbusPollSeconds = 2;
+  uint32_t loraFieldMask = LORA_FIELD_MASK_ALL;
+
   int32_t wegRaw0 = 0;
   int32_t wegRaw1 = 8388607;
   int32_t wegMm0_x1000 = 0;
@@ -203,7 +357,48 @@ struct Config {
 Config cfg;
 Preferences preferences;
 
-// ============================= Measurements =========================
+// ============================ Measurements =========================
+struct ModbusMeasurements {
+  bool valid = false;
+  bool complete = false;
+
+  float airTemperatureC = NAN;
+  float humidityPct = NAN;
+  float pressurePa = NAN;
+  float lightLux = NAN;
+
+  float minWindDirectionDeg = NAN;
+  float maxWindDirectionDeg = NAN;
+  float averageWindDirectionDeg = NAN;
+  float minWindSpeedMs = NAN;
+  float maxWindSpeedMs = NAN;
+  float averageWindSpeedMs = NAN;
+
+  float accumulatedRainfallMm = NAN;
+  float accumulatedRainfallDurationS = NAN;
+  float rainIntensityMmH = NAN;
+  float maxRainIntensityMmH = NAN;
+  float heatingTemperatureC = NAN;
+  float tiltState = NAN;
+
+  float pm25UgM3 = NAN;
+  float pm10UgM3 = NAN;
+  float co2Ppm = NAN;
+  float noiseDb = NAN;
+  float solarRadiationWm2 = NAN;
+  float sunshineDurationH = NAN;
+};
+
+void decodeModbusCommon(const uint32_t* values, ModbusMeasurements& output);
+void decodeModbusLight(const uint32_t* values, ModbusMeasurements& output);
+void decodeModbusWind(const uint32_t* values,
+                      ModbusMeasurements& output,
+                      uint8_t offset);
+void decodeModbusRain(const uint32_t* values, ModbusMeasurements& output);
+void decodeModbusParticles(const uint32_t* values, ModbusMeasurements& output);
+void decodeModbusSolar(const uint32_t* values, ModbusMeasurements& output);
+bool readSenseCapMeasurements(ModbusMeasurements& output);
+
 struct Measurements {
   bool temperatureValid = false;
   float temperatureC = NAN;
@@ -224,6 +419,7 @@ struct Measurements {
   float batteryVoltageV = NAN;
   uint8_t batteryPercent = 0;
 
+  ModbusMeasurements modbus;
   uint32_t measuredAtMs = 0;
 };
 
@@ -232,6 +428,7 @@ Measurements cached;
 // ============================== Objects =============================
 SPIClass adsSPI(HSPI);
 SPISettings adsSPISettings(500000, MSBFIRST, SPI_MODE1);
+HardwareSerial rs485Serial(1);
 
 OneWire oneWire(PIN_DS18B20);
 DallasTemperature temperatureSensors(&oneWire);
@@ -259,6 +456,13 @@ bool oledAvailable = false;
 bool sensorPowerEnabled = false;
 bool sensorInterfacesReady = false;
 bool fieldMeasurementPending = false;
+bool modbusInterfaceReady = false;
+uint32_t lastModbusPollMs = 0;
+uint32_t lastModbusSuccessMs = 0;
+uint8_t modbusLastException = 0;
+String modbusLastRequestHex;
+String modbusLastResponseHex;
+String modbusLastError;
 
 void powerExternalSensorsOn();
 void powerExternalSensorsOff();
@@ -359,6 +563,14 @@ void loadConfig() {
   cfg.lowPowerEnabled = preferences.getBool("lowPower", cfg.lowPowerEnabled);
   cfg.batteryType = preferences.getUChar("batteryType", cfg.batteryType);
   cfg.autoRedirectEnabled = preferences.getBool("autoRedirect", cfg.autoRedirectEnabled);
+  cfg.modbusEnabled = preferences.getBool("mbEnabled", cfg.modbusEnabled);
+  cfg.modbusModel = preferences.getUChar("mbModel", cfg.modbusModel);
+  cfg.modbusAddress = preferences.getUChar("mbAddress", cfg.modbusAddress);
+  cfg.modbusBaudRate = preferences.getUInt("mbBaud", cfg.modbusBaudRate);
+  cfg.modbusPollSeconds = static_cast<uint16_t>(
+    preferences.getUInt("mbPoll", cfg.modbusPollSeconds)
+  );
+  cfg.loraFieldMask = preferences.getUInt("loraMask", cfg.loraFieldMask);
   cfg.wegRaw0 = preferences.getInt("wegRaw0", cfg.wegRaw0);
   cfg.wegRaw1 = preferences.getInt("wegRaw1", cfg.wegRaw1);
   cfg.wegMm0_x1000 = preferences.getInt("wegMm0", cfg.wegMm0_x1000);
@@ -371,6 +583,15 @@ void loadConfig() {
   cfg.batteryType = constrain(cfg.batteryType,
                               BATTERY_TYPE_LIPO_18650,
                               BATTERY_TYPE_SAFT_36V);
+  if (cfg.modbusModel >= SENSECAP_MODEL_COUNT) cfg.modbusModel = SENSECAP_S700_BC;
+  cfg.modbusAddress = constrain(cfg.modbusAddress,
+                                static_cast<uint8_t>(1),
+                                static_cast<uint8_t>(247));
+  if (!isSupportedModbusBaud(cfg.modbusBaudRate)) cfg.modbusBaudRate = 9600;
+  cfg.modbusPollSeconds = constrain(cfg.modbusPollSeconds,
+                                    static_cast<uint16_t>(2),
+                                    static_cast<uint16_t>(3600));
+  cfg.loraFieldMask &= LORA_FIELD_MASK_ALL;
 
   if (cfg.wegRaw0 == cfg.wegRaw1) {
     cfg.wegRaw0 = 0;
@@ -389,6 +610,12 @@ void saveConfig() {
   preferences.putBool("lowPower", cfg.lowPowerEnabled);
   preferences.putUChar("batteryType", cfg.batteryType);
   preferences.putBool("autoRedirect", cfg.autoRedirectEnabled);
+  preferences.putBool("mbEnabled", cfg.modbusEnabled);
+  preferences.putUChar("mbModel", cfg.modbusModel);
+  preferences.putUChar("mbAddress", cfg.modbusAddress);
+  preferences.putUInt("mbBaud", cfg.modbusBaudRate);
+  preferences.putUInt("mbPoll", cfg.modbusPollSeconds);
+  preferences.putUInt("loraMask", cfg.loraFieldMask);
   preferences.putInt("wegRaw0", cfg.wegRaw0);
   preferences.putInt("wegRaw1", cfg.wegRaw1);
   preferences.putInt("wegMm0", cfg.wegMm0_x1000);
@@ -797,10 +1024,483 @@ bool readInternalBattery(uint16_t& batteryMillivolts,
   return true;
 }
 
+// ============================== Modbus =============================
+static constexpr uint8_t MODBUS_READ_INPUT_REGISTERS = 0x04;
+static constexpr uint16_t MODBUS_MAX_REGISTERS = 32;
+static constexpr size_t MODBUS_RX_BUFFER_SIZE = 128;
+static constexpr uint32_t MODBUS_POWERUP_SETTLE_MS = 10000UL;
+static constexpr uint8_t MODBUS_DATA_READY_RETRIES = 3;
+static constexpr uint32_t MODBUS_DATA_READY_RETRY_DELAY_MS = 1000UL;
+static constexpr size_t MODBUS_FRAME_MAX_SIZE =
+  5 + MODBUS_MAX_REGISTERS * 2;
+
+uint16_t modbusCrc16(const uint8_t* data, size_t length) {
+  uint16_t crc = 0xFFFF;
+  for (size_t i = 0; i < length; ++i) {
+    crc ^= data[i];
+    for (uint8_t bit = 0; bit < 8; ++bit) {
+      crc = (crc & 0x0001U) != 0
+        ? static_cast<uint16_t>((crc >> 1) ^ 0xA001U)
+        : static_cast<uint16_t>(crc >> 1);
+    }
+  }
+  return crc;
+}
+
+void setModbusError(const char* message) {
+  modbusLastError = message;
+}
+
+uint32_t modbusResponseTimeoutMs(uint16_t quantity) {
+  (void)quantity;
+  return 2000UL;
+}
+
+bool initializeModbusInterface() {
+  rs485Serial.end();
+
+  pinMode(PIN_RS485_RE_DE, OUTPUT);
+  digitalWrite(PIN_RS485_RE_DE, LOW);
+  pinMode(PIN_RS485_DI, OUTPUT);
+  digitalWrite(PIN_RS485_DI, LOW);
+  pinMode(PIN_RS485_RO, INPUT);
+
+  if (cfg.modbusEnabled) {
+    rs485Serial.begin(cfg.modbusBaudRate,
+                      SERIAL_8N1,
+                      PIN_RS485_RO,
+                      PIN_RS485_DI);
+    rs485Serial.setTimeout(20);
+    while (rs485Serial.available() > 0) (void)rs485Serial.read();
+  }
+
+  modbusInterfaceReady = true;
+  return true;
+}
+
+void disableModbusInterface() {
+  digitalWrite(PIN_RS485_RE_DE, LOW);
+  rs485Serial.end();
+  modbusInterfaceReady = false;
+
+  pinMode(PIN_RS485_DI, OUTPUT);
+  digitalWrite(PIN_RS485_DI, LOW);
+  pinMode(PIN_RS485_RO, INPUT);
+}
+
+bool modbusReadInputRegisters(uint16_t startAddress,
+                              uint16_t quantity,
+                              uint16_t* values) {
+  if (!cfg.modbusEnabled) {
+    setModbusError("disabled");
+    return false;
+  }
+  if (!modbusInterfaceReady) {
+    setModbusError("interface not ready");
+    return false;
+  }
+  if (quantity == 0 || quantity > MODBUS_MAX_REGISTERS) {
+    setModbusError("invalid register quantity");
+    return false;
+  }
+
+  uint8_t request[8] = {
+    cfg.modbusAddress,
+    MODBUS_READ_INPUT_REGISTERS,
+    static_cast<uint8_t>(startAddress >> 8),
+    static_cast<uint8_t>(startAddress & 0xFF),
+    static_cast<uint8_t>(quantity >> 8),
+    static_cast<uint8_t>(quantity & 0xFF),
+    0,
+    0
+  };
+  const uint16_t requestCrc = modbusCrc16(request, 6);
+  request[6] = static_cast<uint8_t>(requestCrc & 0xFF);
+  request[7] = static_cast<uint8_t>(requestCrc >> 8);
+
+  modbusLastRequestHex = bytesToHex(request, sizeof(request));
+  modbusLastResponseHex = "";
+  modbusLastException = 0;
+  Serial.printf("[MODBUS] TX slave=%u start=0x%04X qty=%u: %s\n",
+                cfg.modbusAddress,
+                startAddress,
+                quantity,
+                modbusLastRequestHex.c_str());
+
+  while (rs485Serial.available() > 0) (void)rs485Serial.read();
+
+  digitalWrite(PIN_RS485_RE_DE, HIGH);
+  rs485Serial.write(request, sizeof(request));
+  rs485Serial.flush();
+  delayMicroseconds(20);
+  digitalWrite(PIN_RS485_RE_DE, LOW);
+
+  uint8_t receiveBuffer[MODBUS_RX_BUFFER_SIZE] = { 0 };
+  size_t receiveLength = 0;
+  uint8_t frame[MODBUS_FRAME_MAX_SIZE] = { 0 };
+  size_t frameLength = 0;
+  bool validFrameFound = false;
+  const uint32_t started = millis();
+  const uint32_t timeoutMs = modbusResponseTimeoutMs(quantity);
+
+  while (millis() - started < timeoutMs) {
+    while (rs485Serial.available() > 0) {
+      if (receiveLength >= sizeof(receiveBuffer)) {
+        const size_t keep = sizeof(receiveBuffer) / 2;
+        for (size_t i = 0; i < receiveLength - keep; ++i) {
+          receiveBuffer[i] = receiveBuffer[i + keep];
+        }
+        receiveLength -= keep;
+      }
+      receiveBuffer[receiveLength++] = static_cast<uint8_t>(rs485Serial.read());
+
+      // Search the complete buffer so an echoed request or leading noise does
+      // not prevent recognition of the real Modbus response.
+      for (size_t position = 0; position + 2 < receiveLength; ++position) {
+        if (receiveBuffer[position] != cfg.modbusAddress) continue;
+
+        const uint8_t function = receiveBuffer[position + 1];
+        size_t candidateLength = 0;
+        if (function == (MODBUS_READ_INPUT_REGISTERS | 0x80U)) {
+          candidateLength = 5;
+        } else if (function == MODBUS_READ_INPUT_REGISTERS) {
+          const uint8_t byteCount = receiveBuffer[position + 2];
+          if (byteCount > MODBUS_MAX_REGISTERS * 2) continue;
+          candidateLength = 5 + byteCount;
+        } else {
+          continue;
+        }
+
+        if (position + candidateLength > receiveLength) continue;
+        if (modbusCrc16(receiveBuffer + position, candidateLength - 2) !=
+            (static_cast<uint16_t>(receiveBuffer[position + candidateLength - 2]) |
+             static_cast<uint16_t>(receiveBuffer[position + candidateLength - 1] << 8))) {
+          continue;
+        }
+
+        for (size_t i = 0; i < candidateLength; ++i) {
+          frame[i] = receiveBuffer[position + i];
+        }
+        frameLength = candidateLength;
+        validFrameFound = true;
+        break;
+      }
+
+      if (validFrameFound) break;
+    }
+
+    if (validFrameFound) break;
+    delay(1);
+  }
+
+  if (validFrameFound) {
+    modbusLastResponseHex = bytesToHex(frame, frameLength);
+  } else {
+    modbusLastResponseHex = bytesToHex(receiveBuffer, receiveLength);
+  }
+  Serial.printf("[MODBUS] RX: %s\n",
+                modbusLastResponseHex.length() > 0
+                  ? modbusLastResponseHex.c_str()
+                  : "<none>");
+
+  if (!validFrameFound) {
+    setModbusError("no response or timeout");
+    return false;
+  }
+  const bool exceptionResponse = (frame[1] & 0x80U) != 0;
+  if (exceptionResponse) {
+    modbusLastException = frame[2];
+    char error[32];
+    snprintf(error, sizeof(error), "Modbus exception 0x%02X", modbusLastException);
+    setModbusError(error);
+    return false;
+  }
+  if (frame[1] != MODBUS_READ_INPUT_REGISTERS) {
+    setModbusError("unexpected function code");
+    return false;
+  }
+  if (frame[2] != quantity * 2) {
+    setModbusError("unexpected byte count");
+    return false;
+  }
+
+  for (uint16_t i = 0; i < quantity; ++i) {
+    values[i] = static_cast<uint16_t>(frame[3 + i * 2]) << 8;
+    values[i] |= static_cast<uint16_t>(frame[4 + i * 2]);
+  }
+  return true;
+}
+
+bool readModbusBlock(uint16_t startAddress,
+                     uint16_t quantity,
+                     uint32_t* values) {
+  if ((quantity & 1U) != 0 || quantity > MODBUS_MAX_REGISTERS) {
+    setModbusError("invalid 32-bit register block");
+    return false;
+  }
+
+  uint16_t registers[MODBUS_MAX_REGISTERS] = { 0 };
+  if (!modbusReadInputRegisters(startAddress, quantity, registers)) return false;
+
+  for (uint16_t i = 0; i < quantity / 2; ++i) {
+    values[i] = static_cast<uint32_t>(registers[i * 2]) << 16;
+    values[i] |= static_cast<uint32_t>(registers[i * 2 + 1]);
+  }
+  return true;
+}
+
+bool senseCapCommonDataIsPlausible(const uint32_t* values) {
+  const int32_t temperatureRaw = static_cast<int32_t>(values[0]);
+  const uint32_t humidityRaw = values[1];
+  const uint32_t pressureRaw = values[2];
+
+  return temperatureRaw >= -40000L && temperatureRaw <= 85000L &&
+         humidityRaw <= 100000UL &&
+         pressureRaw >= 30000000UL && pressureRaw <= 125000000UL;
+}
+
+bool readSenseCapCommonBlock(uint16_t quantity, uint32_t* values) {
+  for (uint8_t attempt = 0; attempt < MODBUS_DATA_READY_RETRIES; ++attempt) {
+    if (!readModbusBlock(0x0000, quantity, values)) {
+      Serial.printf("[MODBUS] common read failed, retry %u/%u\n",
+                    static_cast<unsigned>(attempt + 1),
+                    static_cast<unsigned>(MODBUS_DATA_READY_RETRIES));
+      if (attempt + 1 < MODBUS_DATA_READY_RETRIES) {
+        delay(MODBUS_DATA_READY_RETRY_DELAY_MS);
+        continue;
+      }
+      return false;
+    }
+
+    if (senseCapCommonDataIsPlausible(values)) return true;
+
+    Serial.printf("[MODBUS] common data not ready: temp_raw=%ld humidity_raw=%lu pressure_raw=%lu attempt=%u/%u\n",
+                  static_cast<long>(static_cast<int32_t>(values[0])),
+                  static_cast<unsigned long>(values[1]),
+                  static_cast<unsigned long>(values[2]),
+                  static_cast<unsigned>(attempt + 1),
+                  static_cast<unsigned>(MODBUS_DATA_READY_RETRIES));
+    if (attempt + 1 < MODBUS_DATA_READY_RETRIES) {
+      delay(MODBUS_DATA_READY_RETRY_DELAY_MS);
+    }
+  }
+
+  setModbusError("SenseCAP data not ready or invalid");
+  return false;
+}
+
+void decodeModbusCommon(const uint32_t* values, ModbusMeasurements& output) {
+  output.airTemperatureC = static_cast<int32_t>(values[0]) / 1000.0f;
+  output.humidityPct = static_cast<float>(values[1]) / 1000.0f;
+  output.pressurePa = static_cast<float>(values[2]) / 1000.0f;
+}
+
+void decodeModbusLight(const uint32_t* values, ModbusMeasurements& output) {
+  output.lightLux = static_cast<float>(values[0]) / 1000.0f;
+}
+
+void decodeModbusWind(const uint32_t* values,
+                      ModbusMeasurements& output,
+                      uint8_t offset = 0) {
+  output.minWindDirectionDeg = static_cast<float>(values[offset]) / 1000.0f;
+  output.maxWindDirectionDeg = static_cast<float>(values[offset + 1]) / 1000.0f;
+  output.averageWindDirectionDeg = static_cast<float>(values[offset + 2]) / 1000.0f;
+  output.minWindSpeedMs = static_cast<float>(values[offset + 3]) / 1000.0f;
+  output.maxWindSpeedMs = static_cast<float>(values[offset + 4]) / 1000.0f;
+  output.averageWindSpeedMs = static_cast<float>(values[offset + 5]) / 1000.0f;
+}
+
+void decodeModbusRain(const uint32_t* values, ModbusMeasurements& output) {
+  output.accumulatedRainfallMm = static_cast<float>(values[0]) / 1000.0f;
+  output.accumulatedRainfallDurationS = static_cast<float>(values[1]) / 1000.0f;
+  output.rainIntensityMmH = static_cast<float>(values[2]) / 1000.0f;
+  output.maxRainIntensityMmH = static_cast<float>(values[3]) / 1000.0f;
+  output.heatingTemperatureC = static_cast<int32_t>(values[4]) / 1000.0f;
+  output.tiltState = static_cast<float>(values[5]) / 1000.0f;
+}
+
+void decodeModbusParticles(const uint32_t* values, ModbusMeasurements& output) {
+  output.pm25UgM3 = static_cast<float>(values[0]) / 1000.0f;
+  output.pm10UgM3 = static_cast<float>(values[1]) / 1000.0f;
+}
+
+void decodeModbusSolar(const uint32_t* values, ModbusMeasurements& output) {
+  output.solarRadiationWm2 = static_cast<float>(values[0]) / 1000.0f;
+  output.sunshineDurationH = static_cast<float>(values[1]) / 1000.0f;
+}
+
+bool readSenseCapMeasurements(ModbusMeasurements& output) {
+  output = ModbusMeasurements();
+  lastModbusPollMs = millis();
+  modbusLastError = "";
+
+  if (!cfg.modbusEnabled) {
+    setModbusError("disabled");
+    return false;
+  }
+  if (!modbusInterfaceReady) {
+    setModbusError("interface not ready");
+    return false;
+  }
+
+  uint32_t values[MODBUS_MAX_REGISTERS] = { 0 };
+  bool anyBlockValid = false;
+  bool primaryBlockValid = false;
+  bool allBlocksValid = true;
+
+  switch (cfg.modbusModel) {
+    case SENSECAP_S200:
+      if (readModbusBlock(0x0008, 12, values)) {
+        decodeModbusWind(values, output);
+        anyBlockValid = true;
+        primaryBlockValid = true;
+      } else {
+        allBlocksValid = false;
+      }
+      break;
+
+    case SENSECAP_S500:
+      if (readSenseCapCommonBlock(6, values)) {
+        decodeModbusCommon(values, output);
+        anyBlockValid = true;
+        primaryBlockValid = true;
+      } else {
+        allBlocksValid = false;
+      }
+      if (readModbusBlock(0x0008, 12, values)) {
+        decodeModbusWind(values, output);
+        anyBlockValid = true;
+      } else {
+        allBlocksValid = false;
+      }
+      break;
+
+    case SENSECAP_S600_A:
+      if (readSenseCapCommonBlock(20, values)) {
+        decodeModbusCommon(values, output);
+        decodeModbusLight(values + 3, output);
+        decodeModbusWind(values, output, 4);
+        anyBlockValid = true;
+        primaryBlockValid = true;
+      } else {
+        allBlocksValid = false;
+      }
+      break;
+
+    case SENSECAP_S700_A:
+      if (readSenseCapCommonBlock(32, values)) {
+        decodeModbusCommon(values, output);
+        decodeModbusLight(values + 3, output);
+        decodeModbusWind(values, output, 4);
+        decodeModbusRain(values + 10, output);
+        anyBlockValid = true;
+        primaryBlockValid = true;
+      } else {
+        allBlocksValid = false;
+      }
+      break;
+
+    case SENSECAP_S700_BC:
+      if (readSenseCapCommonBlock(32, values)) {
+        decodeModbusCommon(values, output);
+        decodeModbusLight(values + 3, output);
+        decodeModbusWind(values, output, 4);
+        decodeModbusRain(values + 10, output);
+        anyBlockValid = true;
+        primaryBlockValid = true;
+      } else {
+        allBlocksValid = false;
+      }
+      delay(50);
+      if (readModbusBlock(0x004A, 4, values)) {
+        decodeModbusSolar(values, output);
+        anyBlockValid = true;
+      } else {
+        allBlocksValid = false;
+      }
+      break;
+
+    case SENSECAP_S800:
+      if (readSenseCapCommonBlock(6, values)) {
+        decodeModbusCommon(values, output);
+        anyBlockValid = true;
+        primaryBlockValid = true;
+      } else {
+        allBlocksValid = false;
+      }
+      if (readModbusBlock(0x0008, 12, values)) {
+        decodeModbusWind(values, output);
+        anyBlockValid = true;
+      } else {
+        allBlocksValid = false;
+      }
+      if (readModbusBlock(0x0030, 4, values)) {
+        decodeModbusParticles(values, output);
+        anyBlockValid = true;
+      } else {
+        allBlocksValid = false;
+      }
+      if (readModbusBlock(0x0048, 2, values)) {
+        output.noiseDb = static_cast<float>(values[0]) / 1000.0f;
+        anyBlockValid = true;
+      } else {
+        allBlocksValid = false;
+      }
+      break;
+
+    case SENSECAP_S1000:
+    case SENSECAP_S1000_C:
+      if (readSenseCapCommonBlock(32, values)) {
+        decodeModbusCommon(values, output);
+        decodeModbusLight(values + 3, output);
+        decodeModbusWind(values, output, 4);
+        decodeModbusRain(values + 10, output);
+        anyBlockValid = true;
+        primaryBlockValid = true;
+      } else {
+        allBlocksValid = false;
+      }
+      if (readModbusBlock(0x0030, 4, values)) {
+        decodeModbusParticles(values, output);
+        anyBlockValid = true;
+      } else {
+        allBlocksValid = false;
+      }
+      if (readModbusBlock(0x0040, 2, values)) {
+        output.co2Ppm = static_cast<float>(values[0]) / 1000.0f;
+        anyBlockValid = true;
+      } else {
+        allBlocksValid = false;
+      }
+      break;
+
+    default:
+      setModbusError("invalid model");
+      allBlocksValid = false;
+      break;
+  }
+
+  output.valid = primaryBlockValid;
+  output.complete = primaryBlockValid && allBlocksValid;
+  if (primaryBlockValid) lastModbusSuccessMs = millis();
+  if (!primaryBlockValid && modbusLastError.length() == 0) {
+    setModbusError("no valid register block");
+  }
+  return primaryBlockValid;
+}
+
+bool modbusPollDue() {
+  if (!cfg.modbusEnabled) return false;
+  if (lastModbusPollMs == 0) return true;
+  return millis() - lastModbusPollMs >=
+    static_cast<uint32_t>(cfg.modbusPollSeconds) * 1000UL;
+}
+
 void initializePoweredSensorInterfaces() {
   dsAvailable = initializeDS18B20();
   inaAvailable = initializeINA226();
   adsAvailable = initializeADS1220();
+  modbusInterfaceReady = initializeModbusInterface();
   sensorInterfacesReady = true;
 }
 
@@ -817,6 +1517,11 @@ void powerExternalSensorsOn() {
     setExternalSensorMosfet(true);
     delay(50);
     sensorInterfacesReady = false;
+    if (cfg.modbusEnabled) {
+      Serial.printf("[MODBUS] sensor startup settle: %lu ms\n",
+                    static_cast<unsigned long>(MODBUS_POWERUP_SETTLE_MS));
+      delay(MODBUS_POWERUP_SETTLE_MS);
+    }
     Serial.println("[SENSORS] external power ON");
   }
 
@@ -833,6 +1538,13 @@ void readAllSensors() {
   next.wegValid = readWegsensor(next.wegRaw, next.wegVoltageV, next.wegPositionMm);
   next.inaValid = readINA226(next.inaBusVoltageV, next.inaShuntVoltageMv,
                                 next.inaCurrentMa, next.inaPowerW);
+  if (!cfg.modbusEnabled) {
+    next.modbus = ModbusMeasurements();
+  } else if (modbusPollDue()) {
+    (void)readSenseCapMeasurements(next.modbus);
+  } else {
+    next.modbus = cached.modbus;
+  }
   next.batteryValid = readInternalBattery(next.batteryMillivolts,
                                            next.batteryVoltageV,
                                            next.batteryPercent);
@@ -851,6 +1563,16 @@ void readAllSensors() {
                                      cached.inaShuntVoltageMv,
                                      cached.inaCurrentMa,
                                      cached.inaPowerW);
+  if (cached.modbus.valid) {
+    Serial.printf("  Modbus %s: %.2f C / %.2f %%RH / %.2f Pa / %.2f m/s\n",
+                  senseCapModelInfo(cfg.modbusModel).label,
+                  cached.modbus.airTemperatureC,
+                  cached.modbus.humidityPct,
+                  cached.modbus.pressurePa,
+                  cached.modbus.averageWindSpeedMs);
+  } else if (cfg.modbusEnabled) {
+    Serial.printf("  Modbus: %s\n", modbusLastError.c_str());
+  }
   if (cached.batteryValid) Serial.printf("  battery: %u mV / %.3f V / %u %%\n",
                                          cached.batteryMillivolts,
                                          cached.batteryVoltageV,
@@ -992,6 +1714,104 @@ void apiState() {
     doc["battery_percent"] = cached.batteryPercent;
   }
 
+  JsonObject modbusState = doc["modbus"].to<JsonObject>();
+  modbusState["enabled"] = cfg.modbusEnabled;
+  modbusState["interface_ready"] = modbusInterfaceReady;
+  modbusState["connected"] = sensorPowerEnabled && cached.modbus.valid;
+  modbusState["complete"] = cached.modbus.complete;
+  modbusState["model"] = senseCapModelInfo(cfg.modbusModel).id;
+  modbusState["model_label"] = senseCapModelInfo(cfg.modbusModel).label;
+  modbusState["factory_address"] = senseCapModelInfo(cfg.modbusModel).defaultAddress;
+  modbusState["address"] = cfg.modbusAddress;
+  modbusState["baud"] = cfg.modbusBaudRate;
+  modbusState["poll_seconds"] = cfg.modbusPollSeconds;
+  modbusState["protocol"] = "RS-485 Modbus RTU";
+  modbusState["function_code"] = MODBUS_READ_INPUT_REGISTERS;
+  modbusState["format"] = "8N1";
+  modbusState["re_de_pin"] = PIN_RS485_RE_DE;
+  modbusState["tx_pin"] = PIN_RS485_DI;
+  modbusState["rx_pin"] = PIN_RS485_RO;
+  modbusState["cable"] = "A pin 1 white | B pin 7 blue | +12-24 V pin 8 red | 0 V pin 2 brown";
+  modbusState["last_error"] = modbusLastError;
+  modbusState["last_exception"] = modbusLastException;
+  modbusState["last_request"] = modbusLastRequestHex;
+  modbusState["last_response"] = modbusLastResponseHex;
+  modbusState["last_attempt_age_s"] = lastModbusPollMs > 0
+    ? (millis() - lastModbusPollMs) / 1000UL
+    : 0;
+  modbusState["last_success_age_s"] = lastModbusSuccessMs > 0
+    ? (millis() - lastModbusSuccessMs) / 1000UL
+    : 0;
+
+  JsonObject modbusData = modbusState["data"].to<JsonObject>();
+  if (isfinite(cached.modbus.airTemperatureC)) {
+    modbusData["air_temperature_c"] = cached.modbus.airTemperatureC;
+  }
+  if (isfinite(cached.modbus.humidityPct)) {
+    modbusData["humidity_pct"] = cached.modbus.humidityPct;
+  }
+  if (isfinite(cached.modbus.pressurePa)) {
+    modbusData["pressure_pa"] = cached.modbus.pressurePa;
+  }
+  if (isfinite(cached.modbus.lightLux)) {
+    modbusData["light_lux"] = cached.modbus.lightLux;
+  }
+  if (isfinite(cached.modbus.minWindDirectionDeg)) {
+    modbusData["min_wind_direction_deg"] = cached.modbus.minWindDirectionDeg;
+  }
+  if (isfinite(cached.modbus.maxWindDirectionDeg)) {
+    modbusData["max_wind_direction_deg"] = cached.modbus.maxWindDirectionDeg;
+  }
+  if (isfinite(cached.modbus.averageWindDirectionDeg)) {
+    modbusData["average_wind_direction_deg"] = cached.modbus.averageWindDirectionDeg;
+  }
+  if (isfinite(cached.modbus.minWindSpeedMs)) {
+    modbusData["min_wind_speed_ms"] = cached.modbus.minWindSpeedMs;
+  }
+  if (isfinite(cached.modbus.maxWindSpeedMs)) {
+    modbusData["max_wind_speed_ms"] = cached.modbus.maxWindSpeedMs;
+  }
+  if (isfinite(cached.modbus.averageWindSpeedMs)) {
+    modbusData["average_wind_speed_ms"] = cached.modbus.averageWindSpeedMs;
+  }
+  if (isfinite(cached.modbus.accumulatedRainfallMm)) {
+    modbusData["accumulated_rainfall_mm"] = cached.modbus.accumulatedRainfallMm;
+  }
+  if (isfinite(cached.modbus.accumulatedRainfallDurationS)) {
+    modbusData["accumulated_rainfall_duration_s"] =
+      cached.modbus.accumulatedRainfallDurationS;
+  }
+  if (isfinite(cached.modbus.rainIntensityMmH)) {
+    modbusData["rain_intensity_mm_h"] = cached.modbus.rainIntensityMmH;
+  }
+  if (isfinite(cached.modbus.maxRainIntensityMmH)) {
+    modbusData["max_rain_intensity_mm_h"] = cached.modbus.maxRainIntensityMmH;
+  }
+  if (isfinite(cached.modbus.heatingTemperatureC)) {
+    modbusData["heating_temperature_c"] = cached.modbus.heatingTemperatureC;
+  }
+  if (isfinite(cached.modbus.tiltState)) {
+    modbusData["tilt_state"] = cached.modbus.tiltState;
+  }
+  if (isfinite(cached.modbus.pm25UgM3)) {
+    modbusData["pm25_ug_m3"] = cached.modbus.pm25UgM3;
+  }
+  if (isfinite(cached.modbus.pm10UgM3)) {
+    modbusData["pm10_ug_m3"] = cached.modbus.pm10UgM3;
+  }
+  if (isfinite(cached.modbus.co2Ppm)) {
+    modbusData["co2_ppm"] = cached.modbus.co2Ppm;
+  }
+  if (isfinite(cached.modbus.noiseDb)) {
+    modbusData["noise_db"] = cached.modbus.noiseDb;
+  }
+  if (isfinite(cached.modbus.solarRadiationWm2)) {
+    modbusData["solar_radiation_wm2"] = cached.modbus.solarRadiationWm2;
+  }
+  if (isfinite(cached.modbus.sunshineDurationH)) {
+    modbusData["sunshine_duration_h"] = cached.modbus.sunshineDurationH;
+  }
+
   JsonObject config = doc["cfg"].to<JsonObject>();
   config["devEui_msb"] = bytesToHex(cfg.devEui, sizeof(cfg.devEui));
   config["appEui_msb"] = bytesToHex(cfg.appEui, sizeof(cfg.appEui));
@@ -1004,6 +1824,29 @@ void apiState() {
   config["battery_type"] = cfg.batteryType == BATTERY_TYPE_SAFT_36V
     ? "saft-36v"
     : "lipo-18650";
+
+  JsonObject modbusConfig = config["modbus"].to<JsonObject>();
+  modbusConfig["enabled"] = cfg.modbusEnabled;
+  modbusConfig["model"] = senseCapModelInfo(cfg.modbusModel).id;
+  modbusConfig["address"] = cfg.modbusAddress;
+  modbusConfig["baud"] = cfg.modbusBaudRate;
+  modbusConfig["poll_seconds"] = cfg.modbusPollSeconds;
+
+  JsonObject loraConfig = config["lora"].to<JsonObject>();
+  loraConfig["version"] = 5;
+  loraConfig["field_mask"] = cfg.loraFieldMask;
+  loraConfig["payload_bytes"] = loraPayloadSize(cfg.loraFieldMask);
+
+  JsonArray loraFields = doc["lora_fields"].to<JsonArray>();
+  for (uint8_t id = 0; id < LORA_FIELD_COUNT; ++id) {
+    JsonObject field = loraFields.add<JsonObject>();
+    field["id"] = LORA_FIELDS[id].id;
+    field["label"] = LORA_FIELDS[id].label;
+    field["unit"] = LORA_FIELDS[id].unit;
+    field["source"] = LORA_FIELDS[id].source;
+    field["bytes"] = LORA_FIELDS[id].bytes;
+    field["selected"] = (cfg.loraFieldMask & (1UL << id)) != 0;
+  }
 
   JsonObject calibration = config["weg_cal"].to<JsonObject>();
   calibration["raw0"] = cfg.wegRaw0;
@@ -1098,6 +1941,62 @@ void apiSaveConfig() {
     updated.dataRate = static_cast<uint8_t>(value);
   }
 
+  if (request["modbus"].is<JsonObjectConst>()) {
+    JsonObjectConst modbus = request["modbus"].as<JsonObjectConst>();
+
+    if (modbus["enabled"].is<bool>()) {
+      updated.modbusEnabled = modbus["enabled"].as<bool>();
+    }
+    if (modbus["model"].is<const char*>()) {
+      const int model = parseSenseCapModel(modbus["model"].as<String>());
+      if (model < 0) {
+        server.send(400, "text/plain", "invalid Modbus model");
+        return;
+      }
+      updated.modbusModel = static_cast<uint8_t>(model);
+    }
+    if (modbus["address"].is<int>()) {
+      const int value = modbus["address"].as<int>();
+      if (value < 1 || value > 247) {
+        server.send(400, "text/plain", "Modbus address range 1..247");
+        return;
+      }
+      updated.modbusAddress = static_cast<uint8_t>(value);
+    }
+    if (modbus["baud"].is<uint32_t>()) {
+      const uint32_t value = modbus["baud"].as<uint32_t>();
+      if (!isSupportedModbusBaud(value)) {
+        server.send(400, "text/plain", "unsupported Modbus baud rate");
+        return;
+      }
+      updated.modbusBaudRate = value;
+    }
+    if (modbus["poll_seconds"].is<uint32_t>()) {
+      const uint32_t value = modbus["poll_seconds"].as<uint32_t>();
+      if (value < 2 || value > 3600) {
+        server.send(400, "text/plain", "Modbus poll range 2..3600 seconds");
+        return;
+      }
+      updated.modbusPollSeconds = static_cast<uint16_t>(value);
+    }
+  }
+
+  if (request["lora"].is<JsonObjectConst>()) {
+    JsonObjectConst lora = request["lora"].as<JsonObjectConst>();
+    if (lora["field_mask"].is<uint32_t>()) {
+      const uint32_t value = lora["field_mask"].as<uint32_t>();
+      if ((value & ~LORA_FIELD_MASK_ALL) != 0) {
+        server.send(400, "text/plain", "LoRa field selection is invalid");
+        return;
+      }
+      if (loraPayloadSize(value) > 242) {
+        server.send(400, "text/plain", "LoRa payload is too large");
+        return;
+      }
+      updated.loraFieldMask = value;
+    }
+  }
+
   if (request["weg_cal"].is<JsonObjectConst>()) {
     JsonObjectConst cal = request["weg_cal"].as<JsonObjectConst>();
 
@@ -1126,9 +2025,24 @@ void apiSaveConfig() {
     }
   }
 
+  const bool modbusConfigChanged =
+    cfg.modbusEnabled != updated.modbusEnabled ||
+    cfg.modbusModel != updated.modbusModel ||
+    cfg.modbusAddress != updated.modbusAddress ||
+    cfg.modbusBaudRate != updated.modbusBaudRate ||
+    cfg.modbusPollSeconds != updated.modbusPollSeconds;
+
   cfg = updated;
   saveConfig();
   copyConfigToLoRaGlobals();
+  if (modbusConfigChanged) {
+    lastModbusPollMs = 0;
+    lastModbusSuccessMs = 0;
+    modbusLastError = "";
+    cached.modbus = ModbusMeasurements();
+    modbusInterfaceReady = false;
+    sensorInterfacesReady = false;
+  }
   if (cached.batteryValid) {
     cached.batteryPercent = batteryPercentFromMillivolts(cached.batteryMillivolts);
   }
@@ -1202,6 +2116,13 @@ void attachWebRoutes() {
     }
   });
 
+  server.on("/chirpstack_decoder.js", HTTP_GET, []() {
+    server.sendHeader("Cache-Control", "no-store");
+    if (!streamLittleFsFile("/chirpstack_decoder.js", "application/javascript")) {
+      server.send(404, "text/plain", "chirpstack_decoder.js missing in LittleFS");
+    }
+  });
+
   server.on("/api/state", HTTP_GET, apiState);
   server.on("/api/config", HTTP_POST, apiSaveConfig);
   server.on("/api/sensor-power", HTTP_POST, apiSensorPower);
@@ -1254,18 +2175,21 @@ void disableUnusedRadiosForFieldMode() {
 }
 
 // ============================= Payload ==============================
-// Payload V4, 25 bytes, big-endian:
-// 0 version=4
-// 1 status: bit0 temp, bit1 weg, bit2 INA226, bit3 battery
-// 2..3 temperature x100, int16
-// 4..5 position x1000 mm, uint16
-// 6..9 Wegsensor raw, int32
-// 10..11 INA bus voltage mV, uint16
-// 12..13 INA shunt voltage uV, int16
-// 14..17 INA current mA, int32
-// 18..21 INA power mW, int32
-// 22..23 battery voltage mV, uint16
-// 24 battery percentage, uint8
+// Payload V5, big-endian:
+// 0 version=5
+// 1 status: bit0 temp, bit1 position, bit2 Weg, bit3 INA, bit4 battery,
+//           bit5 Modbus valid, bit6 Modbus complete
+// 2..5 selected field mask, bits 0..30
+// Remaining bytes contain selected fields in ascending field-id order.
+static constexpr uint8_t LORA_PAYLOAD_VERSION = 5;
+static constexpr uint8_t LORA_PAYLOAD_HEADER_SIZE = 6;
+static constexpr uint8_t LORA_STATUS_TEMP = 1U << 0;
+static constexpr uint8_t LORA_STATUS_POSITION = 1U << 1;
+static constexpr uint8_t LORA_STATUS_WEG = 1U << 2;
+static constexpr uint8_t LORA_STATUS_INA = 1U << 3;
+static constexpr uint8_t LORA_STATUS_BATTERY = 1U << 4;
+static constexpr uint8_t LORA_STATUS_MODBUS = 1U << 5;
+static constexpr uint8_t LORA_STATUS_MODBUS_COMPLETE = 1U << 6;
 
 void putInt16BE(uint8_t& index, int16_t value) {
   appData[index++] = static_cast<uint8_t>((value >> 8) & 0xFF);
@@ -1284,73 +2208,212 @@ void putInt32BE(uint8_t& index, int32_t value) {
   appData[index++] = static_cast<uint8_t>(value & 0xFF);
 }
 
+void putUInt32BE(uint8_t& index, uint32_t value) {
+  appData[index++] = static_cast<uint8_t>((value >> 24) & 0xFF);
+  appData[index++] = static_cast<uint8_t>((value >> 16) & 0xFF);
+  appData[index++] = static_cast<uint8_t>((value >> 8) & 0xFF);
+  appData[index++] = static_cast<uint8_t>(value & 0xFF);
+}
+
+void putLoraInt16(uint8_t& index,
+                  bool valid,
+                  float value,
+                  float multiplier) {
+  const long encoded = valid
+    ? constrain(lroundf(value * multiplier),
+                static_cast<long>(INT16_MIN),
+                static_cast<long>(INT16_MAX - 1))
+    : static_cast<long>(INT16_MAX);
+  putInt16BE(index, static_cast<int16_t>(encoded));
+}
+
+void putLoraUInt16(uint8_t& index,
+                   bool valid,
+                   float value,
+                   float multiplier) {
+  const long encoded = valid
+    ? constrain(lroundf(value * multiplier),
+                0L,
+                static_cast<long>(UINT16_MAX - 1))
+    : static_cast<long>(UINT16_MAX);
+  putUInt16BE(index, static_cast<uint16_t>(encoded));
+}
+
+void putLoraInt32(uint8_t& index, bool valid, int32_t value) {
+  putInt32BE(index, valid ? value : INT32_MAX);
+}
+
+void putLoraUInt32(uint8_t& index,
+                   bool valid,
+                   float value,
+                   float multiplier) {
+  uint32_t encoded = UINT32_MAX;
+  if (valid) {
+    const float scaled = value * multiplier;
+    if (!isfinite(scaled) || scaled <= 0.0f) {
+      encoded = 0;
+    } else if (scaled >= 4294967294.0f) {
+      encoded = UINT32_MAX - 1UL;
+    } else {
+      encoded = static_cast<uint32_t>(lroundf(scaled));
+    }
+  }
+  putUInt32BE(index, encoded);
+}
+
+void putLoraUInt8(uint8_t& index, bool valid, uint8_t value) {
+  appData[index++] = valid ? value : UINT8_MAX;
+}
+
 static void prepareTxFrame(uint8_t port) {
   (void)port;
 
   uint8_t index = 0;
-  appData[index++] = 4;
+  appData[index++] = LORA_PAYLOAD_VERSION;
 
   uint8_t status = 0;
-  if (cached.temperatureValid) status |= 1U << 0;
-  if (cached.wegValid) status |= 1U << 1;
-  if (cached.inaValid) status |= 1U << 2;
-  if (cached.batteryValid) status |= 1U << 3;
+  if (cached.temperatureValid) status |= LORA_STATUS_TEMP;
+  if (cached.wegValid) status |= LORA_STATUS_POSITION | LORA_STATUS_WEG;
+  if (cached.inaValid) status |= LORA_STATUS_INA;
+  if (cached.batteryValid) status |= LORA_STATUS_BATTERY;
+  if (cached.modbus.valid) status |= LORA_STATUS_MODBUS;
+  if (cached.modbus.complete) status |= LORA_STATUS_MODBUS_COMPLETE;
   appData[index++] = status;
 
-  int16_t encodedTemperature = INT16_MAX;
-  if (cached.temperatureValid) {
-    encodedTemperature = static_cast<int16_t>(constrain(
-      lroundf(cached.temperatureC * 100.0f),
-      static_cast<long>(INT16_MIN),
-      static_cast<long>(INT16_MAX - 1)
-    ));
+  const uint32_t fieldMask = cfg.loraFieldMask & LORA_FIELD_MASK_ALL;
+  putUInt32BE(index, fieldMask);
+
+  for (uint8_t id = 0; id < LORA_FIELD_COUNT; ++id) {
+    if ((fieldMask & (1UL << id)) == 0) continue;
+
+    switch (id) {
+      case LORA_FIELD_TEMPERATURE:
+        putLoraInt16(index, cached.temperatureValid, cached.temperatureC, 100.0f);
+        break;
+      case LORA_FIELD_POSITION:
+        putLoraUInt16(index, cached.wegValid, cached.wegPositionMm, 1000.0f);
+        break;
+      case LORA_FIELD_WEG_RAW:
+        putLoraInt32(index, cached.wegValid, cached.wegRaw);
+        break;
+      case LORA_FIELD_INA_BUS:
+        putLoraUInt16(index, cached.inaValid, cached.inaBusVoltageV, 1000.0f);
+        break;
+      case LORA_FIELD_INA_SHUNT:
+        putLoraInt16(index, cached.inaValid, cached.inaShuntVoltageMv, 1000.0f);
+        break;
+      case LORA_FIELD_INA_CURRENT:
+        putLoraInt32(index, cached.inaValid,
+                     cached.inaValid
+                       ? static_cast<int32_t>(lroundf(cached.inaCurrentMa))
+                       : 0);
+        break;
+      case LORA_FIELD_INA_POWER:
+        putLoraInt32(index, cached.inaValid,
+                     cached.inaValid
+                       ? static_cast<int32_t>(lroundf(cached.inaPowerW * 1000.0f))
+                       : 0);
+        break;
+      case LORA_FIELD_BATTERY_VOLTAGE:
+        putLoraUInt16(index, cached.batteryValid, cached.batteryVoltageV, 1000.0f);
+        break;
+      case LORA_FIELD_BATTERY_PERCENT:
+        putLoraUInt8(index, cached.batteryValid, cached.batteryPercent);
+        break;
+      case LORA_FIELD_AIR_TEMPERATURE:
+        putLoraInt16(index, isfinite(cached.modbus.airTemperatureC),
+                     cached.modbus.airTemperatureC, 100.0f);
+        break;
+      case LORA_FIELD_HUMIDITY:
+        putLoraUInt16(index, isfinite(cached.modbus.humidityPct),
+                      cached.modbus.humidityPct, 100.0f);
+        break;
+      case LORA_FIELD_PRESSURE:
+        putLoraUInt32(index, isfinite(cached.modbus.pressurePa),
+                      cached.modbus.pressurePa, 1.0f);
+        break;
+      case LORA_FIELD_LIGHT:
+        putLoraUInt32(index, isfinite(cached.modbus.lightLux),
+                      cached.modbus.lightLux, 1.0f);
+        break;
+      case LORA_FIELD_MIN_WIND_DIRECTION:
+        putLoraUInt16(index, isfinite(cached.modbus.minWindDirectionDeg),
+                      cached.modbus.minWindDirectionDeg, 10.0f);
+        break;
+      case LORA_FIELD_MAX_WIND_DIRECTION:
+        putLoraUInt16(index, isfinite(cached.modbus.maxWindDirectionDeg),
+                      cached.modbus.maxWindDirectionDeg, 10.0f);
+        break;
+      case LORA_FIELD_AVERAGE_WIND_DIRECTION:
+        putLoraUInt16(index, isfinite(cached.modbus.averageWindDirectionDeg),
+                      cached.modbus.averageWindDirectionDeg, 10.0f);
+        break;
+      case LORA_FIELD_MIN_WIND_SPEED:
+        putLoraUInt16(index, isfinite(cached.modbus.minWindSpeedMs),
+                      cached.modbus.minWindSpeedMs, 100.0f);
+        break;
+      case LORA_FIELD_MAX_WIND_SPEED:
+        putLoraUInt16(index, isfinite(cached.modbus.maxWindSpeedMs),
+                      cached.modbus.maxWindSpeedMs, 100.0f);
+        break;
+      case LORA_FIELD_AVERAGE_WIND_SPEED:
+        putLoraUInt16(index, isfinite(cached.modbus.averageWindSpeedMs),
+                      cached.modbus.averageWindSpeedMs, 100.0f);
+        break;
+      case LORA_FIELD_ACCUMULATED_RAINFALL:
+        putLoraUInt32(index, isfinite(cached.modbus.accumulatedRainfallMm),
+                      cached.modbus.accumulatedRainfallMm, 100.0f);
+        break;
+      case LORA_FIELD_RAIN_DURATION:
+        putLoraUInt32(index, isfinite(cached.modbus.accumulatedRainfallDurationS),
+                      cached.modbus.accumulatedRainfallDurationS, 1.0f);
+        break;
+      case LORA_FIELD_RAIN_INTENSITY:
+        putLoraUInt16(index, isfinite(cached.modbus.rainIntensityMmH),
+                      cached.modbus.rainIntensityMmH, 100.0f);
+        break;
+      case LORA_FIELD_MAX_RAIN_INTENSITY:
+        putLoraUInt16(index, isfinite(cached.modbus.maxRainIntensityMmH),
+                      cached.modbus.maxRainIntensityMmH, 100.0f);
+        break;
+      case LORA_FIELD_HEATING_TEMPERATURE:
+        putLoraInt16(index, isfinite(cached.modbus.heatingTemperatureC),
+                     cached.modbus.heatingTemperatureC, 100.0f);
+        break;
+      case LORA_FIELD_TILT:
+        putLoraUInt8(index, isfinite(cached.modbus.tiltState),
+                     isfinite(cached.modbus.tiltState)
+                       ? static_cast<uint8_t>(lroundf(cached.modbus.tiltState))
+                       : 0);
+        break;
+      case LORA_FIELD_PM25:
+        putLoraUInt32(index, isfinite(cached.modbus.pm25UgM3),
+                      cached.modbus.pm25UgM3, 1.0f);
+        break;
+      case LORA_FIELD_PM10:
+        putLoraUInt32(index, isfinite(cached.modbus.pm10UgM3),
+                      cached.modbus.pm10UgM3, 1.0f);
+        break;
+      case LORA_FIELD_CO2:
+        putLoraUInt16(index, isfinite(cached.modbus.co2Ppm),
+                      cached.modbus.co2Ppm, 1.0f);
+        break;
+      case LORA_FIELD_NOISE:
+        putLoraUInt16(index, isfinite(cached.modbus.noiseDb),
+                      cached.modbus.noiseDb, 10.0f);
+        break;
+      case LORA_FIELD_SOLAR_RADIATION:
+        putLoraUInt32(index, isfinite(cached.modbus.solarRadiationWm2),
+                      cached.modbus.solarRadiationWm2, 1.0f);
+        break;
+      case LORA_FIELD_SUNSHINE_DURATION:
+        putLoraUInt32(index, isfinite(cached.modbus.sunshineDurationH),
+                      cached.modbus.sunshineDurationH, 10.0f);
+        break;
+      default:
+        break;
+    }
   }
-  putInt16BE(index, encodedTemperature);
-
-  uint16_t encodedPosition = UINT16_MAX;
-  if (cached.wegValid) {
-    encodedPosition = static_cast<uint16_t>(constrain(
-      lroundf(cached.wegPositionMm * 1000.0f),
-      0L,
-      static_cast<long>(UINT16_MAX - 1)
-    ));
-  }
-  putUInt16BE(index, encodedPosition);
-  putInt32BE(index, cached.wegValid ? cached.wegRaw : 0);
-
-  uint16_t encodedBusMv = UINT16_MAX;
-  int16_t encodedShuntUv = INT16_MAX;
-  if (cached.inaValid) {
-    encodedBusMv = static_cast<uint16_t>(constrain(
-      lroundf(cached.inaBusVoltageV * 1000.0f),
-      0L,
-      static_cast<long>(UINT16_MAX - 1)
-    ));
-    encodedShuntUv = static_cast<int16_t>(constrain(
-      lroundf(cached.inaShuntVoltageMv * 1000.0f),
-      static_cast<long>(INT16_MIN),
-      static_cast<long>(INT16_MAX - 1)
-    ));
-  }
-  putUInt16BE(index, encodedBusMv);
-  putInt16BE(index, encodedShuntUv);
-
-  int32_t encodedCurrentMa = INT32_MAX;
-  int32_t encodedPowerMw = INT32_MAX;
-  if (cached.inaValid) {
-    encodedCurrentMa = static_cast<int32_t>(lroundf(cached.inaCurrentMa));
-    encodedPowerMw = static_cast<int32_t>(lroundf(cached.inaPowerW * 1000.0f));
-  }
-  putInt32BE(index, encodedCurrentMa);
-  putInt32BE(index, encodedPowerMw);
-
-  const uint16_t encodedBatteryMv =
-    cached.batteryValid ? cached.batteryMillivolts : UINT16_MAX;
-  const uint8_t encodedBatteryPercent =
-    cached.batteryValid ? cached.batteryPercent : UINT8_MAX;
-
-  putUInt16BE(index, encodedBatteryMv);
-  appData[index++] = encodedBatteryPercent;
 
   appDataSize = index;
 
@@ -1391,6 +2454,8 @@ void prepareLoRaFemForSensorAccess() {
 }
 
 void disableSensorInterfacesForSleep() {
+  disableModbusInterface();
+
   if (inaAvailable) {
     // INA226 mode 0 is power-down; wake-up reinitializes the sensor.
     inaWriteRegister(INA226_REG_CONFIG, 0x4120);
@@ -1415,6 +2480,10 @@ void powerExternalSensorsOff() {
   dsAvailable = false;
   inaAvailable = false;
   adsAvailable = false;
+  modbusInterfaceReady = false;
+  lastModbusPollMs = 0;
+  lastModbusSuccessMs = 0;
+  modbusLastError = "sensor power off";
   Serial.println("[SENSORS] external power OFF");
 }
 
@@ -1515,8 +2584,10 @@ void setup() {
     startAccessPoint();
   } else {
     // FIELD mode: OLED remains physically powered off from boot onward and
-    // Q1/Q2 are disabled until the next measurement.
+    // Q1/Q2 are disabled until the next measurement. Force a fresh SenseCAP
+    // warm-up after LoRaWAN has joined before the first uplink.
     powerExternalSensorsOff();
+    fieldMeasurementPending = true;
     pinMode(Vext, OUTPUT);
     digitalWrite(Vext, HIGH);
     disableUnusedRadiosForFieldMode();
@@ -1568,12 +2639,20 @@ void loop() {
       if (fieldMeasurementPending) {
         Serial.println("[LORA] MEASURE AFTER WAKE");
         readAllSensors();
-        powerExternalSensorsOff();
+        if (cfg.modbusEnabled && !cached.modbus.valid) {
+          Serial.println("[LORA] MODBUS UNAVAILABLE - SEND LOCAL SENSOR DATA");
+        }
         fieldMeasurementPending = false;
-        // Keep measurement and radio submission in separate loop passes.
-        // This also leaves the ADS1220 interface fully released before TX.
+        // Keep the sensor rail on for the next loop pass so the freshly read
+        // SenseCAP values remain available while the uplink is prepared.
         delay(5);
         return;
+      }
+
+      if (cfg.modbusEnabled && !cached.modbus.valid) {
+        Serial.println("[LORA] MODBUS UNAVAILABLE - LOCAL DATA ONLY");
+      } else if (cfg.modbusEnabled) {
+        Serial.println("[LORA] SENSECAP DATA READY");
       }
 
       Serial.println("[LORA] SEND CACHED");
