@@ -13,6 +13,16 @@ This file does not document the firmware in `MultiConnect.ino`. The PCB version 
 
 The review is based on Eagle schematic files. No Eagle board file (`.brd`), Gerber output, or assembled PCB was supplied, so PCB copper routing, clearances, pad orientation, thermal performance, and manufacturing DRC are not verified by this document.
 
+### Release status for v1.0.1
+
+The switched `3V3_PERIPH` rail and Q3/Q4 gate-driver topology are the PCB
+v1.0.1 candidate. The v1.0.1 firmware profile additionally drives the shared
+sensor MOSFET control from `GPIO34` and `GPIO39` in parallel. The original
+candidate schematic maps `GPIO39` to MAX3485 `DI`; that connection is
+incompatible with the v1.0.1 firmware and must be removed or rerouted in the
+as-built PCB. Do not mark this release production-ready until the GPIO39 ECO,
+the separate gate resistors, and the RS485 consequence are verified.
+
 ## 2. Source revisions
 
 ### PCB v1.0.0 baseline
@@ -80,11 +90,17 @@ The switched output currently supplies:
 - MAX3485 supply.
 - INA226 supply.
 - DS18B20 pull-up resistor R9.
+- 10 mm / 1 kOhm potentiometer excitation through sensor connector J2 pin 5.
 - Sensor connector J2 pin 5.
 - Analog filter input FB1.
 - Output capacitors C7, C8, and C9.
 
 The controller-side source rail supplies the selected Heltec or T-SIM module and is not switched by Q3.
+
+The potentiometer must not be powered from `3V3_A` / J2 pin 4. Its excitation
+uses `3V3_PERIPH` / J2 pin 5, its return is `AGND`, and its wiper remains on
+the configured ADS1220 analog input. This removes the approximately 3.3 mA
+continuous current that would flow through a 1 kOhm potentiometer at 3.3 V.
 
 ### 3.3 Q3/Q4 active-high switch
 
@@ -99,12 +115,17 @@ Q4 source -> AGND
 Q4 drain  -> Q4_D
 Q4 gate   -> Q4_G
 
-GPIO34    -> MOSFET -> R14 100 Ohm -> Q4_G
+GPIO34    -> R14 100 Ohm -> Q4_G
+GPIO39    -> separate series resistor -> Q4_G (v1.0.1 firmware ECO)
 R15       -> 100 kOhm from Q4_G to AGND
 R18       -> 100 kOhm from Q4_D/Q3 gate to 3V3-IN_S
 ```
 
-Q4 is also connected to Q2 gate through `Q4_G`. Therefore GPIO34 switches both the external 24 V branch and the 3V3 peripheral branch at the same time.
+Q4 is also connected to Q2 gate through `Q4_G`. Therefore GPIO34 and GPIO39
+switch both the external 24 V branch and the 3V3 peripheral branch at the same
+time. GPIO34 and GPIO39 must never be shorted directly together; each output
+requires its own series resistor. GPIO39 is not available as MAX3485 `DI` in
+the v1.0.1 firmware profile.
 
 Truth table:
 
@@ -274,16 +295,18 @@ The MAX3485 reference uses the `MAX3088ESA+` library device and SOIC package in 
 Connections:
 
 ```text
-VCC       -> 3V3_PERIPH
-GND       -> AGND
-A         -> J7 pin 5
-B         -> J7 pin 6
-DI        -> Heltec IO39 / T-SIM GPIO17
-RO        -> Heltec IO38 / T-SIM GPIO18
-!RE and DE -> common RE/DE net -> Heltec IO40 / T-SIM GPIO16
+VCC        -> 3V3_PERIPH
+GND        -> AGND
+A          -> J7 pin 5
+B          -> J7 pin 6
+RO         -> Heltec IO38 / T-SIM GPIO18 (reserved)
+!RE and DE -> common RE/DE net -> Heltec IO40 / T-SIM GPIO16 (reserved)
+DI         -> not available in the v1.0.1 firmware profile
 ```
 
 `!RE` and `DE` are tied together. This supports half-duplex direction control, but it does not provide independent receiver disable and driver enable control.
+The original schematic connection `DI -> GPIO39` is superseded by the sensor
+MOSFET auxiliary control and must not be populated for this firmware profile.
 
 ### 4.9 24 V switched external branch
 
@@ -374,17 +397,20 @@ J1 is a two-pin power connector:
 - Pin 1: AGND.
 - Pin 2: 5V_IN.
 
-## 5. Final v1.0.1 named net review
+## 5. Schematic named-net review and v1.0.1 firmware ECO
 
 The following connections are taken directly from the `LoRa+NB-IoTn3.sch` netlist.
+Rows marked as a firmware ECO are not present in that source netlist and must
+be implemented and verified on the as-built PCB before production release.
 
 | Net | Connected endpoints |
 |---|---|
 | `3V3-IN_S` | Q3:S, IC1:2_3V3-IN, U$2:3V3, R18:1 |
 | `3V3_PERIPH` | Q3:D, U$1:DVDD, MAX3485:VCC, U$3:VCC, FB1:1, J2:5, R9:2, R11:1, C7:1, C8:2, C9:2 |
 | `Q4_D` | Q4:D, Q3:G, R18:2 |
-| `Q4_G` | Q4:G, Q2:G, R14:1, R15:2 |
+| `Q4_G` | Q4:G, Q2:G, R14:1, R15:2, GPIO39 through a separate series resistor (v1.0.1 firmware ECO) |
 | `MOSFET` | IC1:11-IO34/FSPICS0, U$2:GPIO14, R14:2 |
+| `SENSOR_MOSFET_AUX` | IC1:10-IO39/MTCK, separate series resistor, Q4_G (v1.0.1 firmware ECO) |
 | `3V3_A` | U$1:AVDD, U$1:REFP0, FB1:2, J2:4, S3:1, R_3:2 |
 | `24V` | U1:VIN, F1:2, C2:2 |
 | `Q1_S` | Q1:S, F1:1, J7:2, C3:1, R13:1, D1:C |
@@ -400,8 +426,8 @@ The following connections are taken directly from the `LoRa+NB-IoTn3.sch` netlis
 | `SCL` | IC1:7_IO42/MTMS, U$3:SCL, U$2:GPIO48 |
 | `TEMP_1` | IC1:13-IO47, U$2:GPIO1, J2:8, R9:1 |
 | `RE/DE` | MAX3485:!RE, MAX3485:DE, IC1:9_IO40/MTDO, U$2:GPIO16 |
-| `DI` | MAX3485:DI, IC1:10_IO39/MTCK, U$2:GPIO17 |
-| `R0` | MAX3485:R0, IC1:11_IO38/FSPIWP, U$2:GPIO18 |
+| `DI` | Original schematic: MAX3485:DI to IC1:10_IO39/MTCK; superseded and not populated for the v1.0.1 firmware profile |
+| `RO` | MAX3485:R0, IC1:11_IO38/FSPIWP, U$2:GPIO18; reserved in the v1.0.1 firmware profile |
 | `A` | MAX3485:A, R11:2, J7:5 |
 | `B` | MAX3485:B, R10:1, J7:6 |
 | `AGND` | Q3/Q4 gate network ground, Q1/Q2 ground network, controller ground, module grounds, converter ground, connector grounds, and all analog return paths |
@@ -434,7 +460,7 @@ The package names below are the package/device names present in the Eagle schema
 | S2 | DS01 switch | DS-01 | Bridge interconnection switch |
 | S3 | DS01 switch | DS-01 | Bridge excitation switch from 3V3_A |
 | S4 | DS01 switch | DS-01 | Selects bridge AIN0 path or calibration path |
-| MAX3485 | MAX3088ESA+ library device | SOIC127P600X175-8N, SOIC | 3.3 V RS485 transceiver |
+| MAX3485 | MAX3088ESA+ library device | SOIC127P600X175-8N, SOIC | 3.3 V RS485 transceiver; DI is unavailable in the v1.0.1 firmware profile |
 | R10 | 10 kOhm | CHIP-1206 | RS485 B-side bias resistor to AGND |
 | R11 | 10 kOhm | CHIP-1206 | RS485 A-side bias resistor to 3V3_PERIPH |
 | C3 | 10 uF | CHIP-1206 | Bulk capacitor on the fused Q1 source-side external 24 V branch |
@@ -467,21 +493,38 @@ The package names below are the package/device names present in the Eagle schema
 | C9 | 10 uF | CHIP-1206 | Bulk output capacitor after Q3 |
 | R18 | 100 kOhm | CHIP-1206 | Q3 gate-to-source pull-up and default-OFF resistor |
 
-## 7. Power and current results from the hardware review
+The GPIO39 auxiliary control requires a second, independent series resistor
+from GPIO39 to `Q4_G`. Its reference, value, package, and exact PCB routing
+are still to be assigned in the ECO/BOM. GPIO34 and GPIO39 must not be tied
+directly together, and MAX3485 `DI` must not remain on GPIO39.
 
-These values are measurements or calculations from the project review, not guaranteed production limits.
+## 7. Power and current results from the v1.0.1 test
 
-- Latest measured active phase: approximately 38.5 mA average.
-- Latest measured active peak: approximately 234 mA.
-- Latest displayed sleep value: approximately 73 uA.
-- The measuring instrument resolution is too coarse to prove an exact 73 uA value.
+These values are measurements or calculations from the project test CSV, not
+guaranteed production limits.
+
+- CSV capture duration: approximately 94.882 s at a 2 ms sample interval.
+- Active measurement/transmission block: approximately 4.196 s.
+- Active current: approximately 92.676 mA average.
+- Active peak: approximately 252.2 mA.
+- Active voltage: approximately 3.518 V average; active power approximately 324.875 mW.
+- Sleep current after clamping negative instrument readings to zero: approximately
+	62 uA average.
+- The 62 uA value is an estimate. The measuring instrument is not sufficiently
+	accurate below approximately 1 mA and shows an analog zero offset/noise floor.
+- Heltec's stated sleep value is approximately 40 uA under the relevant ideal
+	conditions; use 40 uA to 62 uA as the realistic design range until a
+	calibrated low-current measurement is available.
+- Long-range planning scenario: active duration 8-10 s at approximately 62 mA
+	average. This scenario must be measured on the final radio configuration.
 - USB-connected sleep can be around 2 mA and is not representative of battery-only sleep.
 - A 100 kOhm Q3 gate pull-up at 3.3 V corresponds to approximately 33 uA while Q4 is ON.
 - MOSFET gate networks normally contribute tens of uA, not mA.
 - A 350 Ohm bridge element at 3.3 V can consume approximately 9.4 mA when directly energized.
 - U1 is directly connected to raw 24 V, so its quiescent current remains present even when Q1 is OFF.
-- Four parallel 8500 mAh batteries provide approximately 34000 mAh nominal capacity.
-- Theoretical hourly-cycle runtime was estimated at approximately 24.5 years; practical design expectation was approximately 10-15 years after cell aging, self-discharge, voltage sag, and measurement uncertainty.
+- The workbook `Laufzeitprognose_MultiConnect_Leer_v1.0.1.xlsx`
+	contains the battery and runtime calculations for the measured and planned
+	active profiles.
 
 ## 8. Hardware review findings and release checklist
 
@@ -490,10 +533,13 @@ These values are measurements or calculations from the project review, not guara
 - [ ] Decide whether C2 is 22 uF or 4.7 uF and record the decision in the BOM.
 - [ ] Assign manufacturer part numbers to Q3 and Q4.
 - [ ] Verify Q3 and Q4 manufacturer pinouts against the `SOT23-GSD` Eagle symbol.
+- [ ] Route GPIO39 to `Q4_G` through its own series resistor and remove the original MAX3485 `DI` connection from GPIO39.
+- [ ] Verify the as-built gate logic with GPIO34 LOW and GPIO39 LOW: `3V3_PERIPH` and the 24 V branch must remain OFF.
 - [ ] Verify IC1 `3_3V3-IN2`; it is currently unconnected in the schematic.
 - [ ] Resolve the Heltec V4.3 GPIO5 conflict: ADS1220 MISO uses IO5, while the KCT8103L FEM uses IO5 as PA_CTX.
 - [ ] Verify whether GPIO34 may be reused with the Heltec internal GNSS power-control circuit for the selected population option.
-- [ ] Verify that all external sensor supplies, DS18B20 pull-up, INA226, MAX3485, ADS1220 DVDD, and analog rail input are intentionally on `3V3_PERIPH`.
+- [ ] Verify that the potentiometer excitation is on J2 pin 5 (`3V3_PERIPH`), not J2 pin 4 (`3V3_A`), and that the wiper/AGND wiring is correct.
+- [ ] Verify that the switched digital loads, DS18B20 pull-up, INA226, MAX3485, ADS1220 DVDD, and potentiometer excitation are intentionally on `3V3_PERIPH`.
 - [ ] Mark INA226 ALERT as intentional no-connect or route it to a defined GPIO.
 - [ ] Verify T-SIM power pads and the alternative-slot population rule. The small switched sensor rail must not be used for a high-current modem design without a separate power analysis.
 - [ ] Resolve the `MAX3485` reference versus `MAX3088ESA+` library-device naming mismatch.
@@ -510,6 +556,7 @@ These values are measurements or calculations from the project review, not guara
 - [x] Q4 source is on AGND.
 - [x] Q4 drain is connected to Q3 gate.
 - [x] GPIO34 reaches Q4/Q2 through R14.
+- [ ] GPIO39 reaches Q4/Q2 through a separate series resistor for the v1.0.1 firmware profile.
 - [x] R15 is the Q4/Q2 gate pull-down.
 - [x] R18 is 100 kOhm from Q3 gate to Q3 source.
 - [x] C8 is 100 nF from `3V3_PERIPH` to AGND.
@@ -518,12 +565,22 @@ These values are measurements or calculations from the project review, not guara
 
 ## 9. Release conclusion
 
-The Q3/Q4/R18/C8/C9 topology in `LoRa+NB-IoTn3.sch` is electrically correct for a GPIO34-controlled switched 3V3 peripheral rail, provided that:
+The Q3/Q4/R18/C8/C9 topology in `LoRa+NB-IoTn3.sch` is electrically correct
+for a GPIO34-controlled switched 3V3 peripheral rail. The v1.0.1 firmware
+profile additionally requires the following ECO before production:
 
 1. The selected MOSFETs match the Eagle symbol pinout.
 2. The Heltec controller remains on `3V3-IN_S`.
 3. Only the intended external peripheral loads remain on `3V3_PERIPH`.
-4. The C2 value change is explicitly resolved.
-5. The GPIO5, GPIO34, Heltec supply-pin, BOM, and PCB-layout checks are completed.
+4. GPIO39 is routed to the shared gate driver through its own resistor.
+5. MAX3485 `DI` is removed from GPIO39 and is documented as unavailable in
+	this firmware profile.
+6. The C2 value change is explicitly resolved.
+7. The GPIO5, GPIO34, GPIO39, Heltec supply-pin, BOM, and PCB-layout checks
+	are completed.
 
-Therefore v1.0.1 is currently a verified schematic candidate, not yet a fully released manufacturing PCB revision.
+The v1.0.1 firmware has been validated on the test unit, including the
+switched potentiometer/DS18B20 rail and the measured temperature uplink.
+The PCB remains a verified schematic candidate, not yet a fully released
+manufacturing revision, until the GPIO39 ECO and the remaining checklist
+items are verified on the assembled hardware.

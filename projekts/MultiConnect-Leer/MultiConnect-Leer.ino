@@ -1,13 +1,19 @@
 /*
  * =====================================================================
- *  MKP MultiConnect Leer V1.0.0
+ *  MKP MultiConnect Leer V1.0.1
  *  Universal LoRaWAN / NB-IoT-ready sensor controller
  *  Project profile: Leer Suedringbruecke
  *  Current firmware profile: LoRaWAN + KCT8103L FEM + optional DS18B20 + ADS1220 Wegsensor + INA226
  *
- *  RELEASE NOTES - V1.0.0
- *  This revision replaces the older V1.4.1/V1.4.2 firmware. Do not mix this
+ *  RELEASE NOTES - V1.0.1
+ *  This revision replaces the older V1.0.0 and V1.4.1/V1.4.2 firmware. Do not mix this
  *  sketch with an older binary when comparing field measurements.
+ *    - Sensor power is controlled by GPIO34 and GPIO39 in parallel. GPIO39 is
+ *      dedicated to the sensor MOSFET in this profile and is not RS485 DI.
+ *    - The 10 mm / 1 kOhm potentiometer and DS18B20 use the switched
+ *      3V3_PERIPH rail and are powered only during a measurement window.
+ *    - DS18B20 startup includes a 250 ms rail-settle delay and bounded retry
+ *      handling after every sensor power cycle.
  *    - KCT8103L FEM is selected in Arduino IDE and controlled only by the
  *      Heltec radio driver during TX and RX windows.
  *    - External sensor power and ADS1220 measurements are kept separate from
@@ -51,7 +57,7 @@
  *    Internal battery measurement:
  *      VBAT ADC=GPIO1, divider enable=GPIO37, divider ratio=4.9
  *    V4.3 board controls: Vext GPIO36, VFEM GPIO7, PA_CSD GPIO2,
- *    PA_CTX GPIO5, reserved sensor MOSFET GPIO34, white LED GPIO35,
+ *    PA_CTX GPIO5, sensor MOSFET GPIO34 + GPIO39, white LED GPIO35,
  *    battery divider GPIO37
  *
  *  Important OneWire patch for GPIO47:
@@ -100,7 +106,7 @@
 #include <math.h>
 
 // ============================= Firmware =============================
-static constexpr const char* FW_VERSION = "1.0.0-Leer";
+static constexpr const char* FW_VERSION = "1.0.1-Leer";
 static constexpr const char* DEVICE_NAME = "MKP MultiConnect Leer";
 
 // ============================== Modes ===============================
@@ -128,9 +134,18 @@ static constexpr uint8_t PIN_LORA_FEM_CTX = LORA_PA_CTX;
 // GPIO34 also drives the unpopulated V4.3 GNSS power switch. With no GNSS
 // module fitted it is available for the external sensor MOSFET; LOW is off.
 static constexpr uint8_t PIN_SENSOR_MOSFET = 34;
-// Latest schematic: GPIO34 controls the shared Q1/Q2 gate driver.
+// GPIO39 is a second control output for the same sensor power switch. The PCB
+// must route both GPIOs to the shared gate driver through separate resistors.
+// This firmware profile cannot use GPIO39 as MAX3485 DI at the same time.
+static constexpr uint8_t PIN_SENSOR_MOSFET_AUX = 39;
+// The v1.0.1 firmware profile drives the shared Q1/Q2/Q3/Q4 gate control with
+// GPIO34 and GPIO39 together.
 static constexpr uint8_t SENSOR_MOSFET_ON_LEVEL = HIGH;
 static constexpr uint8_t SENSOR_MOSFET_OFF_LEVEL = LOW;
+static constexpr uint16_t SENSOR_POWER_SETTLE_MS = 250;
+static constexpr uint8_t DS18B20_INIT_ATTEMPTS = 3;
+static constexpr uint8_t DS18B20_READ_ATTEMPTS = 2;
+static constexpr uint16_t DS18B20_RETRY_DELAY_MS = 25;
 static constexpr uint8_t PIN_BOARD_LED = 35;      // White LED, LOW is off
 
 // Heltec WiFi LoRa 32 V4.x internal Li-ion battery monitor.
@@ -142,10 +157,10 @@ static constexpr uint8_t BATTERY_SAMPLES = 24;
 static constexpr uint8_t BATTERY_TYPE_LIPO_18650 = 0;
 static constexpr uint8_t BATTERY_TYPE_SAFT_36V = 1;
 
-// Reserved for future firmware profiles. GPIO40..38 are shared with the V4.3
-// GNSS header and may be used for an external RS485 transceiver.
+// Reserved for future firmware profiles. GPIO40 and GPIO38 are shared with
+// the V4.3 GNSS header and may be used for the remaining RS485 signals.
+// RS485 DI is intentionally unavailable while GPIO39 is the sensor-power AUX.
 static constexpr uint8_t PIN_RS485_RE_DE = 40;
-static constexpr uint8_t PIN_RS485_DI = 39;
 static constexpr uint8_t PIN_RS485_RO = 38;
 
 // ============================ LoRaWAN ================================
@@ -585,20 +600,49 @@ bool initializeDS18B20() {
   // Reinitialize OneWire after every power cycle before searching for devices.
   oneWire.begin(PIN_DS18B20);
   temperatureSensors.begin();
-  const uint8_t count = temperatureSensors.getDeviceCount();
-  Serial.printf("[DS18B20] devices: %u\n", count);
-  if (count == 0) return false;
 
-  // 10-bit conversion is faster and reduces active time.
-  temperatureSensors.setResolution(10);
-  return true;
+  for (uint8_t attempt = 0; attempt < DS18B20_INIT_ATTEMPTS; ++attempt) {
+    const uint8_t count = temperatureSensors.getDeviceCount();
+    Serial.printf("[DS18B20] devices: %u (attempt %u)\n",
+                  count, static_cast<unsigned>(attempt + 1));
+    if (count > 0) {
+      // 10-bit conversion is faster and reduces active time.
+      temperatureSensors.setResolution(10);
+      temperatureSensors.setWaitForConversion(true);
+      return true;
+    }
+
+    if (attempt + 1 < DS18B20_INIT_ATTEMPTS) {
+      delay(DS18B20_RETRY_DELAY_MS);
+      oneWire.begin(PIN_DS18B20);
+      temperatureSensors.begin();
+    }
+  }
+
+  return false;
 }
 
 bool readTemperature(float& temperatureC) {
   if (!dsAvailable) return false;
-  temperatureSensors.requestTemperatures();
-  temperatureC = temperatureSensors.getTempCByIndex(0);
-  return temperatureC != DEVICE_DISCONNECTED_C && isfinite(temperatureC);
+
+  for (uint8_t attempt = 0; attempt < DS18B20_READ_ATTEMPTS; ++attempt) {
+    temperatureSensors.requestTemperatures();
+    const float reading = temperatureSensors.getTempCByIndex(0);
+    if (reading != DEVICE_DISCONNECTED_C && isfinite(reading)) {
+      temperatureC = reading;
+      return true;
+    }
+
+    Serial.printf("[DS18B20] invalid reading %.2f C (attempt %u)\n",
+                  reading, static_cast<unsigned>(attempt + 1));
+    if (attempt + 1 < DS18B20_READ_ATTEMPTS) {
+      delay(DS18B20_RETRY_DELAY_MS);
+      dsAvailable = initializeDS18B20();
+      if (!dsAvailable) return false;
+    }
+  }
+
+  return false;
 }
 
 // =============================== INA226 =============================
@@ -808,9 +852,11 @@ void initializePoweredSensorInterfaces() {
 }
 
 void setExternalSensorMosfet(bool enabled) {
+  const uint8_t level = enabled ? SENSOR_MOSFET_ON_LEVEL : SENSOR_MOSFET_OFF_LEVEL;
   pinMode(PIN_SENSOR_MOSFET, OUTPUT);
-  digitalWrite(PIN_SENSOR_MOSFET,
-               enabled ? SENSOR_MOSFET_ON_LEVEL : SENSOR_MOSFET_OFF_LEVEL);
+  pinMode(PIN_SENSOR_MOSFET_AUX, OUTPUT);
+  digitalWrite(PIN_SENSOR_MOSFET, level);
+  digitalWrite(PIN_SENSOR_MOSFET_AUX, level);
   sensorPowerEnabled = enabled;
 }
 
@@ -818,7 +864,7 @@ void powerExternalSensorsOn() {
   if (!sensorPowerEnabled) {
     prepareLoRaFemForSensorAccess();
     setExternalSensorMosfet(true);
-    delay(50);
+    delay(SENSOR_POWER_SETTLE_MS);
     sensorInterfacesReady = false;
     Serial.println("[SENSORS] external power ON");
   }
@@ -964,6 +1010,7 @@ void apiState() {
   doc["mode_pin_high"] = apMode;
   doc["sensor_power_enabled"] = sensorPowerEnabled;
   doc["sensor_power_pin"] = PIN_SENSOR_MOSFET;
+  doc["sensor_power_pin_aux"] = PIN_SENSOR_MOSFET_AUX;
   doc["ip"] = apMode ? WiFi.softAPIP().toString() : String("-");
   doc["uptime_s"] = millis() / 1000UL;
   doc["heap_free"] = ESP.getFreeHeap();
@@ -1421,6 +1468,8 @@ void setup() {
   releaseLoRaFemHolds();
   pinMode(PIN_SENSOR_MOSFET, OUTPUT);
   digitalWrite(PIN_SENSOR_MOSFET, SENSOR_MOSFET_OFF_LEVEL);
+  pinMode(PIN_SENSOR_MOSFET_AUX, OUTPUT);
+  digitalWrite(PIN_SENSOR_MOSFET_AUX, SENSOR_MOSFET_OFF_LEVEL);
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
 
   // Keep the OLED/Vext rail physically off immediately after board init.
@@ -1438,6 +1487,7 @@ void setup() {
   pinMode(PIN_RS485_RE_DE, OUTPUT);
   digitalWrite(PIN_RS485_RE_DE, LOW);
   digitalWrite(PIN_SENSOR_MOSFET, SENSOR_MOSFET_OFF_LEVEL);
+  digitalWrite(PIN_SENSOR_MOSFET_AUX, SENSOR_MOSFET_OFF_LEVEL);
   pinMode(PIN_BOARD_LED, OUTPUT);
   digitalWrite(PIN_BOARD_LED, LOW);
   disableLoRaFem();
