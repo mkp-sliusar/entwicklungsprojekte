@@ -1,0 +1,261 @@
+# Nibelung bridge Raspberry Pi 4B configuration
+#
+# Important modes:
+#   mode: raw       -> send every measured sample from that sensor
+#   mode: latest    -> send only the newest sample at rate_hz
+#   mode: aggregate -> collect samples and send RMS/peak/avg at rate_hz
+#
+# Payload modes:
+#   payload: per_sensor -> separate messages/points per sensor
+#   payload: snapshot   -> one combined message with latest MPU + ADS + system values
+#
+# To make output speed equal measurement speed:
+#   1) set sensor sample_rate_hz to the desired rate
+#   2) set destination sensor mode: raw
+# Example:
+#   sensors.mpu9250.sample_rate_hz: 100
+#   destinations.websocket.sensors.mpu9250.mode: raw
+# This sends each MPU sample to WebSocket from a separate output thread.
+
+runtime:
+  log_level: INFO
+  stop_timeout_s: 3.0
+
+device:
+  id: bridge01
+  location: lab
+
+sensors:
+  mpu9250:
+    enabled: true
+    retry_interval_s: 5
+    i2c_bus: 1
+    address: 0x68
+
+    # Main MPU measurement frequency. Usual choices: 100, 200, 500 Hz.
+    # The code configures SMPLRT_DIV automatically from this value.
+    sample_rate_hz: 100
+
+    # MPU CONFIG/DLPF choices: 5, 10, 20, 41, 92, 184, 250 Hz.
+    # Higher DLPF allows higher vibration frequencies but more noise.
+    dlpf_hz: 184
+
+    # Accelerometer full scale: 2, 4, 8, 16 g.
+    accel_scale_g: 2
+
+    # High-pass filter alpha for Z vibration. 0.01 slower, 0.05 normal, 0.1 faster.
+    vibration_highpass_alpha: 0.05
+
+    # 1 disables median smoothing. Use 3 or 5 only if roll/pitch is noisy.
+    roll_pitch_median_window: 1
+
+    frequency:
+      enabled: true
+      fft_size: 256
+      update_rate_hz: 5
+      min_frequency_hz: 0.5
+
+  ads1220:
+    enabled: true
+    retry_interval_s: 5
+
+    # ADS application read loop frequency. Usual choices: 100, 200, 500 Hz.
+    # Keep data_rate_sps >= sample_rate_hz.
+    sample_rate_hz: 100
+
+    spi_bus: 0
+    spi_device: 0
+    spi_speed_hz: 4000000
+    spi_mode: 1
+    drdy_pin: 17
+
+    # ADS1220 data-rate command choices: 20, 45, 90, 175, 330, 600, 1000, 2000 SPS.
+    # For 100 Hz measuring, 330 SPS is safe. For 500 Hz measuring, use 600 or 1000.
+    data_rate_sps: 330
+
+    # Continuous conversion avoids restarting the ADC for every read.
+    continuous_conversion: true
+    start_each_read: false
+
+    # Raw ADS1220 register values. These are still available for exact low-level control.
+    # reg1 is automatically adjusted if data_rate_sps is set above.
+    registers:
+      reg0: 0x0E
+      reg1: 0x84
+      reg2: 0x00
+      reg3: 0x00
+
+    vref: 3.3
+    gain: 128.0
+    zero_raw: 0.0
+    raw_per_gram: 356.0
+    gauge_factor: 2.0
+    young_modulus_mpa: 3500.0
+
+    tare_file: tare.dat
+    tare_samples: 10
+    tare_interval_s: 0.0
+    filter_alpha: 0.05
+
+    # Keeps the previous behaviour: wait auto_tare_delay_s and tare on startup.
+    # Set false if you want to use the saved tare.dat value without automatic tare.
+    auto_tare_on_startup: true
+    auto_tare_delay_s: 2.0
+
+    read_timeout_s: 1.0
+    use_gpio_wait: true
+
+  # Optional Geekworm X728 battery fuel gauge. Auto-detection keeps the bridge
+  # running when the UPS is not connected.
+  x728:
+    enabled: true
+    retry_interval_s: 5
+    auto_detect: true
+    i2c_bus: 1
+    address: 0x36
+    sample_rate_hz: 1
+
+  # Optional PiSugar 3 Plus battery controller. Read-only telemetry via I2C 0x57.
+  pisugar:
+    enabled: true
+    retry_interval_s: 5
+    auto_detect: true
+    i2c_bus: 1
+    address: 0x57
+    sample_rate_hz: 1
+
+buttons:
+  tare:
+    enabled: true
+    gpio_pin: 27
+    poll_rate_hz: 50
+    debounce_s: 0.10
+    pull_up: true
+
+services:
+  system_monitor:
+    enabled: true
+    # System monitoring must stay slow. 1 Hz is enough and cannot block sensors.
+    sample_rate_hz: 1
+    check_internet: true
+    internet_timeout_s: 0.2
+
+  tare_api:
+    enabled: true
+    host: 0.0.0.0
+    port: 8080
+
+destinations:
+  influxdb:
+    enabled: true
+    url: http://localhost:8086
+    org: MKP
+    bucket: MKP
+    token: YOUR_INFLUX_TOKEN
+
+    # Influx writes are batched in their own worker thread.
+    timeout_ms: 5000
+    batch_size: 500
+    flush_interval_ms: 1000
+    payload: per_sensor
+    mode: aggregate
+    rate_hz: 10
+    queue_size: 10000
+
+    sensors:
+      mpu9250:
+        enabled: true
+        mode: aggregate
+        rate_hz: 10
+        # For every-sample writing use:
+        # mode: raw
+      ads1220:
+        enabled: true
+        mode: aggregate
+        rate_hz: 10
+        # For every-sample writing use:
+        # mode: raw
+      system:
+        enabled: true
+        mode: latest
+        rate_hz: 1
+
+      x728:
+        enabled: true
+        mode: latest
+        rate_hz: 1
+
+      pisugar:
+        enabled: true
+        mode: latest
+        rate_hz: 1
+
+  mqtt_external:
+    enabled: true
+    host: YOUR_EXTERNAL_MQTT_HOST
+    port: 1883
+    username: YOUR_EXTERNAL_MQTT_USER
+    password: YOUR_EXTERNAL_MQTT_PASSWORD
+    topic: test-monitoring/demonstrator
+    append_sensor_to_topic: false
+    qos: 0
+    retain: false
+
+    # MQTT is published from its own queue. If the broker is slow/offline,
+    # sensor loops continue and old MQTT samples are dropped when the queue is full.
+    payload: per_sensor
+    mode: aggregate
+    rate_hz: 10
+    queue_size: 5000
+
+    sensors:
+      mpu9250:
+        enabled: true
+        mode: aggregate
+        rate_hz: 10
+      ads1220:
+        enabled: true
+        mode: aggregate
+        rate_hz: 10
+      system:
+        enabled: false
+
+      x728:
+        enabled: true
+        mode: latest
+        rate_hz: 1
+
+      pisugar:
+        enabled: true
+        mode: latest
+        rate_hz: 1
+
+  mqtt_local:
+    enabled: true
+    host: localhost
+    port: 1883
+    username: ""
+    password: ""
+    topic: live/bridge01
+    append_sensor_to_topic: false
+    qos: 0
+    retain: false
+
+    # Snapshot is the old dashboard-friendly format: one combined message.
+    payload: snapshot
+    rate_hz: 1
+    queue_size: 1000
+
+  websocket:
+    enabled: true
+    host: 0.0.0.0
+    port: 8765
+
+    # Snapshot 10 Hz is good for UI. For full-rate live stream use:
+    # payload: per_sensor
+    # sensors:
+    #   mpu9250: {enabled: true, mode: raw}
+    #   ads1220: {enabled: true, mode: raw}
+    payload: snapshot
+    rate_hz: 10
+    queue_size: 2000

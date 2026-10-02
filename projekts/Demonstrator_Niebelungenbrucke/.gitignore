@@ -1,0 +1,16 @@
+# Local Python environment and generated files
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+
+# Local configuration, calibration data and logs
+config.yaml
+tare.dat
+*.log

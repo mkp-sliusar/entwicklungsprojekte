@@ -1,0 +1,16 @@
+[Unit]
+Description=Nibelung Bridge sensor service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/opt/nibelung_bridge
+ExecStart=/opt/nibelung_bridge/.venv/bin/python /opt/nibelung_bridge/app.py /opt/nibelung_bridge/config.yaml
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
