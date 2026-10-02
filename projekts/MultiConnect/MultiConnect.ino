@@ -2029,12 +2029,25 @@ void pollModbusDevices(ModbusMeasurements& primaryMeasurements) {
   primaryMeasurements = ModbusMeasurements();
   lastModbusPollMs = millis();
   bool primaryAssigned = false;
+  bool primaryIsSenseCap = false;
   modbusPrimaryIndex = 0;
+
+  Serial.printf("[MODBUS] polling %u configured device(s)\n",
+                static_cast<unsigned>(cfg.modbusDeviceCount));
 
   for (uint8_t index = 0; index < cfg.modbusDeviceCount; ++index) {
     ModbusDeviceConfig& device = cfg.modbusDevices[index];
     ModbusDeviceRuntime& runtime = modbusRuntime[index];
     resetModbusRuntime(runtime);
+
+    Serial.printf("[MODBUS] device %u config: enabled=%u %s %s slave=%u baud=%lu\n",
+                  static_cast<unsigned>(index + 1),
+            static_cast<unsigned>(device.enabled),
+                  modbusVendorLabel(device.vendor),
+                  modbusModelLabel(device.vendor, device.model),
+                  static_cast<unsigned>(device.address),
+                  static_cast<unsigned long>(device.baudRate));
+
     if (device.enabled == 0) continue;
 
     waitForModbusDeviceWarmup(device);
@@ -2051,13 +2064,21 @@ void pollModbusDevices(ModbusMeasurements& primaryMeasurements) {
       valid = readSenseCapMeasurements(device, runtime.senseCap);
       runtime.valid = runtime.senseCap.valid;
       runtime.complete = runtime.senseCap.complete;
-      if (valid && !primaryAssigned) {
+      if (valid && (!primaryAssigned || !primaryIsSenseCap)) {
         primaryMeasurements = runtime.senseCap;
         modbusPrimaryIndex = index;
         primaryAssigned = true;
+        primaryIsSenseCap = true;
       }
     } else {
       valid = readGenericModbusDevice(device, runtime);
+      if (valid && !primaryAssigned) {
+        primaryMeasurements.valid = runtime.valid;
+        primaryMeasurements.complete = runtime.complete;
+        modbusPrimaryIndex = index;
+        primaryAssigned = true;
+        primaryIsSenseCap = false;
+      }
     }
 
     runtime.lastError = modbusLastError;
@@ -2150,13 +2171,35 @@ void readAllSensors() {
                                      cached.inaCurrentMa,
                                      cached.inaPowerW);
   if (cached.modbus.valid) {
-    Serial.printf("  Modbus %s: %.2f C / %.2f %%RH / %.2f Pa / %.2f m/s\n",
-                  modbusModelLabel(cfg.modbusDevices[modbusPrimaryIndex].vendor,
-                                   cfg.modbusDevices[modbusPrimaryIndex].model),
-                  cached.modbus.airTemperatureC,
-                  cached.modbus.humidityPct,
-                  cached.modbus.pressurePa,
-                  cached.modbus.averageWindSpeedMs);
+    const ModbusDeviceConfig& primaryDevice = cfg.modbusDevices[modbusPrimaryIndex];
+    if (primaryDevice.vendor != MODBUS_VENDOR_SENSECAP) {
+      const ModbusDeviceRuntime& primaryRuntime = modbusRuntime[modbusPrimaryIndex];
+      Serial.printf("  Modbus %s: value1=%.6f",
+                    modbusModelLabel(primaryDevice.vendor, primaryDevice.model),
+                    primaryRuntime.value1);
+      if (isfinite(primaryRuntime.value2)) {
+        Serial.printf(" / value2=%.6f", primaryRuntime.value2);
+      } else {
+        Serial.print(" / value2=invalid");
+      }
+      if (isfinite(primaryRuntime.temperatureC)) {
+        Serial.printf(" / temperature=%.2f C", primaryRuntime.temperatureC);
+      }
+      if (isfinite(primaryRuntime.humidityPct)) {
+        Serial.printf(" / humidity=%.2f %%RH", primaryRuntime.humidityPct);
+      }
+      if (isfinite(primaryRuntime.supplyVoltageV)) {
+        Serial.printf(" / supply=%.3f V", primaryRuntime.supplyVoltageV);
+      }
+      Serial.printf(" / status=%s\n", primaryRuntime.complete ? "complete" : "partial");
+    } else {
+      Serial.printf("  Modbus %s: %.2f C / %.2f %%RH / %.2f Pa / %.2f m/s\n",
+                    modbusModelLabel(primaryDevice.vendor, primaryDevice.model),
+                    cached.modbus.airTemperatureC,
+                    cached.modbus.humidityPct,
+                    cached.modbus.pressurePa,
+                    cached.modbus.averageWindSpeedMs);
+    }
   } else if (anyModbusDeviceEnabled()) {
     Serial.printf("  Modbus: %s\n", modbusLastError.c_str());
   }
@@ -2340,6 +2383,11 @@ void apiState() {
   modbusState["enabled"] = cfg.modbusEnabled;
   modbusState["always_on"] = cfg.modbusAlwaysOn;
   modbusState["device_count"] = cfg.modbusDeviceCount;
+  uint8_t enabledModbusDeviceCount = 0;
+  for (uint8_t index = 0; index < cfg.modbusDeviceCount; ++index) {
+    if (cfg.modbusDevices[index].enabled != 0) ++enabledModbusDeviceCount;
+  }
+  modbusState["enabled_device_count"] = enabledModbusDeviceCount;
   modbusState["interface_ready"] = modbusInterfaceReady;
   modbusState["connected"] = sensorPowerEnabled &&
     (cached.modbus.valid || anyRuntimeValid);
@@ -2509,6 +2557,63 @@ void apiState() {
       if (isfinite(runtime.senseCap.pressurePa)) {
         itemData["pressure_pa"] = runtime.senseCap.pressurePa;
       }
+      if (isfinite(runtime.senseCap.lightLux)) {
+        itemData["light_lux"] = runtime.senseCap.lightLux;
+      }
+      if (isfinite(runtime.senseCap.minWindDirectionDeg)) {
+        itemData["min_wind_direction_deg"] = runtime.senseCap.minWindDirectionDeg;
+      }
+      if (isfinite(runtime.senseCap.maxWindDirectionDeg)) {
+        itemData["max_wind_direction_deg"] = runtime.senseCap.maxWindDirectionDeg;
+      }
+      if (isfinite(runtime.senseCap.averageWindDirectionDeg)) {
+        itemData["average_wind_direction_deg"] = runtime.senseCap.averageWindDirectionDeg;
+      }
+      if (isfinite(runtime.senseCap.minWindSpeedMs)) {
+        itemData["min_wind_speed_ms"] = runtime.senseCap.minWindSpeedMs;
+      }
+      if (isfinite(runtime.senseCap.maxWindSpeedMs)) {
+        itemData["max_wind_speed_ms"] = runtime.senseCap.maxWindSpeedMs;
+      }
+      if (isfinite(runtime.senseCap.averageWindSpeedMs)) {
+        itemData["average_wind_speed_ms"] = runtime.senseCap.averageWindSpeedMs;
+      }
+      if (isfinite(runtime.senseCap.accumulatedRainfallMm)) {
+        itemData["accumulated_rainfall_mm"] = runtime.senseCap.accumulatedRainfallMm;
+      }
+      if (isfinite(runtime.senseCap.accumulatedRainfallDurationS)) {
+        itemData["accumulated_rainfall_duration_s"] = runtime.senseCap.accumulatedRainfallDurationS;
+      }
+      if (isfinite(runtime.senseCap.rainIntensityMmH)) {
+        itemData["rain_intensity_mm_h"] = runtime.senseCap.rainIntensityMmH;
+      }
+      if (isfinite(runtime.senseCap.maxRainIntensityMmH)) {
+        itemData["max_rain_intensity_mm_h"] = runtime.senseCap.maxRainIntensityMmH;
+      }
+      if (isfinite(runtime.senseCap.heatingTemperatureC)) {
+        itemData["heating_temperature_c"] = runtime.senseCap.heatingTemperatureC;
+      }
+      if (isfinite(runtime.senseCap.tiltState)) {
+        itemData["tilt_state"] = runtime.senseCap.tiltState;
+      }
+      if (isfinite(runtime.senseCap.pm25UgM3)) {
+        itemData["pm25_ug_m3"] = runtime.senseCap.pm25UgM3;
+      }
+      if (isfinite(runtime.senseCap.pm10UgM3)) {
+        itemData["pm10_ug_m3"] = runtime.senseCap.pm10UgM3;
+      }
+      if (isfinite(runtime.senseCap.co2Ppm)) {
+        itemData["co2_ppm"] = runtime.senseCap.co2Ppm;
+      }
+      if (isfinite(runtime.senseCap.noiseDb)) {
+        itemData["noise_db"] = runtime.senseCap.noiseDb;
+      }
+      if (isfinite(runtime.senseCap.solarRadiationWm2)) {
+        itemData["solar_radiation_wm2"] = runtime.senseCap.solarRadiationWm2;
+      }
+      if (isfinite(runtime.senseCap.sunshineDurationH)) {
+        itemData["sunshine_duration_h"] = runtime.senseCap.sunshineDurationH;
+      }
     } else {
       if (isfinite(runtime.value1)) itemData["value1"] = runtime.value1;
       if (isfinite(runtime.value2)) itemData["value2"] = runtime.value2;
@@ -2536,6 +2641,7 @@ void apiState() {
   modbusConfig["always_on"] = cfg.modbusAlwaysOn;
   modbusConfig["poll_seconds"] = cfg.modbusPollSeconds;
   modbusConfig["device_count"] = cfg.modbusDeviceCount;
+  modbusConfig["enabled_device_count"] = enabledModbusDeviceCount;
   modbusConfig["vendor"] = modbusVendorId(primaryDevice.vendor);
   modbusConfig["model"] = modbusModelId(primaryDevice.vendor, primaryDevice.model);
   modbusConfig["address"] = primaryDevice.address;
@@ -2709,6 +2815,9 @@ void apiSaveConfig() {
         return;
       }
 
+      Serial.printf("[MODBUS] config request: %u device(s)\n",
+                    static_cast<unsigned>(devices.size()));
+
       updated.modbusDeviceCount = static_cast<uint8_t>(devices.size());
       uint8_t senseCapCount = 0;
       uint8_t sisgeoCount = 0;
@@ -2804,8 +2913,10 @@ void apiSaveConfig() {
           if (device.enabled != 0 &&
               updated.modbusDevices[previous].enabled != 0 &&
               device.address == updated.modbusDevices[previous].address) {
-            server.send(400, "text/plain", "Modbus device addresses must be unique");
-            return;
+            Serial.printf("[MODBUS] config warning: duplicate enabled slave address=%u (devices %u and %u)\n",
+                          static_cast<unsigned>(device.address),
+                          static_cast<unsigned>(previous + 1),
+                          static_cast<unsigned>(index + 1));
           }
         }
         updated.modbusDevices[index++] = device;
@@ -2958,7 +3069,18 @@ void apiSaveConfig() {
 
   // AP loop refreshes the sensor cache independently. Keep this response fast
   // so the browser does not lose the connection while saving settings.
-  server.send(200, "text/plain", "saved");
+  uint8_t enabledModbusDeviceCount = 0;
+  for (uint8_t index = 0; index < cfg.modbusDeviceCount; ++index) {
+    if (cfg.modbusDevices[index].enabled != 0) ++enabledModbusDeviceCount;
+  }
+  char saveMessage[64];
+  snprintf(saveMessage, sizeof(saveMessage), "saved devices=%u enabled=%u",
+           static_cast<unsigned>(cfg.modbusDeviceCount),
+           static_cast<unsigned>(enabledModbusDeviceCount));
+  Serial.printf("[MODBUS] config saved: %u device(s), %u enabled\n",
+                static_cast<unsigned>(cfg.modbusDeviceCount),
+                static_cast<unsigned>(enabledModbusDeviceCount));
+  server.send(200, "text/plain", saveMessage);
 }
 
 void apiSensorPower() {
