@@ -16,11 +16,11 @@ The review is based on Eagle schematic files. No Eagle board file (`.brd`), Gerb
 ### Release status for v1.0.1
 
 The switched `3V3_PERIPH` rail and Q3/Q4 gate-driver topology are the PCB
-v1.0.1 candidate. The Kohlbrandbrücke firmware profile drives the shared
-Q2/Q4 gate control from `GPIO34` only, matching the source schematic. The
-source schematic maps `GPIO39` to MAX3485 `DI`. The Kohlbrandbrücke as-built
-the owner confirms the as-built GPIO34-to-R14-to-Q4_G route, no GPIO39 gate
-connection, and GPIO34 switching of both the 24 V and 3V3 branches.
+v1.0.1 candidate. The firmware drives the shared Q2/Q4 gate control from
+`GPIO34` only, matching the source schematic. GPIO39 remains mapped to MAX3485
+`DI`. The project owner confirms that the as-built board routes GPIO34 through
+R14 to `Q4_G`, has no GPIO39 gate connection, and switches both 24 V and 3V3
+branches from GPIO34.
 
 ## 2. Source revisions
 
@@ -494,23 +494,27 @@ No GPIO39 gate resistor or auxiliary control is required for this firmware
 profile. Keep or verify the schematic's GPIO39-to-MAX3485-DI route on the
 as-built board; the PCB files were not supplied for copper-level verification.
 
-## 7. Power and current results from the v1.0.1 test
+## 7. Power and current comparison
 
-These values are measurements or calculations from the project test CSV, not
-guaranteed production limits.
+This section compares the reported Kohlbrandbruecke reading with legacy Leer
+PCB v1.0.0 CSV measurements and calculations. None are guaranteed limits.
 
+- Reported Kohlbrandbruecke reading: PCB v1.0.1 with the current firmware draws
+	approximately 0.31 mA (310 uA) in sleep mode. The measurement date, instrument,
+	and exact operating setup were not provided; treat this as an observation,
+	not a production limit.
 - CSV capture duration: approximately 94.882 s at a 2 ms sample interval.
 - Active measurement/transmission block: approximately 4.196 s.
 - Active current: approximately 92.676 mA average.
 - Active peak: approximately 252.2 mA.
 - Active voltage: approximately 3.518 V average; active power approximately 324.875 mW.
-- Sleep current after clamping negative instrument readings to zero: approximately
-	62 uA average.
-- The 62 uA value is an estimate. The measuring instrument is not sufficiently
-	accurate below approximately 1 mA and shows an analog zero offset/noise floor.
+
+- Legacy Leer PCB v1.0.0 CSV sleep current after clamping negative instrument readings
+	to zero: approximately 62 uA average. This is an estimate; the instrument is
+	not sufficiently accurate below approximately 1 mA and has analog zero offset/noise.
 - Heltec's stated sleep value is approximately 40 uA under the relevant ideal
-	conditions; use 40 uA to 62 uA as the realistic design range until a
-	calibrated low-current measurement is available.
+	conditions; this is a reference value, not the measured Kohlbrandbruecke
+	system current.
 - Long-range planning scenario: active duration 8-10 s at approximately 62 mA
 	average. This scenario must be measured on the final radio configuration.
 - USB-connected sleep can be around 2 mA and is not representative of battery-only sleep.

@@ -83,6 +83,9 @@
 #include "LoRaWan_APP.h"
 #include "radio/radio.h"
 
+extern int revrssi;
+extern int revsnr;
+
 #if defined(USE_NONE_PA) || defined(USE_GC1109_PA)
 #error "Select Tools > LoRa FEM Type > USE_KCT8103L_PA for this firmware"
 #endif
@@ -261,15 +264,72 @@ bool sensorPowerEnabled = false;
 bool sensorInterfacesReady = false;
 bool fieldMeasurementPending = false;
 
+enum class ApLoraTestState : uint8_t {
+  Idle,
+  Queued,
+  Initializing,
+  Joining,
+  Sending,
+  AwaitingResult,
+  Acknowledged,
+  DownlinkReceived,
+  SentWithoutAck,
+  JoinTimeout
+};
+
+ApLoraTestState apLoraTestState = ApLoraTestState::Idle;
+bool apLoraRadioInitialized = false;
+bool apLoraNetworkJoined = false;
+bool apLoraTestAckReceived = false;
+bool apLoraTestDownlinkReceived = false;
+bool apLoraDownlinkMetricsValid = false;
+int16_t apLoraDownlinkRssiDbm = 0;
+int8_t apLoraDownlinkSnrDb = 0;
+uint32_t apLoraDownlinkReceivedAtMs = 0;
+uint32_t apLoraTestStartedAtMs = 0;
+uint32_t apLoraTestSentAtMs = 0;
+uint32_t apLoraJoinDeadlineMs = 0;
+bool apLoraPreviousTxConfirmed = false;
+bool apLoraTxModeChanged = false;
+
 void powerExternalSensorsOn();
 void powerExternalSensorsOff();
 void setExternalSensorMosfet(bool enabled);
 void prepareLoRaFemForSensorAccess();
+bool apLoraTestActive();
+const char* apLoraTestStatusName();
+void processApLoraTest();
+void apiSendLoRaTest();
+static void prepareTxFrame(uint8_t port);
 
 // ============================== Helpers =============================
 static inline uint32_t intervalMs() {
   const uint32_t minutes = constrain(cfg.intervalMinutes, 1UL, 1440UL);
   return minutes * 60000UL;
+}
+
+bool apLoraTestActive() {
+  return apLoraTestState == ApLoraTestState::Queued ||
+         apLoraTestState == ApLoraTestState::Initializing ||
+         apLoraTestState == ApLoraTestState::Joining ||
+         apLoraTestState == ApLoraTestState::Sending ||
+         apLoraTestState == ApLoraTestState::AwaitingResult;
+}
+
+const char* apLoraTestStatusName() {
+  switch (apLoraTestState) {
+    case ApLoraTestState::Idle: return "idle";
+    case ApLoraTestState::Queued: return "queued";
+    case ApLoraTestState::Initializing: return "initializing";
+    case ApLoraTestState::Joining: return "joining";
+    case ApLoraTestState::Sending: return "sending";
+    case ApLoraTestState::AwaitingResult: return "awaiting_result";
+    case ApLoraTestState::Acknowledged: return "acknowledged";
+    case ApLoraTestState::DownlinkReceived: return "downlink_received";
+    case ApLoraTestState::SentWithoutAck: return "sent_without_ack";
+    case ApLoraTestState::JoinTimeout: return "join_timeout";
+  }
+  return "idle";
 }
 
 String bytesToHex(const uint8_t* bytes, size_t count) {
@@ -992,10 +1052,21 @@ void apiState() {
   doc["mode_pin_high"] = apMode;
   doc["sensor_power_enabled"] = sensorPowerEnabled;
   doc["sensor_power_pin"] = PIN_SENSOR_MOSFET;
+  doc["lora_test_status"] = apLoraTestStatusName();
+  doc["lora_test_active"] = apLoraTestActive();
+  doc["lora_test_ack"] = apLoraTestAckReceived;
+  doc["gateway_downlink_valid"] = apLoraDownlinkMetricsValid;
+  if (apLoraDownlinkMetricsValid) {
+    doc["gateway_downlink_rssi_dbm"] = apLoraDownlinkRssiDbm;
+    doc["gateway_downlink_snr_db"] = apLoraDownlinkSnrDb;
+    doc["gateway_downlink_age_s"] =
+      (millis() - apLoraDownlinkReceivedAtMs) / 1000UL;
+  }
   doc["ip"] = apMode ? WiFi.softAPIP().toString() : String("-");
   doc["uptime_s"] = millis() / 1000UL;
   doc["heap_free"] = ESP.getFreeHeap();
   doc["measurement_age_s"] = cached.measuredAtMs > 0 ? (millis() - cached.measuredAtMs) / 1000UL : 0;
+  doc["measurement_id_ms"] = cached.measuredAtMs;
 
   doc["temperature_valid"] = cached.temperatureValid;
   if (cached.temperatureValid) doc["temperature_c"] = cached.temperatureC;
@@ -1056,15 +1127,29 @@ void apiChipDevEui() {
 }
 
 void apiUseChipDevEui() {
+  if (apLoraTestActive()) {
+    server.send(409, "text/plain", "LoRa test is active");
+    return;
+  }
+
   uint8_t chip[8];
   chipDevEui(chip);
   memcpy(cfg.devEui, chip, sizeof(cfg.devEui));
   saveConfig();
   copyConfigToLoRaGlobals();
+  apLoraRadioInitialized = false;
+  apLoraNetworkJoined = false;
+  apLoraTestAckReceived = false;
+  apLoraTestState = ApLoraTestState::Idle;
   server.send(200, "text/plain", "saved");
 }
 
 void apiSaveConfig() {
+  if (apLoraTestActive()) {
+    server.send(409, "text/plain", "LoRa test is active");
+    return;
+  }
+
   if (!server.hasArg("plain")) {
     server.send(400, "text/plain", "missing body");
     return;
@@ -1161,6 +1246,10 @@ void apiSaveConfig() {
   cfg = updated;
   saveConfig();
   copyConfigToLoRaGlobals();
+  apLoraRadioInitialized = false;
+  apLoraNetworkJoined = false;
+  apLoraTestAckReceived = false;
+  apLoraTestState = ApLoraTestState::Idle;
   if (cached.batteryValid) {
     cached.batteryPercent = batteryPercentFromMillivolts(cached.batteryMillivolts);
   }
@@ -1171,7 +1260,32 @@ void apiSaveConfig() {
   server.send(200, "text/plain", "saved");
 }
 
+void apiSendLoRaTest() {
+  if (!apMode) {
+    server.send(403, "text/plain", "AP mode required");
+    return;
+  }
+  if (apLoraTestActive()) {
+    server.send(409, "text/plain", "LoRa test is already active");
+    return;
+  }
+  apLoraTestAckReceived = false;
+  apLoraTestDownlinkReceived = false;
+  apLoraTestStartedAtMs = millis();
+  apLoraTestSentAtMs = 0;
+  apLoraTestState = ApLoraTestState::Queued;
+
+  JsonDocument response;
+  response["status"] = apLoraTestStatusName();
+  sendJson(response, 202);
+}
+
 void apiSensorPower() {
+  if (apLoraTestActive()) {
+    server.send(409, "text/plain", "LoRa test is active");
+    return;
+  }
+
   if (!server.hasArg("plain")) {
     server.send(400, "text/plain", "missing body");
     return;
@@ -1237,6 +1351,7 @@ void attachWebRoutes() {
   server.on("/api/state", HTTP_GET, apiState);
   server.on("/api/config", HTTP_POST, apiSaveConfig);
   server.on("/api/sensor-power", HTTP_POST, apiSensorPower);
+  server.on("/api/lora/test", HTTP_POST, apiSendLoRaTest);
   server.on("/api/deveui", HTTP_GET, apiChipDevEui);
   server.on("/api/deveui/use-chip", HTTP_POST, apiUseChipDevEui);
   server.on("/api/reboot", HTTP_POST, apiReboot);
@@ -1518,19 +1633,151 @@ void setup() {
   }
 }
 
+void finishApLoraTest(ApLoraTestState result) {
+  if (apLoraTxModeChanged) {
+    isTxConfirmed = apLoraPreviousTxConfirmed;
+    apLoraTxModeChanged = false;
+  }
+
+  deviceState = DEVICE_STATE_SLEEP;
+  disableAdsInterface();
+  prepareLoRaFemForSensorAccess();
+  adsAvailable = false;
+  dsAvailable = false;
+  inaAvailable = false;
+  sensorInterfacesReady = false;
+  apLoraTestState = result;
+  Serial.printf("[LORA TEST] result=%s elapsed=%lu ms\n",
+                apLoraTestStatusName(),
+                static_cast<unsigned long>(millis() - apLoraTestStartedAtMs));
+}
+
+void processApLoraTest() {
+  if (!apLoraTestActive()) return;
+
+  if (apLoraRadioInitialized) {
+    Mcu.timerhandler();
+    Radio.IrqProcess();
+  }
+
+  if (apLoraTestState == ApLoraTestState::Queued) {
+    apLoraTestState = ApLoraTestState::Initializing;
+    if (adsAvailable) adsPowerDown();
+    disableAdsInterface();
+    adsAvailable = false;
+    dsAvailable = false;
+    inaAvailable = false;
+    sensorInterfacesReady = false;
+    releaseLoRaFemHolds();
+
+    if (apLoraRadioInitialized && apLoraNetworkJoined) {
+      deviceState = DEVICE_STATE_SEND;
+      apLoraTestState = ApLoraTestState::Sending;
+    } else {
+      LoRaWAN.init(loraWanClass, loraWanRegion);
+      LoRaWAN.setDefaultDR(cfg.adr ? 3 : cfg.dataRate);
+      apLoraRadioInitialized = true;
+      apLoraNetworkJoined = false;
+      apLoraJoinDeadlineMs = apLoraTestStartedAtMs + 110000UL;
+      apLoraTestState = ApLoraTestState::Joining;
+    }
+  }
+
+  if (apLoraTestState == ApLoraTestState::Joining) {
+    if (deviceState == DEVICE_STATE_JOIN) {
+      LoRaWAN.join();
+    } else if (deviceState == DEVICE_STATE_SEND) {
+      apLoraNetworkJoined = true;
+      apLoraTestState = ApLoraTestState::Sending;
+    } else if (deviceState == DEVICE_STATE_CYCLE) {
+      LoRaWAN.cycle(30000UL);
+      deviceState = DEVICE_STATE_SLEEP;
+    }
+
+    if (apLoraTestState == ApLoraTestState::Joining &&
+        static_cast<int32_t>(millis() - apLoraJoinDeadlineMs) >= 0) {
+      finishApLoraTest(ApLoraTestState::JoinTimeout);
+      return;
+    }
+  }
+
+  if (apLoraTestState == ApLoraTestState::Sending &&
+      deviceState == DEVICE_STATE_SEND) {
+    prepareTxFrame(appPort);
+    apLoraPreviousTxConfirmed = isTxConfirmed;
+    apLoraTxModeChanged = true;
+    isTxConfirmed = true;
+    apLoraTestAckReceived = false;
+    apLoraTestDownlinkReceived = false;
+    apLoraTestSentAtMs = millis();
+    apLoraTestState = ApLoraTestState::AwaitingResult;
+    LoRaWAN.send();
+    deviceState = DEVICE_STATE_CYCLE;
+    Serial.println("[LORA TEST] confirmed V5 uplink submitted");
+  }
+
+  if (apLoraTestState == ApLoraTestState::AwaitingResult) {
+    if (deviceState == DEVICE_STATE_CYCLE || deviceState == DEVICE_STATE_SEND) {
+      deviceState = DEVICE_STATE_SLEEP;
+    }
+
+    if (apLoraTestAckReceived) {
+      finishApLoraTest(ApLoraTestState::Acknowledged);
+    } else if (apLoraTestDownlinkReceived) {
+      finishApLoraTest(ApLoraTestState::DownlinkReceived);
+    } else if (millis() - apLoraTestSentAtMs >= 8000UL) {
+      finishApLoraTest(ApLoraTestState::SentWithoutAck);
+    }
+  }
+}
+
+extern "C" void downLinkAckHandle() {
+  apLoraDownlinkRssiDbm = static_cast<int16_t>(revrssi);
+  apLoraDownlinkSnrDb = static_cast<int8_t>(revsnr);
+  apLoraDownlinkReceivedAtMs = millis();
+  apLoraDownlinkMetricsValid = true;
+
+  if (apLoraTestState == ApLoraTestState::AwaitingResult) {
+    apLoraTestAckReceived = true;
+    Serial.printf("[LORA TEST] MAC ACK received RSSI=%d dBm SNR=%d dB\n",
+                  apLoraDownlinkRssiDbm,
+                  apLoraDownlinkSnrDb);
+  }
+}
+
+extern "C" void downLinkDataHandle(McpsIndication_t* indication) {
+  if (indication == nullptr || indication->Status != LORAMAC_EVENT_INFO_STATUS_OK) {
+    return;
+  }
+
+  apLoraDownlinkRssiDbm = indication->Rssi;
+  apLoraDownlinkSnrDb = indication->Snr;
+  apLoraDownlinkReceivedAtMs = millis();
+  apLoraDownlinkMetricsValid = true;
+  if (apLoraTestState == ApLoraTestState::AwaitingResult) {
+    apLoraTestDownlinkReceived = true;
+    Serial.println("[LORA TEST] application downlink received");
+  }
+  Serial.printf("[LORA] downlink RSSI=%d dBm SNR=%d dB port=%u\n",
+                apLoraDownlinkRssiDbm,
+                apLoraDownlinkSnrDb,
+                indication->Port);
+}
+
 // ================================ Loop ==============================
 void loop() {
   if (apMode) {
     if (apDnsReady) apDnsServer.processNextRequest();
     server.handleClient();
+    processApLoraTest();
 
     static uint32_t lastSensorRead = 0;
     static uint32_t lastPageChange = 0;
     static bool sensorPage = false;
 
-    if (millis() - lastSensorRead >= 2000) {
+    if (millis() - lastSensorRead >= 1000) {
       lastSensorRead = millis();
-      if (sensorPowerEnabled) readAllSensors();
+      if (sensorPowerEnabled && !apLoraTestActive()) readAllSensors();
     }
 
     if (millis() - lastPageChange >= 5000) {

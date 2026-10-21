@@ -14,6 +14,7 @@ html[data-theme=dark]{--page:#0e1b22;--surface:#172a33;--field:#203842;--ink:#ed
 </style>
 <style>
 .chart-value{color:var(--primary);font-size:13px;font-weight:500;font-variant-numeric:tabular-nums;text-align:right;overflow-wrap:anywhere}
+.lora-test-section{margin-top:18px;padding-top:14px;border-top:1px solid var(--line)}.lora-test-heading{margin:0 0 8px;color:var(--primary);font-size:15px;font-weight:500}.lora-test-metrics{grid-template-columns:1fr}
 </style>
 </head>
 <body>
@@ -90,9 +91,19 @@ html[data-theme=dark]{--page:#0e1b22;--surface:#172a33;--field:#203842;--ink:#ed
       <div class="calibration-grid"><div class="field"><label>Point 0</label><div class="buttons"><input id="raw0" type="number"><input id="mm0" type="number" step="0.001"></div></div><button class="btn" id="capture0Btn" type="button">Use current RAW</button><div class="field"><label>Point 1</label><div class="buttons"><input id="raw1" type="number"><input id="mm1" type="number" step="0.001"></div></div><button class="btn" id="capture1Btn" type="button">Use current RAW</button></div>
     </article>
     <article class="subpanel">
-      <div class="panel-heading"><div class="panel-title"><span class="section-icon">&#9881;</span><h2 id="sensorPowerHeading">Sensor power</h2></div></div>
+      <div class="panel-heading"><div class="panel-title"><span class="section-icon">&#9881;</span><h2 id="sensorPowerHeading">Sensors</h2></div></div>
       <div class="metric"><span id="sensorPowerLabel">External sensor power (MOSFET GPIO34)</span><b id="sensorPowerState">—</b></div>
       <button class="btn" id="sensorPowerBtn" type="button" style="width:100%;margin-top:16px">Turn sensor power on</button>
+      <div class="lora-test-section">
+        <h3 class="lora-test-heading" id="loraTestTitle">LoRaWAN test</h3>
+        <div class="metrics lora-test-metrics">
+        <div class="metric"><span id="loraTestStatusLabel">Test status</span><b id="loraTestStatus">—</b></div>
+        <div class="metric"><span id="gatewayRssiLabel">Last gateway downlink RSSI</span><b id="gatewayRssi">—</b></div>
+        <div class="metric"><span id="gatewaySnrLabel">Last gateway downlink SNR</span><b id="gatewaySnr">—</b></div>
+        <div class="metric"><span id="gatewayDownlinkAgeLabel">Downlink age</span><b id="gatewayDownlinkAge">—</b></div>
+        </div>
+        <button class="btn" id="loraTestBtn" type="button" style="width:100%;margin-top:12px">Send cached V5 test uplink</button>
+      </div>
     </article>
   </section>
 
@@ -119,7 +130,7 @@ function drawChart(id,points,unit,decimals){const canvas=$(id);if(!canvas)return
 function drawCharts(){drawChart('temperatureChart',chartHistory.temperature,'°C',1);drawChart('positionChart',chartHistory.position,'mm',4)}
 function applyLang(){const m={pageLabel:'live_data',liveTitle:'live_data',chartsTitle:'trends',temperatureChartTitle:'temperature_chart',positionChartTitle:'position_chart',drawerLive:'live_data',drawerLora:'lora_simple',drawerDiagnostics:'diagnostics',drawerCalibration:'calibration',sensorPowerHeading:'sensors',subtitle:'simple_subtitle',temperatureLabel:'temperature',temperatureHint:'temperature_hint',positionLabel:'position',positionHint:'position_hint',batteryLabel:'battery',loraTitle:'lora_simple',intervalLabel:'interval_simple',dataRateLabel:'range_speed',summaryTitle:'status',radioModeLabel:'operating_mode',lastUpdateLabel:'last_measurement',batteryStateLabel:'battery_state',diagnosticsTitle:'diagnostics',lowPowerLabel:'low_power',sensorPowerLabel:'sensor_power',calibrationTitle:'calibration',calibrationHelp:'calibration_help',saveBtn:'save_all',rebootBtn:'reboot'};Object.entries(m).forEach(([i,k])=>set(i,tr(k)));set('langBtn',lang.toUpperCase());document.title=tr('title');updateSensorPowerControl();drawCharts()}
 function applyLang(){const m={pageLabel:'live_data',liveTitle:'live_data',chartsTitle:'trends',temperatureChartTitle:'temperature_chart',positionChartTitle:'position_chart',drawerLive:'live_data',drawerLora:'lora_simple',drawerCharts:'charts',drawerDiagnostics:'diagnostics',drawerCalibration:'calibration',sensorPowerHeading:'sensors',subtitle:'simple_subtitle',temperatureLabel:'temperature',temperatureHint:'temperature_hint',positionLabel:'position',positionHint:'position_hint',batteryLabel:'battery',loraTitle:'lora_simple',intervalLabel:'interval_simple',dataRateLabel:'range_speed',summaryTitle:'status',radioModeLabel:'operating_mode',lastUpdateLabel:'last_measurement',batteryStateLabel:'battery_state',diagnosticsTitle:'diagnostics',batteryTypeLabel:'battery_type',batteryTypeLipo:'battery_type_lipo',batteryTypeSaft:'battery_type_saft',lowPowerLabel:'low_power',sensorPowerLabel:'sensor_power',calibrationTitle:'calibration',calibrationHelp:'calibration_help',saveBtn:'save_all',rebootBtn:'reboot'};Object.entries(m).forEach(([i,k])=>set(i,tr(k)));set('langBtn',lang.toUpperCase());document.title=tr('title');updateSensorPowerControl();drawCharts()}
-function updateSensorPowerControl(){const b=$('sensorPowerBtn');if(!b)return;const on=state.sensor_power_enabled===true;set('sensorPowerState',on?tr('sensor_power_on'):tr('sensor_power_off'));b.textContent=on?tr('disable_sensor_power'):tr('enable_sensor_power');b.disabled=state.mode!=='AP';b.setAttribute('aria-pressed',String(on))}
+function updateSensorPowerControl(){const b=$('sensorPowerBtn');if(!b)return;const on=state.sensor_power_enabled===true;set('sensorPowerState',on?tr('sensor_power_on'):tr('sensor_power_off'));b.textContent=on?tr('disable_sensor_power'):tr('enable_sensor_power');b.disabled=state.mode!=='AP'||state.lora_test_active===true;b.setAttribute('aria-pressed',String(on))}
 function batteryText(p){if(p<15)return tr('battery_critical');if(p<30)return tr('battery_low');if(p<60)return tr('battery_medium');return tr('battery_good')}
 function render(){set('temperature',state.temperature_valid?fmt(state.temperature_c,2,'°C'):'—');set('position',state.weg_valid?fmt(state.position_mm,3,'mm'):'—');const pos=Math.max(0,Math.min(100,(Number(state.position_mm)||0)*10));$('positionBar').style.width=pos+'%';const bp=state.battery_valid?Number(state.battery_percent):null;$('batteryGauge').style.setProperty('--p',bp??0);set('batteryPercent',bp!=null?Math.round(bp)+'%':'—');set('batteryVoltage',state.battery_valid?fmt(state.battery_v,3,'V'):'—');set('batteryState',bp!=null?batteryText(bp):'—');set('mode',state.mode==='AP'?tr('mode_ap'):tr('mode_field'));set('age',state.measurement_age_s!=null?Math.round(state.measurement_age_s)+' s':'—');set('raw',state.weg_raw??'—');set('wegVoltage',state.weg_valid?fmt(state.weg_voltage_v,6,'V'):'—');const connected=!!state.ina_connected;set('inaStatus',connected?tr('connected'):tr('not_connected'));$('inaDot').classList.toggle('ok',connected);set('inaBus',state.ina_valid?fmt(state.ina_bus_v,4,'V'):'—');set('inaCurrent',state.ina_valid?fmt(state.ina_current_ma,1,'mA'):'—');set('inaPower',state.ina_valid?fmt(state.ina_power_w,4,'W'):'—');set('ip',state.ip||'—');set('firmware',state.fw||'—');set('drawerFirmware',state.fw||'—');set('heap',(state.heap_free??'—')+' B');const c=state.cfg||{};input('interval',c.minutes);const dr=$('dr');if(!dr.dataset.dirty)dr.value=c.adr?'auto':String(c.dr??3);input('devEui',c.devEui_msb);input('joinEui',c.appEui_msb);input('appKey',c.appKey_msb);input('raw0',c.weg_cal?.raw0);input('mm0',c.weg_cal?.mm0);input('raw1',c.weg_cal?.raw1);input('mm1',c.weg_cal?.mm1);if(!$('lowPower').dataset.dirty)$('lowPower').checked=c.low_power!==false}
 function render(){const c=state.cfg||{};const calibration=c.weg_cal||{};set('temperature',state.temperature_valid?fmt(state.temperature_c,1,'°C'):'—');set('position',state.weg_valid?fmt(state.position_mm,3,'mm'):'—');const currentPosition=Number(state.position_mm);const calibration0=Number(calibration.mm0);const calibration1=Number(calibration.mm1);let positionPercent=0;if(state.weg_valid&&Number.isFinite(currentPosition)&&Number.isFinite(calibration0)&&Number.isFinite(calibration1)&&calibration1!==calibration0){const lower=Math.min(calibration0,calibration1);const upper=Math.max(calibration0,calibration1);positionPercent=((currentPosition-lower)/(upper-lower))*100}$('positionBar').style.width=Math.max(0,Math.min(100,positionPercent))+'%';const bp=state.battery_valid?Number(state.battery_percent):null;$('batteryGauge').style.setProperty('--p',bp??0);set('batteryPercent',bp!=null?Math.round(bp)+'%':'—');set('batteryVoltage',state.battery_valid?fmt(state.battery_v,3,'V'):'—');set('batteryState',bp!=null?batteryText(bp):'—');set('mode',state.mode==='AP'?tr('mode_ap'):tr('mode_field'));set('age',state.measurement_age_s!=null?Math.round(state.measurement_age_s)+' s':'—');set('raw',state.weg_raw??'—');set('wegVoltage',state.weg_valid?fmt(state.weg_voltage_v,6,'V'):'—');const connected=!!state.ina_connected;set('inaStatus',connected?tr('connected'):tr('not_connected'));$('inaDot').classList.toggle('ok',connected);set('inaBus',state.ina_valid?fmt(state.ina_bus_v,4,'V'):'—');set('inaCurrent',state.ina_valid?fmt(state.ina_current_ma,1,'mA'):'—');set('inaPower',state.ina_valid?fmt(state.ina_power_w,4,'W'):'—');set('ip',state.ip||'—');set('firmware',state.fw||'—');set('drawerFirmware',state.fw||'—');set('heap',(state.heap_free??'—')+' B');const batteryType=$('batteryType');if(batteryType&&!batteryType.dataset.dirty)batteryType.value=c.battery_type||'lipo-18650';input('interval',c.minutes);const dr=$('dr');if(!dr.dataset.dirty)dr.value=c.adr?'auto':String(c.dr??3);input('devEui',c.devEui_msb);input('joinEui',c.appEui_msb);input('appKey',c.appKey_msb);input('raw0',calibration.raw0);input('mm0',calibration.mm0);input('raw1',calibration.raw1);input('mm1',calibration.mm1);if(!$('lowPower').dataset.dirty)$('lowPower').checked=c.low_power!==false}
@@ -138,6 +149,107 @@ function syncDocumentLanguage(){document.documentElement.lang=lang;document.docu
 </script>
 <script>
 (function(){const baseRender=render;render=function(){baseRender();const control=$('autoRedirect');if(control&&!control.dataset.dirty)control.checked=(state.cfg||{}).auto_redirect===true};const baseRequest=req;req=async function(url,options){if(url==='/api/config'&&options?.body&&$('autoRedirect')){try{const payload=JSON.parse(options.body);payload.auto_redirect=$('autoRedirect').checked;options={...options,body:JSON.stringify(payload)}}catch(_){}}return baseRequest(url,options)};const baseApplyLang=applyLang;applyLang=function(){baseApplyLang();set('autoRedirectLabel',tr('auto_redirect'))};applyLang()})();
+</script>
+<script>
+(function () {
+  const statusKeys = {
+    idle: 'lora_test_idle',
+    queued: 'lora_test_queued',
+    initializing: 'lora_test_initializing',
+    joining: 'lora_test_joining',
+    sending: 'lora_test_sending',
+    awaiting_result: 'lora_test_awaiting_result',
+    acknowledged: 'lora_test_acknowledged',
+    downlink_received: 'lora_test_downlink_received',
+    sent_without_ack: 'lora_test_sent_without_ack',
+    join_timeout: 'lora_test_join_timeout'
+  };
+  let previousLoraTestStatus = 'idle';
+  const baseRecordChartPoint = recordChartPoint;
+  let lastChartMeasurement = 0;
+  recordChartPoint = function () {
+    const measurement = Number(state.measurement_id_ms);
+    if (!measurement || measurement === lastChartMeasurement) return;
+    lastChartMeasurement = measurement;
+    baseRecordChartPoint();
+  };
+  const baseRender = render;
+  render = function () {
+    baseRender();
+    const currentStatus = state.lora_test_status || 'idle';
+    const key = statusKeys[currentStatus] || 'lora_test_idle';
+    if (currentStatus !== previousLoraTestStatus) {
+      if (currentStatus !== 'idle') set('message', tr(key));
+      previousLoraTestStatus = currentStatus;
+    }
+    set('loraTestStatus', tr(key));
+    set('gatewayRssi', state.gateway_downlink_valid === true
+      ? fmt(state.gateway_downlink_rssi_dbm, 0, 'dBm')
+      : tr('not_available'));
+    set('gatewaySnr', state.gateway_downlink_valid === true
+      ? fmt(state.gateway_downlink_snr_db, 0, 'dB')
+      : tr('not_available'));
+    set('gatewayDownlinkAge', state.gateway_downlink_valid === true
+      ? `${Math.round(Number(state.gateway_downlink_age_s))} s`
+      : tr('not_available'));
+
+    const locked = state.mode !== 'AP' || state.lora_test_active === true;
+    ['loraTestBtn', 'sensorPowerBtn', 'saveBtn', 'useChipBtn'].forEach(id => {
+      const button = $(id);
+      if (button) button.disabled = locked;
+    });
+  };
+
+  const baseApplyLang = applyLang;
+  applyLang = function () {
+    baseApplyLang();
+    set('loraTestTitle', tr('lora_test_title'));
+    set('loraTestStatusLabel', tr('lora_test_status_label'));
+    set('gatewayRssiLabel', tr('gateway_downlink_rssi'));
+    set('gatewaySnrLabel', tr('gateway_downlink_snr'));
+    set('gatewayDownlinkAgeLabel', tr('gateway_downlink_age'));
+    set('loraTestBtn', tr('lora_test_send'));
+  };
+
+  const testButton = $('loraTestBtn');
+  if (testButton) {
+    testButton.onclick = async () => {
+      try {
+        await req('/api/lora/test', { method: 'POST' });
+        set('message', tr('lora_test_queued'));
+        await load();
+      } catch (error) {
+        set('message', error.message);
+      }
+    };
+  }
+
+  let refreshPending = false;
+  let lastRefreshAtMs = Date.now();
+  setInterval(async () => {
+    if (document.hidden || refreshPending) return;
+    const now = Date.now();
+    const refreshIntervalMs = 1000;
+    if (now - lastRefreshAtMs < refreshIntervalMs) return;
+    lastRefreshAtMs = now;
+    refreshPending = true;
+    try {
+      await load();
+    } finally {
+      refreshPending = false;
+    }
+  }, 1000);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden || refreshPending) return;
+    refreshPending = true;
+    lastRefreshAtMs = Date.now();
+    load().finally(() => {
+      refreshPending = false;
+    });
+  });
+
+  applyLang();
+})();
 </script>
 </body>
 </html>
