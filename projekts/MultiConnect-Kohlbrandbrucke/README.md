@@ -84,10 +84,10 @@ draws approximately `0.31 mA` (`310 uA`) in sleep mode. The measurement date,
 instrument, and exact operating setup were not provided; treat this as an
 observed value, not a production limit.
 
-The older Leer PCB v1.0.0 sleep reading is approximately `62 uA` in the legacy
-CSV. PCB v1.0.0 has an always-on 3V3 rail and no switched `3V3_PERIPH` rail,
-unlike the v1.0.1 candidate. These readings come from different hardware and
-undocumented test setups, so they are not a direct firmware-only comparison.
+The Leer PCB v1.0.0 baseline had an always-on 3V3 rail and no switched
+`3V3_PERIPH` rail, unlike the v1.0.1 candidate. The readings come from
+different hardware and undocumented test setups, so they are not a direct
+firmware-only comparison.
 
 The workbook `Laufzeitprognose_MultiConnect_Leer_v1.0.1.xlsx` uses the CSV
 measurement from 2026-09-11 as its active profile. These are inherited Leer
@@ -96,8 +96,9 @@ reference measurements, not validation data for Kohlbrandbruecke:
 - measured active block: approximately `4.196 s` at `92.676 mA` average;
 - measured short peak: approximately `252.2 mA`;
 - measured active voltage: approximately `3.518 V`;
-- legacy Leer PCB v1.0.0 sleep value after clamping negative readings to zero: approximately
-	`62 uA`, with limited accuracy below the measuring instrument's useful range;
+- legacy Leer PCB v1.0.0 sleep value after clamping negative readings to zero:
+	approximately `62 uA`, with limited accuracy below the measuring instrument's
+	useful range;
 - Heltec reference value: `40 uA` sleep current under ideal conditions.
 
 For the longer-range scenario, the workbook also supports an active duration
