@@ -60,6 +60,13 @@ RS485 is intentionally unused by this profile. GPIO39, GPIO38, and GPIO40
 retain their schematic MAX3485 assignments, but no RS485 communication is
 implemented in firmware.
 
+## Messwertmittelung
+
+- Wegsensor (ADS1220): ein erster Messwert wird verworfen; der Mittelwert wird aus 10 Einzelmessungen gebildet.
+- Batteriespannung: die erste ADC-Messung nach Aktivierung des Teilers wird verworfen; danach werden 24 Messungen gemittelt.
+- DS18B20: einzelne 10-Bit-Konversion, keine Mittelung; Wiederholung nur bei ungültigem Messwert.
+- INA226: Mittelung auf 1 Sample eingestellt; je Aktualisierung wird ein Bus- und ein Shuntwert gelesen.
+
 ## AP LoRaWAN test
 
 In Expert diagnostics, `Send cached V5 test uplink` sends the current cached
