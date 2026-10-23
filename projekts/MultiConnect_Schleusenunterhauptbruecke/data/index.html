@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="de" translate="no">
+<html lang="de" translate="no" data-view="user">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -10,50 +10,60 @@
 html[data-theme=dark]{--page:#0e1c23;--surface:#172a33;--field:#203842;--ink:#eaf3f6;--muted:#a2b5bd;--line:#344a54;--primary:#9bdced;--accent:#62c5df;--ok:#75d6a5;--bad:#ff9999;--shadow:0 1px 4px rgba(0,0,0,.25)}
 *{box-sizing:border-box}body{margin:0;background:var(--page);color:var(--ink);font:14px/1.45 "HCo Gotham Rounded",Arial,Helvetica,sans-serif}button,input,select{font:inherit}button{cursor:pointer}.topbar{position:sticky;z-index:5;top:0;display:flex;align-items:center;gap:16px;min-height:60px;padding:8px max(18px,calc((100% - 1120px)/2));background:var(--surface);border-bottom:1px solid var(--line)}.brand{display:flex;align-items:center;gap:12px;min-width:0;color:var(--primary);font-size:17px;font-weight:600}.brand img{width:110px;height:34px;object-fit:contain}.spacer{flex:1}.top-actions{display:flex;align-items:center;gap:8px}.top-actions select,.icon-btn{height:36px;border:1px solid var(--line);border-radius:4px;background:var(--field);color:var(--ink)}.top-actions select{padding:0 8px}.icon-btn{width:38px;padding:0;font-size:18px}.wrap{width:min(1120px,calc(100% - 28px));margin:auto;padding:18px 0 36px}.status-line{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 14px;color:var(--muted)}.status-line strong{color:var(--primary);font-weight:600}.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--muted)}.dot.ok{background:var(--ok)}.dot.bad{background:var(--bad)}.section{margin-top:14px;padding:16px 0;border-top:1px solid var(--line)}.section:first-of-type{border-top:0}.section-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 12px}.section h2{margin:0;color:var(--primary);font-size:18px;font-weight:600}.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.metric{min-width:0;padding:12px;background:var(--surface);border:1px solid var(--line);border-radius:4px}.metric span{display:block;color:var(--muted);font-size:12px}.metric strong{display:block;margin-top:4px;color:var(--primary);font-size:21px;font-weight:600;overflow-wrap:anywhere}.metric small{display:block;margin-top:3px;color:var(--muted)}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.field{min-width:0}.field label{display:block;margin-bottom:4px;color:var(--muted);font-size:12px}.field input,.field select{width:100%;min-height:38px;padding:7px 9px;border:1px solid var(--line);border-radius:4px;background:var(--field);color:var(--ink)}.wide{grid-column:1/-1}.checks{display:flex;gap:20px;flex-wrap:wrap;margin-top:12px}.check{display:flex;align-items:center;gap:8px;color:var(--ink)}.check input{width:17px;height:17px;accent-color:var(--accent)}.buttons{display:flex;gap:9px;flex-wrap:wrap;margin-top:14px}.btn{min-height:38px;padding:7px 13px;border:1px solid var(--line);border-radius:4px;background:var(--surface);color:var(--primary);font-weight:600}.btn.primary{border-color:var(--primary);background:var(--primary);color:#fff}.btn:disabled{opacity:.55;cursor:not-allowed}.help,.muted{color:var(--muted);font-size:12px}.canvas{display:block;width:100%;height:190px;margin-top:8px;border:1px solid var(--line);border-radius:4px;background:var(--surface)}.message{min-height:22px;margin-top:8px;color:var(--primary)}.footer{padding:20px 0 0;border-top:1px solid var(--line);color:var(--muted);font-size:12px}
 @media(max-width:720px){.topbar{gap:8px;padding:8px 12px}.brand{font-size:14px}.brand img{width:74px}.grid{grid-template-columns:1fr}.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.wrap{width:calc(100% - 22px)}}
+.dot.warn{background:var(--warn,#c38b20)}.status-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border:1px solid var(--line);border-radius:4px;color:var(--ink);white-space:nowrap}.settings-columns{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:18px}.settings-column{min-width:0;padding-right:14px;border-right:1px solid var(--line)}.settings-column:last-child{padding-right:0;border-right:0}.settings-column h3{margin:0 0 12px;color:var(--primary);font-size:15px;font-weight:600}.settings-column .form-grid{grid-template-columns:minmax(0,1fr)}.connection-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-top:12px}.connection-actions .btn{min-width:0;padding:7px 8px}.input-action{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px}.input-action .btn{min-width:0;padding:7px 8px}.payload{margin:0;padding:12px;max-height:340px;overflow:auto;border:1px solid var(--line);border-radius:4px;background:var(--surface);color:var(--ink);font:12px/1.5 ui-monospace,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere}.settings-footer{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:16px}.settings-footer .help{margin:0}.checks{gap:14px}.settings-column .field{margin-bottom:9px}
+@media(max-width:980px){.settings-columns{grid-template-columns:repeat(2,minmax(0,1fr))}.settings-column:nth-child(2){padding-right:0;border-right:0}.settings-column:nth-child(n+3){padding-top:14px;border-top:1px solid var(--line)}}
+@media(max-width:720px){.settings-columns{grid-template-columns:1fr}.settings-column,.settings-column:nth-child(2){padding:0 0 14px;border-right:0;border-bottom:1px solid var(--line)}.settings-column:last-child{padding-bottom:0;border-bottom:0}.settings-column:nth-child(n+3){padding-top:0;border-top:0}.status-chip{font-size:12px}.connection-actions{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.raw-capture{width:100%;min-height:38px;margin-top:6px;text-align:left;white-space:normal;line-height:1.25}[data-expert-only]{display:none}.top-toggle{display:flex;align-items:center;gap:6px;white-space:nowrap;color:var(--ink);font-size:13px}.top-toggle input{margin:0;accent-color:var(--accent)}html[data-view=expert] [data-expert-only]{display:initial}html[data-view=expert] div[data-expert-only],html[data-view=expert] section[data-expert-only],html[data-view=expert] p[data-expert-only]{display:block}html[data-view=expert] .checks[data-expert-only]{display:flex}html[data-view=expert] button[data-expert-only]{display:inline-block}html[data-view=user] .settings-columns{grid-template-columns:minmax(0,1fr)}html[data-view=user] #intervalsColumn{padding:0;border:0}
+.top-toggle input[type=checkbox],.check input[type=checkbox]{appearance:none;position:relative;flex:0 0 36px;width:36px;height:20px;margin:0;border:1px solid var(--line);border-radius:999px;background:var(--muted);cursor:pointer;transition:background-color .15s,border-color .15s}.top-toggle input[type=checkbox]::before,.check input[type=checkbox]::before{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--field);box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .15s}.top-toggle input[type=checkbox]:checked,.check input[type=checkbox]:checked{background:var(--ok);border-color:var(--ok)}.top-toggle input[type=checkbox]:checked::before,.check input[type=checkbox]:checked::before{transform:translateX(16px)}.top-toggle input[type=checkbox]:focus-visible,.check input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}.top-toggle input[type=checkbox]:disabled,.check input[type=checkbox]:disabled{cursor:not-allowed;opacity:.55}
+html[data-view=user] #intervalsColumn>h3{display:none}
 </style>
 </head>
 <body>
-<header class="topbar"><div class="brand"><img src="logo.svg" alt="MKP"><span>MultiConnect</span></div><span class="spacer"></span><div class="top-actions"><select id="language" aria-label="Language"><option value="de">DE</option><option value="en">EN</option><option value="uk">UK</option></select><button class="icon-btn" id="theme" type="button" title="Theme" aria-label="Toggle theme">&#9790;</button></div></header>
+<header class="topbar"><div class="brand"><img src="logo.svg" alt="MKP"><span>MultiConnect</span></div><span class="spacer"></span><div class="top-actions"><label class="top-toggle"><input id="expertMode" type="checkbox"><span data-i18n="expert_mode">Expert mode</span></label><select id="language" aria-label="Language"><option value="de">DE</option><option value="en">EN</option><option value="uk">UK</option></select><button class="icon-btn" id="theme" type="button" title="Theme" aria-label="Toggle theme">&#9790;</button></div></header>
 <main class="wrap">
-<div class="status-line"><span class="dot" id="connectionDot"></span><strong id="mode">—</strong><span id="ip">—</span><span id="firmware">—</span><span class="spacer"></span><span id="updated">—</span></div>
-<section class="section"><div class="section-head"><h2 data-i18n="live_data">Live data</h2><span class="muted" id="mqttStatus">—</span></div><div class="metrics">
+<div class="status-line"><span class="dot" id="connectionDot"></span><strong id="mode">—</strong><span id="ip">—</span><span id="firmware">—</span><span class="status-chip"><span class="dot" id="lteDot"></span><span data-i18n="lte">LTE</span><span id="lteStatus">—</span></span><span class="status-chip"><span class="dot" id="mqttDot"></span><span data-i18n="mqtt_connection">MQTT</span><span id="mqttConnectionStatus">—</span></span><span class="spacer"></span><span id="updated">—</span></div>
+<section class="section"><div class="section-head"><h2 data-i18n="live_data">Live data</h2><span class="muted" id="sampleCounter">—</span></div><div class="metrics">
 <div class="metric"><span data-i18n="temperature">Temperature</span><strong id="temperature">—</strong><small id="temperatureValid">—</small></div>
 <div class="metric"><span data-i18n="position_mm">Position</span><strong id="position">—</strong><small id="wegRaw">—</small></div>
 <div class="metric"><span data-i18n="battery">Battery</span><strong id="batteryPercent">—</strong><small id="batteryVoltage">—</small></div>
 <div class="metric"><span data-i18n="ina226">INA226</span><strong id="inaCurrent">—</strong><small id="inaBus">—</small></div>
 </div></section>
-<div class="grid">
-<section class="section"><div class="section-head"><h2 data-i18n="connection">Cellular / MQTT</h2><span class="muted" id="signal">—</span></div>
-<div class="form-grid">
+<section class="section"><div class="section-head"><h2 id="userConfigTitle" data-i18n="intervals">Intervals</h2><h2 id="expertConfigTitle" data-i18n="configuration" hidden>Settings</h2><span class="muted" id="mqttTask" data-expert-only>—</span></div>
+<div class="settings-columns">
+<div class="settings-column" data-expert-only><h3 data-i18n="sim_settings">SIM</h3><div class="form-grid">
 <div class="field"><label for="apn" data-i18n="apn">APN</label><input id="apn" autocomplete="off"></div>
 <div class="field"><label for="gprsUser" data-i18n="gprs_user">SIM user</label><input id="gprsUser" autocomplete="off"></div>
 <div class="field"><label for="gprsPassword" data-i18n="gprs_password">SIM password</label><input id="gprsPassword" type="password" autocomplete="new-password" placeholder="••••••••"></div>
+</div><div class="connection-actions"><button class="btn" id="lteConnect" type="button" data-i18n="lte_connect">Connect LTE</button><button class="btn" id="lteDisconnect" type="button" data-i18n="lte_disconnect">Disconnect LTE</button></div><p class="help" data-i18n="connect_order_help">Save settings first. Connect LTE before MQTT.</p></div>
+<div class="settings-column" data-expert-only><h3 data-i18n="mqtt_settings">MQTT</h3><div class="form-grid">
 <div class="field"><label for="mqttServer" data-i18n="mqtt_server">MQTT server</label><input id="mqttServer" autocomplete="off"></div>
 <div class="field"><label for="mqttPort" data-i18n="mqtt_port">Port</label><input id="mqttPort" type="number" min="1" max="65535" inputmode="numeric"></div>
 <div class="field"><label for="mqttUser" data-i18n="mqtt_user">MQTT user</label><input id="mqttUser" autocomplete="off"></div>
 <div class="field"><label for="mqttPassword" data-i18n="mqtt_password">MQTT password</label><input id="mqttPassword" type="password" autocomplete="new-password" placeholder="••••••••"></div>
+<div class="checks"><label class="check"><input id="mqttAnonymous" type="checkbox"><span data-i18n="mqtt_anonymous">Try anonymous MQTT</span></label></div>
+<p class="help" data-i18n="mqtt_anonymous_help">When saved, this clears stored MQTT credentials. The broker must allow anonymous access.</p>
 <div class="field"><label for="controllerId" data-i18n="controller_id">Controller ID (hardware MAC)</label><input id="controllerId" type="text" readonly></div>
-<div class="field wide"><label for="mqttTopic" data-i18n="mqtt_topic">Topic</label><input id="mqttTopic" autocomplete="off"></div>
-</div><div class="buttons"><button class="btn primary" id="save" type="button" data-i18n="save_all">Save settings</button></div>
-<p class="help" data-i18n="password_help">Leave password fields blank to keep stored values.</p>
-<p class="help" data-i18n="mqtt_topic_help">The default topic ends with this controller ID. A manually edited topic is used as entered.</p>
-</section>
-<section class="section"><div class="section-head"><h2 data-i18n="measurement">Measurement</h2><span class="muted" id="sensorPower">—</span></div>
-<div class="form-grid">
+<div class="field"><label for="mqttClientId" data-i18n="mqtt_client_id">MQTT Client ID</label><input id="mqttClientId" type="text" maxlength="64" autocomplete="off" spellcheck="false"><button class="btn raw-capture" id="resetMqttClientId" type="button" data-i18n="use_generated_client_id">Use generated ID</button></div>
+<p class="help" data-i18n="mqtt_client_id_help">Use a fixed ID allowed by your broker. Leave empty and save to use the controller-generated ID.</p>
+<div class="field"><label for="mqttTopic" data-i18n="mqtt_topic">Topic</label><input id="mqttTopic" autocomplete="off"></div>
+</div><div class="connection-actions"><button class="btn" id="mqttConnect" type="button" data-i18n="mqtt_connect">Connect MQTT</button><button class="btn" id="mqttDisconnect" type="button" data-i18n="mqtt_disconnect">Disconnect MQTT</button></div><p class="help" id="mqttAuthHint" data-i18n="mqtt_auth_help" hidden>The broker rejected the saved MQTT credentials. Enter the correct username/password and save settings.</p><p class="help" data-i18n="mqtt_topic_help">The default topic ends with this controller ID. A manually edited topic is used as entered.</p></div>
+<div class="settings-column"><h3 data-i18n="intervals">Intervals</h3><div class="form-grid">
 <div class="field"><label for="measurementInterval" data-i18n="measurement_interval">Measurement interval (minutes)</label><input id="measurementInterval" type="number" min="1" max="1440"></div>
-<div class="field"><label for="interval" data-i18n="send_interval">Send interval (minutes)</label><input id="interval" type="number" min="1" max="1440"></div>
-<div class="field"><label for="batteryType" data-i18n="battery_type">Battery type</label><select id="batteryType"><option value="lipo-18650">LiPo / 18650</option><option value="saft-36v">SAFT 3.6 V</option></select></div>
-<div class="field"><label for="raw0" data-i18n="calibration_raw0">RAW point 0</label><input id="raw0" type="number"></div>
+<div class="field"><label for="sendCycles" data-i18n="send_interval_cycles">Send every N measurements</label><input id="sendCycles" type="number" min="1" max="1440"></div>
+<div class="field" data-expert-only><label for="batteryType" data-i18n="battery_type">Battery type</label><select id="batteryType"><option value="lipo-18650">LiPo / 18650</option><option value="saft-36v">SAFT 3.6 V</option></select></div>
+</div><p class="help" data-i18n="send_cycles_help">One uplink is sent after the selected number of measurements.</p><div class="checks" data-expert-only><label class="check"><input id="lowPower" type="checkbox"><span data-i18n="low_power">Low-power field mode</span></label><label class="check"><input id="autoRedirect" type="checkbox"><span data-i18n="auto_redirect">Captive portal redirect</span></label><label class="check"><input id="j7Output" type="checkbox"><span data-i18n="j7_24v_output">J7 switched 24 V output (GPIO14)</span></label></div><p class="help" data-i18n="j7_24v_warning" data-expert-only>For compatible 24 V loads only; independent of the sensor 3.3 V rail.</p></div>
+<div class="settings-column" data-expert-only><h3 data-i18n="calibration">Calibration</h3><div class="form-grid">
+<div class="field"><label for="raw0" data-i18n="calibration_raw0">RAW point 0</label><input id="raw0" type="number"><button class="btn raw-capture" id="capture0" type="button" data-i18n="capture_point0">Use current for point 0</button></div>
 <div class="field"><label for="mm0" data-i18n="calibration_mm0">Position point 0 (mm)</label><input id="mm0" type="number" step="0.001"></div>
-<div class="field"><label for="raw1" data-i18n="calibration_raw1">RAW point 1</label><input id="raw1" type="number"></div>
+<div class="field"><label for="raw1" data-i18n="calibration_raw1">RAW point 1</label><input id="raw1" type="number"><button class="btn raw-capture" id="capture1" type="button" data-i18n="capture_point1">Use current for point 1</button></div>
 <div class="field"><label for="mm1" data-i18n="calibration_mm1">Position point 1 (mm)</label><input id="mm1" type="number" step="0.001"></div>
-</div><div class="checks"><label class="check"><input id="lowPower" type="checkbox"><span data-i18n="low_power">Low-power field mode</span></label><label class="check"><input id="autoRedirect" type="checkbox"><span data-i18n="auto_redirect">Captive portal redirect</span></label><label class="check"><input id="j7Output" type="checkbox"><span data-i18n="j7_24v_output">J7 switched 24 V output (GPIO14)</span></label></div>
-<p class="help" data-i18n="j7_24v_warning">For compatible 24 V loads only; independent of the sensor 3.3 V rail.</p>
-<div class="buttons"><button class="btn" id="capture0" type="button" data-i18n="capture_raw">Use current RAW for point 0</button><button class="btn" id="capture1" type="button" data-i18n="capture_raw">Use current RAW for point 1</button></div>
-</section>
+</div></div>
 </div>
-<section class="section"><div class="section-head"><h2 data-i18n="actions">Actions</h2><span class="muted" id="mqttTask">—</span></div><div class="buttons"><button class="btn" id="measure" type="button" data-i18n="measure_now">Measure now</button><button class="btn primary" id="publish" type="button" data-i18n="publish_mqtt">Publish MQTT test</button><button class="btn" id="reboot" type="button" data-i18n="reboot">Reboot</button></div><div id="message" class="message" role="status" aria-live="polite"></div></section>
-<section class="section"><div class="grid"><div><div class="section-head"><h2 data-i18n="temperature_history">Temperature history</h2><span id="temperatureChartValue" class="muted">—</span></div><canvas class="canvas" id="temperatureChart" aria-label="Temperature history"></canvas></div><div><div class="section-head"><h2 data-i18n="position_history">Position history</h2><span id="positionChartValue" class="muted">—</span></div><canvas class="canvas" id="positionChart" aria-label="Position history"></canvas></div></div></section>
+<div class="settings-footer"><button class="btn primary" id="save" type="button" data-i18n="save_all">Save settings</button><span class="help" data-i18n="password_help" data-expert-only>Leave password fields blank to keep stored values.</span></div>
+</section>
+<section class="section"><div class="section-head"><h2 data-i18n="actions">Actions</h2><span class="muted" id="sampleProgress">—</span></div><div class="buttons"><button class="btn" id="measure" type="button" data-i18n="measure_now" data-expert-only>Measure once</button><button class="btn" id="continuousSampling" type="button" data-i18n="start_continuous">Start continuous sampling</button><button class="btn primary" id="publish" type="button" data-i18n="publish_mqtt">Send uplink now</button><button class="btn" id="reboot" type="button" data-i18n="reboot">Reboot</button></div><p class="help" data-i18n="continuous_sampling_help" data-expert-only>Stop returns to the configured measurement interval; it does not stop scheduled measurements.</p><div id="message" class="message" role="status" aria-live="polite"></div></section>
+<section class="section" data-expert-only><div class="section-head"><h2 data-i18n="last_uplink">Last MQTT uplink</h2><span id="lastUplinkStatus" class="muted">—</span></div><pre class="payload" id="lastUplinkPayload">—</pre></section>
+<section class="section" data-expert-only><div class="grid"><div><div class="section-head"><h2 data-i18n="temperature_history">Temperature history</h2><span id="temperatureChartValue" class="muted">—</span></div><canvas class="canvas" id="temperatureChart" aria-label="Temperature history"></canvas></div><div><div class="section-head"><h2 data-i18n="position_history">Position history</h2><span id="positionChartValue" class="muted">—</span></div><canvas class="canvas" id="positionChart" aria-label="Position history"></canvas></div></div></section>
 <footer class="footer">MKP GmbH · MultiConnect · <span id="board">—</span></footer>
 </main>
 <script>
@@ -71,7 +81,144 @@ async function action(url){try{await request(url,{method:'POST'});setText('messa
 async function init(){try{dict=await request('/i18n.json')}catch(_){dict={en:{}}}lang=localStorage.getItem('mc-lang')||((navigator.language||'de').startsWith('uk')?'uk':(navigator.language||'de').startsWith('en')?'en':'de');$('language').value=lang;applyLanguage();const theme=localStorage.getItem('mc-theme')||'light';document.documentElement.dataset.theme=theme;$('theme').textContent=theme==='dark'?'☀':'☾';$('language').onchange=()=>{lang=$('language').value;localStorage.setItem('mc-lang',lang);applyLanguage();render()};$('theme').onclick=()=>{const next=document.documentElement.dataset.theme==='dark'?'light':'dark';document.documentElement.dataset.theme=next;localStorage.setItem('mc-theme',next);$('theme').textContent=next==='dark'?'☀':'☾';drawCharts()};$('save').onclick=save;$('measure').onclick=()=>action('/api/measure');$('publish').onclick=()=>action('/api/mqtt/test');$('reboot').onclick=()=>action('/api/reboot');$('capture0').onclick=()=>{$('raw0').value=state.weg_raw??0};$('capture1').onclick=()=>{$('raw1').value=state.weg_raw??0};$('j7Output').onchange=async()=>{const control=$('j7Output');try{await request('/api/j7-24v',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:control.checked})});setText('message',tr('request_sent'));await load()}catch(error){control.checked=state.j7_24v_enabled===true;setText('message',error.message)}};await load();setInterval(load,1000);window.addEventListener('resize',drawCharts)}init();
 </script>
 <script>
-const renderWithControllerId=render;render=function(){renderWithControllerId();const field=$('controllerId');if(field&&document.activeElement!==field)field.value=state.controller_id||''};
+const renderWithControllerId=render;
+render=function(){
+	const drafts=[...document.querySelectorAll('[data-dirty="true"]')].map(element=>({element,value:element.type==='checkbox'?element.checked:element.value}));
+	renderWithControllerId();
+	for(const draft of drafts){
+		if(document.activeElement===draft.element)continue;
+		if(draft.element.type==='checkbox')draft.element.checked=draft.value;
+		else draft.element.value=draft.value;
+	}
+	const cfg=state.cfg||{};
+	const idField=$('controllerId');
+	if(idField&&document.activeElement!==idField)idField.value=state.controller_id||'';
+	const sendCycles=$('sendCycles');
+	if(sendCycles&&document.activeElement!==sendCycles)sendCycles.value=cfg.send_interval_cycles??state.send_interval_cycles??'';
+	const quality=Number(state.signal_quality);
+	const qualityValid=Number.isFinite(quality)&&quality>=0&&quality<=31;
+	const lteTone=qualityValid?(quality>=15?(state.cellular_ready===true?'ok':'warn'):quality>=8?'warn':'bad'):(state.cellular_ready===true?'warn':state.modem_ready===true?'warn':'bad');
+	const authRejected=state.mqtt_authentication_rejected===true;
+	const mqttTone=authRejected?'bad':state.mqtt_connected===true?'ok':state.mqtt_busy===true?'warn':'bad';
+	for(const [id,tone] of [['lteDot',lteTone],['mqttDot',mqttTone]]){
+		const dot=$(id);if(dot){dot.classList.remove('ok','warn','bad');dot.classList.add(tone)}
+	}
+	const lteState=state.cellular_ready===true?tr('connected'):(state.modem_ready===true?tr('lte_searching'):tr('not_connected'));
+	setText('lteStatus',qualityValid?`CSQ ${quality} / ${lteState}`:lteState);
+	setText('mqttConnectionStatus',authRejected?`${tr('mqtt_auth_failed')} (${state.mqtt_state})`:(state.mqtt_connected===true?tr('connected'):(state.mqtt_busy===true?tr('mqtt_busy'):tr('not_connected'))));
+	const authHint=$('mqttAuthHint');if(authHint)authHint.hidden=!authRejected;
+	const completed=Number(state.measurements_since_last_send)||0;
+	const target=Number(state.send_interval_cycles??cfg.send_interval_cycles)||1;
+	const remaining=Number(state.measurements_until_send??Math.max(0,target-completed));
+	setText('sampleCounter',`${completed}/${target} ${tr('samples')}`);
+	setText('sampleProgress',`${tr('samples_until_uplink')}: ${remaining}`);
+	const payload=state.last_uplink_payload;
+	if(payload!==undefined){
+		if(payload){try{setText('lastUplinkPayload',JSON.stringify(JSON.parse(payload),null,2))}catch(_){setText('lastUplinkPayload',payload)}}
+		else setText('lastUplinkPayload',tr('no_uplink'));
+		setText('lastUplinkStatus',payload?(state.mqtt_last_publish_ok===true?tr('publish_success'):tr('publish_failed')):tr('no_uplink'));
+	}else if(state.mqtt_busy===true)setText('lastUplinkStatus',tr('mqtt_busy'));
+	const continuous=state.continuous_measurement_enabled===true;
+	const continuousButton=$('continuousSampling');
+	if(continuousButton)continuousButton.textContent=tr(continuous?'stop_continuous':'start_continuous');
+	const busy=state.mqtt_busy===true;
+	$('lteConnect').disabled=busy||state.cellular_ready===true;
+	$('lteDisconnect').disabled=busy||(state.modem_ready!==true&&state.cellular_ready!==true);
+	$('mqttConnect').disabled=busy||state.cellular_ready!==true||state.mqtt_connected===true;
+	$('mqttDisconnect').disabled=busy||state.mqtt_connected!==true;
+	$('continuousSampling').disabled=busy||state.mode!=='AP';
+};
+
+function interceptAction(id,handler){
+	const button=$(id);
+	if(!button)return;
+	button.addEventListener('click',async event=>{
+		event.preventDefault();
+		event.stopImmediatePropagation();
+		await handler();
+	},true);
+}
+
+async function postAction(url,body){
+	try{
+		const options={method:'POST'};
+		if(body!==undefined){options.headers={'Content-Type':'application/json'};options.body=JSON.stringify(body)}
+		await request(url,options);
+		setText('message',tr('request_sent'));
+		await load();
+	}catch(error){setText('message',error.message)}
+}
+
+async function saveSettings(){
+	const body={apn:$('apn').value.trim(),gprs_user:$('gprsUser').value.trim(),gprs_password:$('gprsPassword').value,mqtt_server:$('mqttServer').value.trim(),mqtt_port:Number($('mqttPort').value),mqtt_user:$('mqttUser').value.trim(),mqtt_topic:$('mqttTopic').value.trim(),measurement_interval:Number($('measurementInterval').value),send_interval_cycles:Number($('sendCycles').value),battery_type:$('batteryType').value,low_power:$('lowPower').checked,auto_redirect:$('autoRedirect').checked,weg_cal:{raw0:Number($('raw0').value),raw1:Number($('raw1').value),mm0:Number($('mm0').value),mm1:Number($('mm1').value)}};
+	if(body.gprs_password==='')delete body.gprs_password;
+	if($('mqttAnonymous').checked){body.mqtt_user='';body.clear_mqtt_password=true}
+	else if($('mqttPassword').value!=='')body.mqtt_password=$('mqttPassword').value;
+	try{
+		await request('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+		document.querySelectorAll('[data-dirty="true"]').forEach(element=>delete element.dataset.dirty);
+		$('gprsPassword').value='';$('mqttPassword').value='';$('mqttAnonymous').checked=false;
+		setText('message',tr('saved'));
+		await load();
+	}catch(error){setText('message',error.message)}
+}
+
+document.querySelectorAll('.settings-columns input:not(#j7Output),.settings-columns select,#lowPower,#autoRedirect').forEach(element=>{
+	const markDirty=()=>element.dataset.dirty='true';
+	element.addEventListener('input',markDirty);
+	element.addEventListener('change',markDirty);
+});
+
+interceptAction('save',saveSettings);
+interceptAction('measure',()=>postAction('/api/measure'));
+interceptAction('continuousSampling',()=>postAction('/api/sampling',{enabled:state.continuous_measurement_enabled!==true}));
+interceptAction('publish',()=>postAction('/api/mqtt/test'));
+interceptAction('lteConnect',()=>postAction('/api/lte/connect'));
+interceptAction('lteDisconnect',()=>postAction('/api/lte/disconnect'));
+interceptAction('mqttConnect',()=>postAction('/api/mqtt/connect'));
+interceptAction('mqttDisconnect',()=>postAction('/api/mqtt/disconnect'));
+interceptAction('capture0',()=>{if(state.weg_valid){$('raw0').value=state.weg_raw;$('raw0').dataset.dirty='true';setText('message',`${tr('capture_point0')}: ${state.weg_raw}`)}else setText('message',tr('no_valid_reading'))});
+interceptAction('capture1',()=>{if(state.weg_valid){$('raw1').value=state.weg_raw;$('raw1').dataset.dirty='true';setText('message',`${tr('capture_point1')}: ${state.weg_raw}`)}else setText('message',tr('no_valid_reading'))});
+</script>
+<script>
+const baseRenderWithMqttClientId=render;
+render=function(){
+	baseRenderWithMqttClientId();
+	const field=$('mqttClientId');
+	if(field&&!field.dataset.dirty&&document.activeElement!==field)field.value=(state.cfg||{}).mqtt_client_id||'';
+};
+const baseRequestWithMqttClientId=request;
+request=async function(url,options){
+	if(url==='/api/config'&&options?.body){
+		try{
+			const payload=JSON.parse(options.body);
+			const field=$('mqttClientId');
+			if(field?.dataset.dirty==='true')payload.mqtt_client_id=field.value.trim();
+			options={...options,body:JSON.stringify(payload)};
+		}catch(_){}
+	}
+	return baseRequestWithMqttClientId(url,options);
+};
+interceptAction('resetMqttClientId',()=>{
+	const field=$('mqttClientId');
+	field.value='';
+	field.dataset.dirty='true';
+	setText('message',tr('generated_client_id_selected'));
+});
+</script>
+<script>
+const expertMode=$('expertMode');
+const viewStorageKey='mc-dashboard-mode';
+function setExpertMode(enabled){
+	const expert=enabled===true;
+	document.documentElement.dataset.view=expert?'expert':'user';
+	expertMode.checked=expert;
+	$('userConfigTitle').hidden=expert;
+	$('expertConfigTitle').hidden=!expert;
+	localStorage.setItem(viewStorageKey,expert?'expert':'user');
+}
+setExpertMode(localStorage.getItem(viewStorageKey)==='expert');
+expertMode.addEventListener('change',()=>setExpertMode(expertMode.checked));
 </script>
 </body>
 </html>

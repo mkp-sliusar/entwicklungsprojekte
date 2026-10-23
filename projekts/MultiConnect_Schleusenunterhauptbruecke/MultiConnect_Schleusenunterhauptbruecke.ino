@@ -67,8 +67,8 @@ static constexpr char MQTT_SERVER[] = "mqtt.marxkrontal.com";
 static constexpr uint16_t MQTT_PORT = 1883;
 static constexpr char MQTT_USER[] = "funksystemiot";
 static constexpr char MQTT_PASSWORD[] = "4bx7aijN_mb?znh2T`T\"";
-static constexpr char MQTT_TOPIC_PREFIX[] = "test/funksystemiot/nbiot/07152_05";
-static constexpr char LEGACY_DEFAULT_MQTT_TOPIC[] = "test/funksystemiot/nbiot/07152_05/1081ACA0ED30";
+static constexpr char MQTT_TOPIC_PREFIX[] = "test/funksystemiot/nbiot";
+static constexpr char LEGACY_DEFAULT_MQTT_TOPIC[] = "test/funksystemiot/nbiot";
 
 static constexpr uint8_t ADS_CMD_POWERDOWN = 0x02;
 static constexpr uint8_t ADS_CMD_RESET = 0x06;
@@ -118,17 +118,18 @@ struct Measurements {
 	uint32_t measuredAtMs = 0;
 };
 
-	uint16_t measurementIntervalMinutes = 1;
-	uint16_t sendIntervalCycles = 15;
+struct AppConfig {
+	String apn = CELLULAR_APN;
 	String cellularUser = CELLULAR_USER;
 	String cellularPassword = CELLULAR_PASSWORD;
 	String mqttServer = MQTT_SERVER;
 	String mqttUser = MQTT_USER;
 	String mqttPassword = MQTT_PASSWORD;
 	String mqttTopic;
+	String mqttClientIdOverride;
 	uint16_t mqttPort = MQTT_PORT;
 	uint16_t measurementIntervalMinutes = 1;
-	uint16_t sendIntervalMinutes = 15;
+	uint16_t sendIntervalCycles = 4;
 	bool lowPowerEnabled = true;
 	bool autoRedirectEnabled = false;
 	uint8_t batteryType = BATTERY_TYPE_LIPO_18650;
@@ -138,19 +139,23 @@ struct Measurements {
 	float wegMm1 = 10.0f;
 };
 
+enum class NetworkTaskAction : uint8_t {
+	Publish,
+	ConnectCellular,
+	DisconnectCellular,
+	ConnectMqtt,
+	DisconnectMqtt
+};
+
 Measurements cached;
 AppConfig config;
 Preferences preferences;
 WebServer server(80);
 DNSServer dnsServer;
 bool sensorTestEnabled = false;
-	const uint32_t legacySendMinutes = preferences.getUInt(
-		"sendInterval", preferences.getUInt("interval", 15UL));
-	const uint32_t migratedSendCycles =
-		(legacySendMinutes + config.measurementIntervalMinutes - 1UL) /
-		config.measurementIntervalMinutes;
-	config.sendIntervalCycles = constrain(
-		preferences.getUInt("sendCycles", migratedSendCycles), 1UL, 1440UL);
+bool adsAvailable = false;
+bool dsAvailable = false;
+bool inaAvailable = false;
 bool modemReady = false;
 bool cellularReady = false;
 bool apMode = false;
@@ -159,15 +164,30 @@ bool dnsReady = false;
 volatile bool mqttTaskBusy = false;
 volatile uint8_t mqttTaskResult = 0;
 volatile bool mqttLastPublishSuccess = false;
+volatile bool mqttConnectionReady = false;
+volatile bool mqttAuthenticationRejected = false;
+volatile bool automaticUplinkPaused = false;
 volatile int lastSignalQuality = -1;
+volatile bool continuousMeasurementEnabled = false;
+volatile bool uplinkPending = false;
+volatile uint16_t measurementsSinceLastSend = 0;
+volatile NetworkTaskAction networkTaskAction = NetworkTaskAction::Publish;
 bool mqttTaskMeasureBeforePublish = true;
 bool j7OutputEnabled = false;
 uint32_t nextMeasurementMs = 0;
-uint32_t nextSendMs = 0;
+uint32_t nextSignalCheckMs = 0;
+uint32_t nextSendAttemptMs = 0;
+uint8_t sendRetryExponent = 0;
+uint32_t lastUplinkMs = 0;
+String lastUplinkPayload;
 
 bool publishMeasurements();
+bool publishMeasurements(const String& timestampIso8601);
+bool startNetworkTask(NetworkTaskAction action, const char* taskName,
+						 bool measureBeforePublish = false);
 String controllerId();
 String defaultMqttTopic();
+String networkTimestampIso8601();
 
 uint32_t intervalToMilliseconds(uint16_t minutes) {
 	return static_cast<uint32_t>(minutes) * 60000UL;
@@ -177,7 +197,14 @@ bool deadlineReached(uint32_t deadlineMs) {
 	return static_cast<int32_t>(millis() - deadlineMs) >= 0;
 }
 
-	preferences.putUInt("sendCycles", config.sendIntervalCycles);
+uint32_t sendRetryDelayMs() {
+	const uint8_t exponent = sendRetryExponent;
+	if (sendRetryExponent < 4) ++sendRetryExponent;
+	const uint32_t delayMs = 30000UL << exponent;
+	return delayMs > 300000UL ? 300000UL : delayMs;
+}
+
+void loadConfig() {
 	preferences.begin(NVS_NAMESPACE, true);
 	config.apn = preferences.getString("apn", config.apn);
 	config.cellularUser = preferences.getString("gprsUser", config.cellularUser);
@@ -186,19 +213,25 @@ bool deadlineReached(uint32_t deadlineMs) {
 	config.mqttUser = preferences.getString("mqttUser", config.mqttUser);
 	config.mqttPassword = preferences.getString("mqttPass", config.mqttPassword);
 	config.mqttTopic = preferences.getString("mqttTopic", "");
+	config.mqttClientIdOverride = preferences.getString("mqttClientId", config.mqttClientIdOverride);
 	if (config.mqttTopic.isEmpty() || config.mqttTopic == LEGACY_DEFAULT_MQTT_TOPIC) {
 		config.mqttTopic = defaultMqttTopic();
 	}
 	config.mqttPort = preferences.getUShort("mqttPort", config.mqttPort);
 	config.measurementIntervalMinutes = constrain(
 		preferences.getUInt("measureInterval", config.measurementIntervalMinutes), 1UL, 1440UL);
-	config.sendIntervalMinutes = constrain(
-		preferences.getUInt("sendInterval", preferences.getUInt("interval", config.sendIntervalMinutes)),
-		1UL, 1440UL);
+	const uint32_t legacySendMinutes = preferences.getUInt(
+		"sendInterval", preferences.getUInt("interval", 0UL));
+	const uint32_t migratedSendCycles = legacySendMinutes > 0
+		? (legacySendMinutes + config.measurementIntervalMinutes - 1UL) /
+			config.measurementIntervalMinutes
+		: config.sendIntervalCycles;
+	config.sendIntervalCycles = constrain(
+		preferences.getUInt("sendCycles", migratedSendCycles), 1UL, 1440UL);
 	config.lowPowerEnabled = preferences.getBool("lowPower", config.lowPowerEnabled);
 	config.autoRedirectEnabled = preferences.getBool("autoRedirect", config.autoRedirectEnabled);
 	config.batteryType = constrain(preferences.getUChar("batteryType", config.batteryType),
-											  BATTERY_TYPE_LIPO_18650, BATTERY_TYPE_SAFT_36V);
+										  BATTERY_TYPE_LIPO_18650, BATTERY_TYPE_SAFT_36V);
 	config.wegRaw0 = preferences.getInt("wegRaw0", config.wegRaw0);
 	config.wegRaw1 = preferences.getInt("wegRaw1", config.wegRaw1);
 	config.wegMm0 = preferences.getFloat("wegMm0", config.wegMm0);
@@ -219,9 +252,10 @@ void saveConfig() {
 	preferences.putString("mqttUser", config.mqttUser);
 	preferences.putString("mqttPass", config.mqttPassword);
 	preferences.putString("mqttTopic", config.mqttTopic);
+	preferences.putString("mqttClientId", config.mqttClientIdOverride);
 	preferences.putUShort("mqttPort", config.mqttPort);
 	preferences.putUInt("measureInterval", config.measurementIntervalMinutes);
-	preferences.putUInt("sendInterval", config.sendIntervalMinutes);
+	preferences.putUInt("sendCycles", config.sendIntervalCycles);
 	preferences.putBool("lowPower", config.lowPowerEnabled);
 	preferences.putBool("autoRedirect", config.autoRedirectEnabled);
 	preferences.putUChar("batteryType", config.batteryType);
@@ -601,6 +635,7 @@ bool readINA226(float& busVoltageV, float& shuntVoltageMv,
 }
 
 String mqttClientId() {
+	if (!config.mqttClientIdOverride.isEmpty()) return config.mqttClientIdOverride;
 	char value[24];
 	const char* profile = camPmuReady ? "CAM" : "H795";
 	const uint32_t suffix = static_cast<uint32_t>(ESP.getEfuseMac() & 0xFFFFFFULL);
@@ -609,49 +644,42 @@ String mqttClientId() {
 }
 
 bool publishMeasurements() {
+	return publishMeasurements(networkTimestampIso8601());
+}
+
+bool publishMeasurements(const String& timestampIso8601) {
 	if (!mqtt.connected()) {
 		Serial.println("[MQTT] not connected; send M first");
 		return false;
 	}
 
 	JsonDocument doc;
-	doc["controller_id"] = mqttClientId();
-	doc["board"] = camPmuReady ? "LilyGo-T-SIM7080G-S3-PMU" : "T-SIM7080G-S3-Standard";
-	doc["timestamp_ms"] = cached.measuredAtMs;
-	doc["temperature_valid"] = cached.temperatureValid;
+	if (timestampIso8601.isEmpty()) doc["timestamp"] = nullptr;
+	else doc["timestamp"] = timestampIso8601;
+	if (cached.batteryValid) {
+		doc["battery_percent"] = cached.batteryPercent;
+		doc["battery_voltage_v"] = cached.batteryVoltageV;
+	} else {
+		doc["battery_percent"] = nullptr;
+		doc["battery_voltage_v"] = nullptr;
+	}
+	if (cached.wegValid) {
+		doc["position_mm"] = cached.wegPositionMm;
+		doc["weg_raw"] = cached.wegRaw;
+	} else {
+		doc["position_mm"] = nullptr;
+		doc["weg_raw"] = nullptr;
+	}
 	if (cached.temperatureValid) doc["temperature_c"] = cached.temperatureC;
 	else doc["temperature_c"] = nullptr;
-	doc["weg_valid"] = cached.wegValid;
-	if (cached.wegValid) {
-		doc["weg_raw"] = cached.wegRaw;
-		doc["position_mm"] = cached.wegPositionMm;
-		doc["weg_voltage_v"] = cached.wegVoltageV;
-	} else {
-		doc["weg_raw"] = nullptr;
-		doc["position_mm"] = nullptr;
-		doc["weg_voltage_v"] = nullptr;
-	}
-	doc["battery_valid"] = cached.batteryValid;
-	if (cached.batteryValid) {
-		doc["battery_voltage_v"] = cached.batteryVoltageV;
-		doc["battery_percent"] = cached.batteryPercent;
-	} else {
-		doc["battery_voltage_v"] = nullptr;
-		doc["battery_percent"] = nullptr;
-	}
-	doc["ina_valid"] = cached.inaValid;
-	if (cached.inaValid) {
-		doc["ina_bus_v"] = cached.inaBusVoltageV;
-		doc["ina_shunt_mv"] = cached.inaShuntVoltageMv;
-		doc["ina_current_ma"] = cached.inaCurrentMa;
-		doc["ina_power_w"] = cached.inaPowerW;
-	}
-	if (modemReady) doc["signal_quality"] = modem.getSignalQuality();
 
 	String payload;
 	serializeJson(doc, payload);
+	lastUplinkPayload = payload;
+	lastUplinkMs = millis();
 	const bool sent = mqtt.publish(config.mqttTopic.c_str(), payload.c_str(), false);
 	mqttLastPublishSuccess = sent;
+	mqttConnectionReady = mqtt.connected();
 	Serial.printf("[MQTT] publish %s (%u bytes)\n",
 								sent ? "OK" : "FAILED",
 								static_cast<unsigned>(payload.length()));
@@ -676,6 +704,10 @@ void readAllSensors() {
 											 next.batteryVoltageV, next.batteryPercent);
 	next.measuredAtMs = millis();
 	cached = next;
+	if (measurementsSinceLastSend < config.sendIntervalCycles) {
+		++measurementsSinceLastSend;
+	}
+	uplinkPending = measurementsSinceLastSend >= config.sendIntervalCycles;
 
 	if (cached.temperatureValid) {
 		Serial.printf("[DS18B20] %.2f C\n", cached.temperatureC);
@@ -895,6 +927,10 @@ bool startModem() {
 }
 
 bool connectMqtt() {
+	if (mqtt.connected()) {
+		mqttConnectionReady = true;
+		return true;
+	}
 	mqtt.setServer(config.mqttServer.c_str(), config.mqttPort);
 	mqtt.setKeepAlive(60);
 	mqtt.setSocketTimeout(30);
@@ -908,9 +944,18 @@ bool connectMqtt() {
 		connected = mqtt.connect(clientId.c_str(), config.mqttUser.c_str(), config.mqttPassword.c_str());
 	}
 
+	const int connectionState = mqtt.state();
+	mqttConnectionReady = connected;
+	mqttAuthenticationRejected = !connected &&
+		(connectionState == MQTT_CONNECT_BAD_CREDENTIALS ||
+		 connectionState == MQTT_CONNECT_UNAUTHORIZED);
+	if (connected) {
+		automaticUplinkPaused = false;
+		mqttAuthenticationRejected = false;
+	}
 	Serial.printf("[MQTT] %s, state=%d, client=%s\n",
 								connected ? "connected" : "connection failed",
-								mqtt.state(), clientId.c_str());
+							connectionState, clientId.c_str());
 	return connected;
 }
 
@@ -930,8 +975,13 @@ void testBrokerTcp() {
 	if (connected) gsmClient.stop();
 }
 
-bool connectModemAndMqtt() {
+bool connectCellular() {
 	if (!modemReady && !startModem()) return false;
+	if (cellularReady && modem.isGprsConnected()) {
+		lastSignalQuality = modem.getSignalQuality();
+		return true;
+	}
+	cellularReady = false;
 
 	const SimStatus simStatus = modem.getSimStatus(5000L);
 	Serial.printf("[MODEM] SIM status=%d\n", static_cast<int>(simStatus));
@@ -993,14 +1043,59 @@ bool connectModemAndMqtt() {
 	}
 	cellularReady = true;
 	Serial.println("[MODEM] packet data connected");
+	return true;
+}
 
+String networkTimestampIso8601() {
+	if (!modemReady) return String();
+
+	String response;
+	modem.sendAT("+CCLK?");
+	if (modem.waitResponse(3000L, response) != 1) {
+		Serial.println("[TIME] modem clock query failed");
+		return String();
+	}
+
+	int year = 0;
+	int month = 0;
+	int day = 0;
+	int hour = 0;
+	int minute = 0;
+	int second = 0;
+	int timezoneQuarters = 0;
+	char timezoneSign = 0;
+	const int parsed = sscanf(response.c_str(),
+							  " +CCLK: \"%2d/%2d/%2d,%2d:%2d:%2d%c%2d\"",
+							  &year, &month, &day, &hour, &minute, &second,
+							  &timezoneSign, &timezoneQuarters);
+	if (parsed != 8 || (timezoneSign != '+' && timezoneSign != '-') ||
+		year < 24 || month < 1 || month > 12 || day < 1 || day > 31 ||
+		hour < 0 || hour > 23 || minute < 0 || minute > 59 ||
+		second < 0 || second > 60 || timezoneQuarters > 56) {
+		Serial.printf("[TIME] invalid modem clock response: %s\n", response.c_str());
+		return String();
+	}
+
+	year += year >= 70 ? 1900 : 2000;
+	const int timezoneMinutes = timezoneQuarters * 15;
+	char timestamp[40];
+	snprintf(timestamp, sizeof(timestamp), "%04d-%02d-%02dT%02d:%02d:%02d%c%02d:%02d",
+			 year, month, day, hour, minute, second, timezoneSign,
+			 timezoneMinutes / 60, timezoneMinutes % 60);
+	return String(timestamp);
+}
+
+bool connectModemAndMqtt() {
+	if (!connectCellular()) return false;
+	const String timestampIso8601 = networkTimestampIso8601();
 	if (!connectMqtt()) return false;
-	if (cached.measuredAtMs > 0) publishMeasurements();
+	if (cached.measuredAtMs > 0) publishMeasurements(timestampIso8601);
 	return true;
 }
 
 void disconnectModem() {
 	if (mqtt.connected()) mqtt.disconnect();
+	mqttConnectionReady = false;
 	if (modemReady && modem.isGprsConnected()) modem.gprsDisconnect();
 	if (modemReady) modem.poweroff();
 	SerialAT.end();
@@ -1031,8 +1126,9 @@ String defaultMqttTopic() {
 const char* mqttTaskStatusName() {
 	switch (mqttTaskResult) {
 		case 1: return "connecting";
-		case 2: return "published";
-		case 3: return "failed";
+		case 2: return "done";
+		case 3: return "operation_failed";
+		case 4: return "auth_failed";
 		default: return "idle";
 	}
 }
@@ -1071,8 +1167,22 @@ void apiState() {
 	document["mqtt_busy"] = mqttTaskBusy;
 	document["mqtt_status"] = mqttTaskStatusName();
 	document["mqtt_last_publish_ok"] = mqttLastPublishSuccess;
+	document["mqtt_connected"] = mqttConnectionReady;
+	document["mqtt_state"] = mqtt.state();
+	document["mqtt_authentication_rejected"] = mqttAuthenticationRejected;
+	document["automatic_uplink_paused"] = automaticUplinkPaused;
 	document["modem_ready"] = modemReady;
 	document["cellular_ready"] = cellularReady;
+	document["continuous_measurement_enabled"] = continuousMeasurementEnabled;
+	document["measurements_since_last_send"] = measurementsSinceLastSend;
+	document["measurements_until_send"] = uplinkPending
+		? 0 : config.sendIntervalCycles - measurementsSinceLastSend;
+	document["send_interval_cycles"] = config.sendIntervalCycles;
+	document["uplink_pending"] = uplinkPending;
+	if (!mqttTaskBusy) {
+		document["last_uplink_payload"] = lastUplinkPayload;
+		document["last_uplink_ms"] = lastUplinkMs;
+	}
 	document["gprs_password_set"] = !config.cellularPassword.isEmpty();
 	document["mqtt_password_set"] = !config.mqttPassword.isEmpty();
 	document["temperature_valid"] = cached.temperatureValid;
@@ -1106,8 +1216,9 @@ void apiState() {
 	settings["mqtt_port"] = config.mqttPort;
 	settings["mqtt_user"] = config.mqttUser;
 	settings["mqtt_topic"] = config.mqttTopic;
+	settings["mqtt_client_id"] = mqttClientId();
 	settings["measurement_interval"] = config.measurementIntervalMinutes;
-	settings["send_interval"] = config.sendIntervalMinutes;
+	settings["send_interval_cycles"] = config.sendIntervalCycles;
 	settings["low_power"] = config.lowPowerEnabled;
 	settings["auto_redirect"] = config.autoRedirectEnabled;
 	settings["battery_type"] = config.batteryType == BATTERY_TYPE_SAFT_36V
@@ -1143,6 +1254,9 @@ void apiSaveConfig() {
 	}
 	if (request["mqtt_server"].is<const char*>()) updated.mqttServer = request["mqtt_server"].as<String>();
 	if (request["mqtt_user"].is<const char*>()) updated.mqttUser = request["mqtt_user"].as<String>();
+	if (request["mqtt_client_id"].is<const char*>()) {
+		updated.mqttClientIdOverride = request["mqtt_client_id"].as<String>();
+	}
 	if (request["mqtt_topic"].is<const char*>()) updated.mqttTopic = request["mqtt_topic"].as<String>();
 	if (request["mqtt_password"].is<const char*>()) {
 		const String password = request["mqtt_password"].as<String>();
@@ -1153,10 +1267,20 @@ void apiSaveConfig() {
 	if (request["measurement_interval"].is<uint32_t>()) {
 		updated.measurementIntervalMinutes = request["measurement_interval"].as<uint32_t>();
 	}
-	if (request["send_interval"].is<uint32_t>()) {
-		updated.sendIntervalMinutes = request["send_interval"].as<uint32_t>();
+	if (request["send_interval_cycles"].is<uint32_t>()) {
+		updated.sendIntervalCycles = request["send_interval_cycles"].as<uint32_t>();
+	} else if (request["send_interval"].is<uint32_t>()) {
+		const uint32_t legacySendMinutes = request["send_interval"].as<uint32_t>();
+		const uint32_t measurementMinutes = updated.measurementIntervalMinutes > 0
+			? updated.measurementIntervalMinutes : 1;
+		updated.sendIntervalCycles =
+			(legacySendMinutes + measurementMinutes - 1UL) / measurementMinutes;
 	} else if (request["interval"].is<uint32_t>()) {
-		updated.sendIntervalMinutes = request["interval"].as<uint32_t>();
+		const uint32_t legacySendMinutes = request["interval"].as<uint32_t>();
+		const uint32_t measurementMinutes = updated.measurementIntervalMinutes > 0
+			? updated.measurementIntervalMinutes : 1;
+		updated.sendIntervalCycles =
+			(legacySendMinutes + measurementMinutes - 1UL) / measurementMinutes;
 	}
 	if (request["low_power"].is<bool>()) updated.lowPowerEnabled = request["low_power"].as<bool>();
 	if (request["auto_redirect"].is<bool>()) updated.autoRedirectEnabled = request["auto_redirect"].as<bool>();
@@ -1178,16 +1302,30 @@ void apiSaveConfig() {
 	}
 	if (updated.apn.isEmpty() || updated.mqttServer.isEmpty() || updated.mqttTopic.isEmpty() ||
 		updated.mqttPort == 0 || updated.measurementIntervalMinutes < 1 ||
-		updated.measurementIntervalMinutes > 1440 || updated.sendIntervalMinutes < 1 ||
-		updated.sendIntervalMinutes > 1440 ||
+		updated.measurementIntervalMinutes > 1440 || updated.sendIntervalCycles < 1 ||
+		updated.sendIntervalCycles > 1440 ||
+		updated.mqttClientIdOverride.length() > 64 ||
 		updated.wegRaw0 == updated.wegRaw1 || !isfinite(updated.wegMm0) || !isfinite(updated.wegMm1)) {
 		server.send(400, "text/plain", "invalid configuration");
 		return;
 	}
+	const bool mqttConnectionSettingsChanged = updated.mqttServer != config.mqttServer ||
+		updated.mqttPort != config.mqttPort || updated.mqttUser != config.mqttUser ||
+		updated.mqttPassword != config.mqttPassword ||
+		updated.mqttClientIdOverride != config.mqttClientIdOverride;
 	config = updated;
 	saveConfig();
-	nextMeasurementMs = millis() + intervalToMilliseconds(config.measurementIntervalMinutes);
-	nextSendMs = millis() + intervalToMilliseconds(config.sendIntervalMinutes);
+	if (mqttConnectionSettingsChanged) {
+		if (mqtt.connected()) mqtt.disconnect();
+		mqttConnectionReady = false;
+		mqttAuthenticationRejected = false;
+		automaticUplinkPaused = false;
+		sendRetryExponent = 0;
+		nextSendAttemptMs = millis();
+	}
+	nextMeasurementMs = millis() + (apMode && continuousMeasurementEnabled
+		? 1000UL : intervalToMilliseconds(config.measurementIntervalMinutes));
+	uplinkPending = measurementsSinceLastSend >= config.sendIntervalCycles;
 	JsonDocument response;
 	response["saved"] = true;
 	sendJson(response);
@@ -1219,34 +1357,144 @@ void apiMeasureNow() {
 	}
 	if (sensorTestEnabled) readAllSensors();
 	else powerExternalSensorsOn();
-	nextMeasurementMs = millis() + intervalToMilliseconds(config.measurementIntervalMinutes);
+	nextMeasurementMs = millis() + (continuousMeasurementEnabled
+		? 1000UL : intervalToMilliseconds(config.measurementIntervalMinutes));
 	JsonDocument response;
 	response["measured_at_ms"] = cached.measuredAtMs;
 	sendJson(response, 202);
 }
 
-void mqttPublishWorker(void*) {
-	if (mqttTaskMeasureBeforePublish) {
-		if (sensorTestEnabled) readAllSensors();
-		else powerExternalSensorsOn();
+void apiSetContinuousMeasurement() {
+	if (!apMode) {
+		server.send(403, "text/plain", "continuous sampling is available in AP mode only");
+		return;
+	}
+	if (mqttTaskBusy) {
+		server.send(409, "text/plain", "network operation is active");
+		return;
+	}
+	if (!server.hasArg("plain")) {
+		server.send(400, "text/plain", "missing body");
+		return;
+	}
+	JsonDocument request;
+	if (deserializeJson(request, server.arg("plain")) || !request["enabled"].is<bool>()) {
+		server.send(400, "text/plain", "invalid continuous measurement request");
+		return;
+	}
+	continuousMeasurementEnabled = request["enabled"].as<bool>();
+	if (continuousMeasurementEnabled) {
+		if (!sensorTestEnabled) powerExternalSensorsOn();
+		nextMeasurementMs = millis() + 1000UL;
+	} else {
 		nextMeasurementMs = millis() + intervalToMilliseconds(config.measurementIntervalMinutes);
 	}
-	const bool connected = connectModemAndMqtt();
-	mqttTaskResult = connected && mqttLastPublishSuccess ? 2 : 3;
-	disconnectModem();
-	if (!apMode && config.lowPowerEnabled) powerExternalSensorsOff();
-	if (mqttTaskMeasureBeforePublish) {
-		nextSendMs = millis() + intervalToMilliseconds(config.sendIntervalMinutes);
+	JsonDocument response;
+	response["enabled"] = continuousMeasurementEnabled;
+	sendJson(response);
+}
+
+void queueNetworkAction(NetworkTaskAction action, const char* taskName) {
+	if (mqttTaskBusy) {
+		server.send(409, "text/plain", "network operation is active");
+		return;
+	}
+	if (action == NetworkTaskAction::ConnectMqtt && !cellularReady) {
+		server.send(409, "text/plain", "connect cellular data first");
+		return;
+	}
+	if (!startNetworkTask(action, taskName)) {
+		server.send(503, "text/plain", "could not start network task");
+		return;
+	}
+	JsonDocument response;
+	response["status"] = "queued";
+	sendJson(response, 202);
+}
+
+void apiConnectCellular() {
+	queueNetworkAction(NetworkTaskAction::ConnectCellular, "connectCellular");
+}
+
+void apiDisconnectCellular() {
+	queueNetworkAction(NetworkTaskAction::DisconnectCellular, "disconnectCellular");
+}
+
+void apiConnectMqtt() {
+	queueNetworkAction(NetworkTaskAction::ConnectMqtt, "connectMqtt");
+}
+
+void apiDisconnectMqtt() {
+	queueNetworkAction(NetworkTaskAction::DisconnectMqtt, "disconnectMqtt");
+}
+
+void mqttPublishWorker(void*) {
+	const NetworkTaskAction action = networkTaskAction;
+	switch (action) {
+		case NetworkTaskAction::ConnectCellular:
+			mqttTaskResult = connectCellular() ? 2 : 3;
+			break;
+		case NetworkTaskAction::DisconnectCellular:
+			disconnectModem();
+			mqttTaskResult = 2;
+			break;
+		case NetworkTaskAction::ConnectMqtt:
+			if (!cellularReady) {
+				Serial.println("[MQTT] connect cellular data first");
+				mqttTaskResult = 3;
+			} else {
+				const bool connected = connectMqtt();
+				mqttTaskResult = connected ? 2 : (mqttAuthenticationRejected ? 4 : 3);
+				if (mqttAuthenticationRejected) automaticUplinkPaused = true;
+			}
+			break;
+		case NetworkTaskAction::DisconnectMqtt:
+			if (mqtt.connected()) mqtt.disconnect();
+			mqttConnectionReady = false;
+			mqttTaskResult = 2;
+			break;
+		case NetworkTaskAction::Publish: {
+			if (mqttTaskMeasureBeforePublish) {
+				if (sensorTestEnabled) readAllSensors();
+				else powerExternalSensorsOn();
+				nextMeasurementMs = millis() + (apMode && continuousMeasurementEnabled
+					? 1000UL : intervalToMilliseconds(config.measurementIntervalMinutes));
+			}
+			const bool connected = connectModemAndMqtt();
+			const bool published = connected && mqttLastPublishSuccess;
+			mqttTaskResult = published ? 2 : 3;
+			if (published) {
+				measurementsSinceLastSend = 0;
+				uplinkPending = false;
+				automaticUplinkPaused = false;
+				mqttAuthenticationRejected = false;
+				sendRetryExponent = 0;
+				nextSendAttemptMs = millis();
+			} else if (mqttAuthenticationRejected) {
+				automaticUplinkPaused = true;
+				mqttTaskResult = 4;
+				Serial.println("[MQTT] broker rejected credentials; automatic uplinks paused until MQTT settings change");
+			} else if (uplinkPending) {
+				const uint32_t retryDelayMs = sendRetryDelayMs();
+				nextSendAttemptMs = millis() + retryDelayMs;
+				Serial.printf("[MQTT] uplink pending; retry in %lu ms\n",
+							static_cast<unsigned long>(retryDelayMs));
+			}
+			if (!apMode) disconnectModem();
+			if (!apMode && config.lowPowerEnabled) powerExternalSensorsOff();
+			break;
+		}
 	}
 	mqttTaskBusy = false;
 	vTaskDelete(nullptr);
 }
 
-bool startMqttPublishTask(const char* taskName, bool measureBeforePublish = true) {
+bool startNetworkTask(NetworkTaskAction action, const char* taskName,
+						 bool measureBeforePublish) {
 	if (mqttTaskBusy) return false;
 	mqttTaskBusy = true;
 	mqttTaskResult = 1;
-	mqttLastPublishSuccess = false;
+	networkTaskAction = action;
 	mqttTaskMeasureBeforePublish = measureBeforePublish;
 	if (xTaskCreatePinnedToCore(mqttPublishWorker, taskName, 8192,
 										nullptr, 1, nullptr, 0) != pdPASS) {
@@ -1257,12 +1505,16 @@ bool startMqttPublishTask(const char* taskName, bool measureBeforePublish = true
 	return true;
 }
 
+bool startMqttPublishTask(const char* taskName, bool measureBeforePublish = true) {
+	return startNetworkTask(NetworkTaskAction::Publish, taskName, measureBeforePublish);
+}
+
 void apiMqttTest() {
 	if (mqttTaskBusy) {
 		server.send(409, "text/plain", "MQTT operation is active");
 		return;
 	}
-	if (!startMqttPublishTask("mqttPublish")) {
+	if (!startNetworkTask(NetworkTaskAction::Publish, "mqttPublish", false)) {
 		server.send(503, "text/plain", "could not start MQTT task");
 		return;
 	}
@@ -1302,6 +1554,11 @@ void attachWebRoutes() {
 	server.on("/api/config", HTTP_POST, apiSaveConfig);
 	server.on("/api/j7-24v", HTTP_POST, apiSetJ7Output);
 	server.on("/api/measure", HTTP_POST, apiMeasureNow);
+	server.on("/api/sampling", HTTP_POST, apiSetContinuousMeasurement);
+	server.on("/api/lte/connect", HTTP_POST, apiConnectCellular);
+	server.on("/api/lte/disconnect", HTTP_POST, apiDisconnectCellular);
+	server.on("/api/mqtt/connect", HTTP_POST, apiConnectMqtt);
+	server.on("/api/mqtt/disconnect", HTTP_POST, apiDisconnectMqtt);
 	server.on("/api/mqtt/test", HTTP_POST, apiMqttTest);
 	server.on("/api/reboot", HTTP_POST, apiReboot);
 	server.on("/generate_204", HTTP_ANY, redirectToCaptivePortal);
@@ -1402,23 +1659,21 @@ void setup() {
 	}
 	apMode = selectApMode();
 	Serial.println("MKP MultiConnect LilyGO controller");
-	Serial.printf("APN=%s MQTT=%s:%u topic=%s measure=%u min send=%u min\n",
+	Serial.printf("APN=%s MQTT=%s:%u topic=%s measure=%u min send every %u samples\n",
 								config.apn.c_str(), config.mqttServer.c_str(),
 							config.mqttPort, config.mqttTopic.c_str(),
 							config.measurementIntervalMinutes,
-							config.sendIntervalMinutes);
+						config.sendIntervalCycles);
 	printHelp();
 	if (apMode) {
 		startAccessPoint();
 		powerExternalSensorsOn();
 		nextMeasurementMs = millis() + intervalToMilliseconds(config.measurementIntervalMinutes);
-		nextSendMs = millis() + intervalToMilliseconds(config.sendIntervalMinutes);
 		Serial.println("[MODE] AP configuration/live monitoring");
 	} else {
 		WiFi.mode(WIFI_OFF);
 		powerExternalSensorsOff();
 		nextMeasurementMs = millis();
-		nextSendMs = millis();
 		Serial.println("[MODE] FIELD MQTT telemetry");
 	}
 }
@@ -1428,16 +1683,19 @@ void loop() {
 	if (apMode) {
 		if (dnsReady) dnsServer.processNextRequest();
 		if (littleFsReady) server.handleClient();
+		if (!mqttTaskBusy && mqttConnectionReady) {
+			mqtt.loop();
+			mqttConnectionReady = mqtt.connected();
+		}
+		if (!mqttTaskBusy && modemReady && deadlineReached(nextSignalCheckMs)) {
+			cellularReady = modem.isGprsConnected();
+			lastSignalQuality = modem.getSignalQuality();
+			nextSignalCheckMs = millis() + 5000UL;
+		}
 		if (!mqttTaskBusy && sensorTestEnabled && deadlineReached(nextMeasurementMs)) {
 			readAllSensors();
-			nextMeasurementMs = millis() + intervalToMilliseconds(config.measurementIntervalMinutes);
-		}
-		if (!mqttTaskBusy && deadlineReached(nextSendMs)) {
-			if (startMqttPublishTask("apMqtt", false)) {
-				nextSendMs = millis() + intervalToMilliseconds(config.sendIntervalMinutes);
-			} else {
-				nextSendMs = millis() + 5000UL;
-			}
+			nextMeasurementMs = millis() + (continuousMeasurementEnabled
+				? 1000UL : intervalToMilliseconds(config.measurementIntervalMinutes));
 		}
 		delay(2);
 		return;
@@ -1449,11 +1707,10 @@ void loop() {
 		nextMeasurementMs = millis() + intervalToMilliseconds(config.measurementIntervalMinutes);
 		if (config.lowPowerEnabled && sensorTestEnabled) powerExternalSensorsOff();
 	}
-	if (!mqttTaskBusy && deadlineReached(nextSendMs)) {
-		if (startMqttPublishTask("fieldMqtt", false)) {
-			nextSendMs = millis() + intervalToMilliseconds(config.sendIntervalMinutes);
-		} else {
-			nextSendMs = millis() + 5000UL;
+	if (!mqttTaskBusy && !automaticUplinkPaused && uplinkPending &&
+		deadlineReached(nextSendAttemptMs)) {
+		if (!startNetworkTask(NetworkTaskAction::Publish, "fieldMqtt")) {
+			nextSendAttemptMs = millis() + 5000UL;
 			Serial.println("[MQTT] failed to create field task; retrying shortly");
 		}
 	}
