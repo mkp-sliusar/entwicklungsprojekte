@@ -22,26 +22,33 @@ position, Wegsensor raw value, and temperature. INA226 data is not included
 in the uplink. Sentinel values represent null measurements; see the payload
 comment in `MultiConnect-Kohlbrandbrucke.ino`.
 
-## Einheitlicher Sensor-Namensstandard (Vorschlag)
+dieselbe Groesse liefern, wird die Instanz zusaetzlich eindeutig nummeriert
+## Einheitlicher Payload- und MQTT-Namensstandard
 
-Fuer neue Projekte sollen Payload- und API-Namen die Messgroesse beschreiben,
-nicht Hersteller, Messprinzip oder Einsatzort. Damit heisst ein Wegaufnehmer
-fuer Riss, Durchbiegung oder Setzung immer `weg_mm`. Namen sind lowercase
-`snake_case`; physikalische Werte erhalten die Einheit als Suffix. Achsen
-werden als `_x_`, `_y_` und `_z_` angegeben.
+Fuer neue Projekte gelten die bestehenden, bereits von Kohlbrandbruecke V5/API
+und T-SIM MQTT verwendeten Feldnamen als gemeinsamer Standard. So bleiben
+`position_mm`, `weg_raw`, `temperature_c`, `battery_percent` und
+`battery_voltage_v` ueber Funkpayload, API und MQTT wiedererkennbar. Namen sind
+lowercase `snake_case`; physikalische Werte tragen die Einheit als Suffix.
+Achsen werden als `_x_`, `_y_` und `_z_` angegeben.
 
-| Bedeutung | Reservierter Name | Einheit | Hinweis |
+| Bedeutung | Verbindlicher Name | Einheit | Verwendung / Hinweis |
 |---|---|---|---|
-| Weg / Verschiebung | `weg_mm` | mm | Unabhaengig vom Einsatzzweck |
-| Rohwert Wegaufnehmer | `weg_raw` | count | Unskalierter ADC-/Sensorwert, nicht mm |
-| Weg X | `weg_x_mm` | mm | Achse im projektspezifisch dokumentierten Koordinatensystem |
-| Weg Y | `weg_y_mm` | mm | Achse im projektspezifisch dokumentierten Koordinatensystem |
-| Weg Z | `weg_z_mm` | mm | Achse im projektspezifisch dokumentierten Koordinatensystem |
-| Temperatur | `temp_c` | deg C | Celsius |
-| Batteriespannung | `batt_v` | V | |
-| Batterieladezustand | `batt_percent` | % | Schaetzung, falls nicht direkt gemessen |
-| Versorgungsspannung | `supply_v` | V | |
-| Stromaufnahme | `current_ma` | mA | Bei mehreren Stroemen qualifizieren, z.B. `batt_current_ma` |
+| Weg / Verschiebung | `position_mm` | mm | Bestehender V5- und API-Name; unabhaengig vom Einsatzzweck |
+| Rohwert Wegaufnehmer | `weg_raw` | count | Bestehender Name; unskalierter Wert, nicht mm |
+| Weg X | `position_x_mm` | mm | Achse im projektspezifisch dokumentierten Koordinatensystem |
+| Weg Y | `position_y_mm` | mm | Achse im projektspezifisch dokumentierten Koordinatensystem |
+| Weg Z | `position_z_mm` | mm | Achse im projektspezifisch dokumentierten Koordinatensystem |
+| Spannung Wegaufnehmer | `weg_voltage_v` | V | Bestehender API- und MQTT-Name |
+| Temperatur | `temperature_c` | deg C | Bestehender V5-, API- und MQTT-Name |
+| Batteriespannung | `battery_voltage_v` | V | Bestehender V5-Name; primaerer Name fuer neue Schnittstellen |
+| Batterieladezustand | `battery_percent` | % | Bestehender V5- und API-Name; Schaetzung, falls nicht direkt gemessen |
+| Batteriespannung Rohwert | `battery_mv` | mV | Bestehendes AP-API-Feld; Kompatibilitaetsalias, nicht zusaetzlich senden |
+| Versorgungsspannung | `supply_v` | V | Nur wenn eine separate Versorgungsrail gemessen wird |
+| INA226 Busspannung | `ina_bus_v` | V | Bestehender T-SIM MQTT- und Heltec-API-Name |
+| INA226 Shuntspannung | `ina_shunt_mv` | mV | Bestehender T-SIM MQTT- und Heltec-API-Name |
+| INA226 Strom | `ina_current_ma` | mA | Bestehender T-SIM MQTT- und Heltec-API-Name |
+| INA226 Leistung | `ina_power_w` | W | Bestehender T-SIM MQTT- und Heltec-API-Name |
 | Kraft | `force_n` | N | |
 | Druck | `pressure_kpa` | kPa | |
 | Relative Feuchte | `humidity_percent` | %RH | |
@@ -51,36 +58,41 @@ werden als `_x_`, `_y_` und `_z_` angegeben.
 | Neigung X | `tilt_x_deg` | deg | |
 | Neigung Y | `tilt_y_deg` | deg | |
 | Neigung Z | `tilt_z_deg` | deg | |
-| RSSI | `rssi` | dBm | Empfangspegel |
-| SNR | `snr` | dB | Signal-Rausch-Verhaeltnis |
+| Gateway-Downlink-RSSI | `gateway_downlink_rssi_dbm` | dBm | Bestehendes Heltec-API-Feld; kein Uplink-RSSI |
+| Gateway-Downlink-SNR | `gateway_downlink_snr_db` | dB | Bestehendes Heltec-API-Feld |
+| Mobilfunk-Signalqualitaet | `signal_quality` | CSQ-Index | Bestehender T-SIM MQTT-Name |
 | LoRaWAN Data-Rate-Index | `lora_dr` | index | `dr` allein ist mehrdeutig |
 | Datenrate | `data_rate_bps` | bit/s | Nur fuer eine physikalische Bitrate |
-| Zeitstempel | `timestamp` | ISO 8601 UTC | Beispiel: `2026-10-22T12:30:00Z` |
+| Absoluter Zeitstempel | `timestamp` | ISO 8601 UTC | Beispiel: `2026-10-22T12:30:00Z` |
+| Laufzeit-Zeitstempel | `timestamp_ms` | ms | T-SIM MQTT: Millisekunden seit Boot, keine UTC-Zeit |
 | Breitengrad | `latitude_deg` | deg | WGS84 |
 | Laengengrad | `longitude_deg` | deg | WGS84 |
 | Hoehe | `altitude_m` | m | Bezugsniveau projektspezifisch dokumentieren |
 
-`_raw` ist ausschliesslich fuer unskalierte Messwerte vorgesehen. Rohwerte
-duerfen nicht mit physikalischen Werten vermischt werden. Wenn mehrere Sensoren
-dieselbe Groesse liefern, wird die Instanz zusaetzlich eindeutig nummeriert
-oder ueber Metadaten identifiziert; der Basisname bleibt erhalten.
+Statusfelder verwenden `<messwert>_valid`, z.B. `temperature_valid`,
+`weg_valid`, `battery_valid` und `ina_valid`. Sie beschreiben die Gueltigkeit
+des Messwerts und ersetzen ihn nicht. `_raw` ist ausschliesslich fuer
+unskalierte Messwerte vorgesehen. Wenn mehrere Sensoren dieselbe Groesse
+liefern, wird die Quelle qualifiziert, z.B. `battery_current_ma` und
+`ina_current_ma`.
 
-### Bestehende Payload V5 Namen
+### Bestehende Namen und Kompatibilitaet
 
-Die V5-Feldnamen sind Bestandteil des bestehenden Funkprotokolls und werden
-hier nicht geaendert. Bei einer kuenftigen Payload-Version sollen sie auf den
-Standard abgebildet werden:
+Die V5-Feldnamen sind bereits der Standard. Das bestehende Funkformat und der
+Decoder werden in Release `v1.0.1` nicht geaendert:
 
-| Payload V5 heute | Kanonischer Name fuer neue Payloads |
+| Payload V5 | Verbindlicher Name |
 |---|---|
-| `battery_percent` | `batt_percent` |
-| `battery_voltage_v` | `batt_v` |
-| `position_mm` | `weg_mm` |
+| `battery_percent` | `battery_percent` |
+| `battery_voltage_v` | `battery_voltage_v` |
+| `position_mm` | `position_mm` |
 | `weg_raw` | `weg_raw` |
-| `temperature_c` | `temp_c` |
+| `temperature_c` | `temperature_c` |
 
-Eine Protokollversion muss alte Decoder weiter unterstuetzen oder eindeutig
-versioniert werden.
+Das bestehende Heltec-AP-JSON verwendet zusaetzlich `battery_v` als Alias fuer
+`battery_voltage_v`; dieser Alias bleibt fuer die bestehende UI erhalten. Neue
+MQTT- und API-Felder verwenden `battery_voltage_v`. Bei bestehenden
+Schnittstellen werden Feldnamen nur mit expliziter Versionierung umgestellt.
 
 For the Heltec WiFi LoRa 32 V4 profile use EU868 and
 `USE_KCT8103L_PA`. Compile, upload, and upload the `data/` filesystem from

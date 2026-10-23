@@ -1,255 +1,77 @@
 <!doctype html>
-<html lang="de" translate="no" class="notranslate" data-theme="light" data-view="user" data-menu="closed">
+<html lang="de" translate="no">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<meta name="google" content="notranslate">
-<title>MKP MultiConnect Kohlbrandbrücke</title>
+<title>MKP MultiConnect</title>
 <style>
-:root{--primary:#004972;--accent:#42c0eb;--accent-soft:#e4f5fb;--page:#fff;--surface:#f8f9fa;--field:#edf3f6;--ink:rgba(0,0,0,.87);--muted:#9aabb4;--line:rgba(0,0,0,.12);--ok:#278a61;--bad:#c95050;--shadow:0 2px 3px rgba(0,0,0,.16),0 1px 1px rgba(0,0,0,.10)}
-html[data-theme=dark]{--page:#0e1b22;--surface:#172a33;--field:#203842;--ink:#edf6f9;--muted:#9db5bf;--line:rgba(220,240,246,.18);--primary:#8bd8ef;--accent:#42c0eb;--accent-soft:#164b61;--shadow:0 2px 5px rgba(0,0,0,.34)}
-*{box-sizing:border-box}html{min-width:320px}body{margin:0;background:var(--page);color:var(--ink);font:14px/1.45 "HCo Gotham Rounded",Arial,Helvetica,sans-serif}button,input,select{font:inherit}button{cursor:pointer}.header{position:fixed;z-index:20;top:0;left:0;right:0;height:64px;display:flex;align-items:center;background:var(--surface);color:var(--primary);box-shadow:0 2px 8px rgba(0,0,0,.20)}.logo{display:flex;align-items:center;width:252px;height:35px;margin-left:26px}.logo img{display:block;width:100%;height:100%;object-fit:contain}.header-spacer{flex:1}.actions{display:flex;align-items:center;gap:2px;margin-right:14px}.icon{width:48px;height:48px;padding:0;border:0;border-radius:50%;background:transparent;color:var(--primary);display:grid;place-items:center;font-weight:500}.icon:hover,.icon:focus-visible{background:var(--accent-soft);outline:0}.icon.active{background:var(--accent-soft);color:var(--primary)}.menu-trigger{margin-left:4px;font-size:22px;line-height:1}.page{width:min(1190px,calc(100% - 32px));margin:0 auto;padding:88px 0 28px}.breadcrumb{display:flex;align-items:center;gap:12px;min-height:36px;margin:0 4px 18px;color:var(--ink);font-size:14px}.breadcrumb .slash{color:var(--muted)}.breadcrumb .current{color:var(--muted)}.panel{margin-top:16px;padding:20px;background:var(--surface);border:1px solid var(--line);border-radius:4px;box-shadow:var(--shadow)}.live-panel{margin-top:0}.panel-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:0 0 20px;color:var(--primary)}.panel-title{display:flex;align-items:center;gap:12px;min-width:0}.panel-title h2{margin:0;font-size:21px;line-height:1.2;font-weight:400;color:var(--primary)}.section-icon{display:grid;place-items:center;width:28px;height:28px;border:2px solid var(--accent);border-radius:50%;color:var(--accent);font-size:16px;font-weight:700;flex:none}.overview{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}.metric-panel{min-width:0;padding:18px;background:var(--page);border:1px solid var(--line);border-radius:4px}.kicker{display:block;margin-bottom:8px;color:var(--muted);font-size:12px}.big{color:var(--primary);font-size:28px;line-height:1.2;font-weight:400;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.small{display:block;margin-top:8px;color:var(--muted);font-size:13px}.bar{height:6px;margin-top:18px;overflow:hidden;background:var(--field);border-radius:3px}.bar>span{display:block;width:0;height:100%;background:var(--accent);transition:width .25s ease}.gauge{position:relative;height:42px;margin-top:14px;overflow:hidden;background:var(--field);border-radius:4px}.gauge:before{content:"";position:absolute;inset:0 auto 0 0;width:calc(var(--p,0)*1%);background:var(--accent);opacity:.9;transition:width .25s ease}.gauge span{position:absolute;z-index:1;inset:0;display:grid;place-items:center;color:var(--primary);font-size:18px;font-weight:500}.settings-layout{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(260px,.8fr);gap:28px}.settings-side{padding-left:28px;border-left:1px solid var(--line)}.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 20px}.field{min-width:0}.field label{display:block;margin-bottom:5px;color:var(--muted);font-size:12px}.field input,.field select{width:100%;height:42px;padding:8px 12px;border:0;border-bottom:1px dotted var(--muted);border-radius:4px 4px 0 0;background:var(--field);color:var(--ink);outline:0}.field input:focus,.field select:focus{border-bottom:2px solid var(--accent)}.expert-credentials{margin-top:20px;padding-top:20px;border-top:1px solid var(--line)}.buttons{display:flex;flex-wrap:wrap;gap:10px}.btn{min-height:38px;padding:8px 14px;border:1px solid transparent;border-radius:4px;background:var(--accent-soft);color:var(--accent);font-weight:500;transition:background .15s ease,box-shadow .15s ease}.btn:hover,.btn:focus-visible{background:#cfeef8;box-shadow:0 1px 3px rgba(0,73,114,.18);outline:0}.btn.primary{background:var(--accent);color:#fff}.btn:disabled{cursor:not-allowed;opacity:.55;box-shadow:none}.metrics{display:grid;gap:0}.metric{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:44px;padding:7px 0;border-bottom:1px dotted var(--line)}.metric:last-child{border-bottom:0}.metric>span:first-child{color:var(--muted);font-size:13px}.metric>b{color:var(--primary);font-weight:500;text-align:right;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.status-pill{display:inline-flex;align-items:center;gap:8px}.dot{width:9px;height:9px;border-radius:50%;background:var(--bad)}.dot.ok{background:var(--ok)}.switch{display:flex;align-items:center;gap:10px;margin-top:18px;color:var(--ink);font-size:13px}.switch input{accent-color:var(--accent)}.expert-only{display:none!important}html[data-view=expert] .expert-only{display:block!important}html[data-view=expert] .expert-grid.expert-only{display:grid!important}.expert-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}.subpanel{min-width:0;padding:18px;background:var(--page);border:1px solid var(--line);border-radius:4px}.subpanel .panel-heading{margin-bottom:14px}.subpanel .panel-title{gap:9px}.subpanel .panel-title h2{font-size:18px}.subpanel .section-icon{width:24px;height:24px;font-size:13px}.help{margin:0 0 16px;color:var(--muted);font-size:13px}.calibration-grid{display:grid;gap:14px}.calibration-grid .buttons input{flex:1 1 120px;min-width:0}.save-panel{display:flex;align-items:center;gap:18px;min-height:76px}.message{color:var(--primary);font-size:13px}.footer{padding:10px 4px;color:var(--muted);font-size:12px}.drawer{position:fixed;z-index:30;top:64px;bottom:0;left:0;width:256px;padding:12px 8px;background:var(--surface);box-shadow:0 8px 10px -5px rgba(0,0,0,.2),0 16px 24px 2px rgba(0,0,0,.14);transform:translateX(-105%);transition:transform .2s ease}.drawer-title{padding:14px 16px 18px;color:var(--primary);font-size:17px}.drawer-item{display:flex;align-items:center;width:100%;min-height:48px;padding:10px 16px;border:0;border-radius:4px;background:transparent;color:var(--primary);text-align:left}.drawer-item:hover,.drawer-item:focus-visible{background:var(--accent-soft);outline:0}.drawer-item.active{background:var(--accent-soft);color:var(--accent)}.drawer-footer{position:absolute;right:16px;bottom:14px;left:16px;padding-top:12px;border-top:1px solid var(--line);color:var(--muted);font-size:12px}.drawer-scrim{position:fixed;z-index:25;inset:64px 0 0;background:rgba(0,0,0,.32);opacity:0;pointer-events:none;transition:opacity .2s ease}.drawer-scrim[hidden]{display:block}.drawer-scrim:not([hidden]){opacity:1;pointer-events:auto}html[data-menu=open] .drawer{transform:translateX(0)}@media(max-width:850px){.logo{width:210px;margin-left:12px}.settings-layout{grid-template-columns:1fr}.settings-side{padding:20px 0 0;border-top:1px solid var(--line);border-left:0}.expert-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:600px){.header{height:60px}.drawer{top:60px}.drawer-scrim{inset:60px 0 0}.page{width:calc(100% - 20px);padding-top:78px}.breadcrumb{margin-bottom:12px}.logo{width:170px;height:28px;margin-left:4px}.actions{margin-right:4px}.actions .icon{width:40px;height:40px}.menu-trigger{width:42px;height:42px}.panel{padding:14px;margin-top:12px}.overview,.form-grid,.expert-grid{grid-template-columns:1fr}.panel-heading{margin-bottom:15px}.panel-title h2{font-size:19px}.big{font-size:26px}.save-panel{align-items:stretch;flex-direction:column;gap:10px}.save-panel .btn{width:100%}}
-.charts-panel{padding-bottom:24px}.chart-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:28px}.chart-slot{min-width:0}.chart-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:0 0 12px}.chart-heading h3{margin:0;color:var(--primary);font-size:17px;font-weight:400}.chart-unit{color:var(--muted);font-size:12px}.chart-canvas{display:block;width:100%;height:220px;background:var(--page);border:1px solid var(--line);border-radius:4px}@media(max-width:600px){.chart-grid{grid-template-columns:1fr}.chart-canvas{height:200px}}
-</style>
-<style>
-.chart-value{color:var(--primary);font-size:13px;font-weight:500;font-variant-numeric:tabular-nums;text-align:right;overflow-wrap:anywhere}
-.lora-test-section{margin-top:18px;padding-top:14px;border-top:1px solid var(--line)}.lora-test-heading{margin:0 0 8px;color:var(--primary);font-size:15px;font-weight:500}.lora-test-metrics{grid-template-columns:1fr}
+:root{--page:#fff;--surface:#f5f8fa;--field:#fff;--ink:#172b35;--muted:#647b86;--line:#d7e1e5;--primary:#07506f;--accent:#1a91b6;--ok:#247d55;--bad:#b84242;--shadow:0 1px 3px rgba(10,35,48,.10)}
+html[data-theme=dark]{--page:#0e1c23;--surface:#172a33;--field:#203842;--ink:#eaf3f6;--muted:#a2b5bd;--line:#344a54;--primary:#9bdced;--accent:#62c5df;--ok:#75d6a5;--bad:#ff9999;--shadow:0 1px 4px rgba(0,0,0,.25)}
+*{box-sizing:border-box}body{margin:0;background:var(--page);color:var(--ink);font:14px/1.45 "HCo Gotham Rounded",Arial,Helvetica,sans-serif}button,input,select{font:inherit}button{cursor:pointer}.topbar{position:sticky;z-index:5;top:0;display:flex;align-items:center;gap:16px;min-height:60px;padding:8px max(18px,calc((100% - 1120px)/2));background:var(--surface);border-bottom:1px solid var(--line)}.brand{display:flex;align-items:center;gap:12px;min-width:0;color:var(--primary);font-size:17px;font-weight:600}.brand img{width:110px;height:34px;object-fit:contain}.spacer{flex:1}.top-actions{display:flex;align-items:center;gap:8px}.top-actions select,.icon-btn{height:36px;border:1px solid var(--line);border-radius:4px;background:var(--field);color:var(--ink)}.top-actions select{padding:0 8px}.icon-btn{width:38px;padding:0;font-size:18px}.wrap{width:min(1120px,calc(100% - 28px));margin:auto;padding:18px 0 36px}.status-line{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 14px;color:var(--muted)}.status-line strong{color:var(--primary);font-weight:600}.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--muted)}.dot.ok{background:var(--ok)}.dot.bad{background:var(--bad)}.section{margin-top:14px;padding:16px 0;border-top:1px solid var(--line)}.section:first-of-type{border-top:0}.section-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 12px}.section h2{margin:0;color:var(--primary);font-size:18px;font-weight:600}.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.metric{min-width:0;padding:12px;background:var(--surface);border:1px solid var(--line);border-radius:4px}.metric span{display:block;color:var(--muted);font-size:12px}.metric strong{display:block;margin-top:4px;color:var(--primary);font-size:21px;font-weight:600;overflow-wrap:anywhere}.metric small{display:block;margin-top:3px;color:var(--muted)}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.field{min-width:0}.field label{display:block;margin-bottom:4px;color:var(--muted);font-size:12px}.field input,.field select{width:100%;min-height:38px;padding:7px 9px;border:1px solid var(--line);border-radius:4px;background:var(--field);color:var(--ink)}.wide{grid-column:1/-1}.checks{display:flex;gap:20px;flex-wrap:wrap;margin-top:12px}.check{display:flex;align-items:center;gap:8px;color:var(--ink)}.check input{width:17px;height:17px;accent-color:var(--accent)}.buttons{display:flex;gap:9px;flex-wrap:wrap;margin-top:14px}.btn{min-height:38px;padding:7px 13px;border:1px solid var(--line);border-radius:4px;background:var(--surface);color:var(--primary);font-weight:600}.btn.primary{border-color:var(--primary);background:var(--primary);color:#fff}.btn:disabled{opacity:.55;cursor:not-allowed}.help,.muted{color:var(--muted);font-size:12px}.canvas{display:block;width:100%;height:190px;margin-top:8px;border:1px solid var(--line);border-radius:4px;background:var(--surface)}.message{min-height:22px;margin-top:8px;color:var(--primary)}.footer{padding:20px 0 0;border-top:1px solid var(--line);color:var(--muted);font-size:12px}
+@media(max-width:720px){.topbar{gap:8px;padding:8px 12px}.brand{font-size:14px}.brand img{width:74px}.grid{grid-template-columns:1fr}.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.wrap{width:calc(100% - 22px)}}
 </style>
 </head>
 <body>
-<header class="header">
-  <button id="menuBtn" class="icon menu-trigger" type="button" aria-label="Menu" title="Menu">&#9776;</button>
-  <a class="logo" href="https://www.marxkrontal.com/de/" target="_blank" rel="noreferrer"><img src="logo.svg" alt="MKP"></a>
-  <div class="header-spacer"></div>
-  <div class="actions">
-    <button id="langBtn" class="icon" type="button" title="Language">EN</button>
-    <button id="themeBtn" class="icon" type="button" title="Theme">&#9790;</button>
-    <button id="expertBtn" class="icon" type="button" title="Expert mode" aria-pressed="false">&#9881;</button>
-  </div>
-</header>
-
-<aside id="drawer" class="drawer" aria-hidden="true">
-  <div class="drawer-title">MKP MultiConnect Kohlbrandbrücke</div>
-  <button id="drawerLive" class="drawer-item" type="button" data-scroll="livePanel">Live data</button>
-  <button id="drawerLora" class="drawer-item" type="button" data-scroll="settingsPanel">Connection settings</button>
-  <button id="drawerCharts" class="drawer-item" type="button" data-scroll="chartsPanel" data-expert>Charts</button>
-  <button id="drawerDiagnostics" class="drawer-item" type="button" data-scroll="expertPanel" data-expert>Expert diagnostics</button>
-  <button id="drawerCalibration" class="drawer-item" type="button" data-scroll="expertPanel" data-expert>Calibration</button>
-  <div class="drawer-footer">FW <span id="drawerFirmware">—</span></div>
-</aside>
-<div id="drawerScrim" class="drawer-scrim" hidden></div>
-
-<main class="page">
-  <nav class="breadcrumb" aria-label="Breadcrumb">
-    <span id="title">MKP MultiConnect Kohlbrandbrücke</span>
-    <span class="slash">/</span>
-    <span id="pageLabel" class="current">Live data</span>
-  </nav>
-
-  <section id="livePanel" class="panel live-panel">
-    <div class="panel-heading"><div class="panel-title"><span class="section-icon">i</span><h2 id="liveTitle">Live data</h2></div></div>
-    <div class="overview">
-      <article class="metric-panel"><span class="kicker" id="temperatureLabel">Temperature</span><div class="big" id="temperature">—</div><span class="small" id="temperatureHint">Current temperature</span></article>
-      <article class="metric-panel"><span class="kicker" id="positionLabel">Position</span><div class="big" id="position">—</div><div class="bar"><span id="positionBar"></span></div><span class="small" id="positionHint">Measured displacement</span></article>
-      <article class="metric-panel"><span class="kicker" id="batteryLabel">Battery</span><div class="gauge" id="batteryGauge"><span id="batteryPercent">—</span></div><div class="small" id="batteryVoltage">—</div></article>
-    </div>
-  </section>
-
-  <section id="settingsPanel" class="panel">
-    <div class="settings-layout">
-      <div>
-        <div class="panel-heading"><div class="panel-title"><span class="section-icon">&#8767;</span><h2 id="loraTitle">Connection settings</h2></div></div>
-        <div class="form-grid">
-          <div class="field"><label id="intervalLabel">Send every (minutes)</label><input id="interval" type="number" min="1" max="1440"></div>
-          <div class="field"><label id="dataRateLabel">Range / speed</label><select id="dr"><option value="auto">Automatic</option><option value="0">Maximum range</option><option value="1">Long range</option><option value="2">Long range / faster</option><option value="3">Balanced</option><option value="4">Fast</option><option value="5">Very fast</option></select></div>
-        </div>
-        <div class="expert-only expert-credentials">
-          <div class="buttons"><button class="btn" id="readChipBtn" type="button">Read DevEUI</button><button class="btn" id="useChipBtn" type="button">Use chip DevEUI</button></div>
-          <div class="form-grid" style="margin-top:16px"><div class="field"><label>DevEUI</label><input id="devEui" maxlength="16"></div><div class="field"><label>JoinEUI</label><input id="joinEui" maxlength="16"></div><div class="field"><label>AppKey</label><input id="appKey" maxlength="32"></div></div>
-        </div>
-      </div>
-      <div class="settings-side">
-        <div class="panel-heading"><div class="panel-title"><span class="section-icon">&#10003;</span><h2 id="summaryTitle">Status</h2></div></div>
-        <div class="metrics"><div class="metric"><span id="radioModeLabel">Operating mode</span><b id="mode">—</b></div><div class="metric"><span id="lastUpdateLabel">Measurement age</span><b id="age">—</b></div><div class="metric"><span id="batteryStateLabel">Battery condition</span><b id="batteryState">—</b></div></div>
-      </div>
-    </div>
-  </section>
-
-  <section id="expertPanel" class="panel expert-only expert-grid">
-    <article class="subpanel">
-      <div class="panel-heading"><div class="panel-title"><span class="section-icon">i</span><h2 id="diagnosticsTitle">Expert diagnostics</h2></div></div>
-      <div class="metrics"><div class="metric"><span>ADS1220 RAW</span><b id="raw">—</b></div><div class="metric"><span>Wegsensor voltage</span><b id="wegVoltage">—</b></div><div class="metric"><span>INA226</span><b class="status-pill"><i id="inaDot" class="dot"></i><span id="inaStatus">—</span></b></div><div class="metric"><span>INA bus</span><b id="inaBus">—</b></div><div class="metric"><span>INA current</span><b id="inaCurrent">—</b></div><div class="metric"><span>INA power</span><b id="inaPower">—</b></div><div class="metric"><span>IP</span><b id="ip">—</b></div><div class="metric"><span>Firmware</span><b id="firmware">—</b></div><div class="metric"><span>Free heap</span><b id="heap">—</b></div></div>
-      <div class="field battery-type-field"><label id="batteryTypeLabel">Battery type</label><select id="batteryType"><option id="batteryTypeLipo" value="lipo-18650">LiPo / 18650 (4.2 V)</option><option id="batteryTypeSaft" value="saft-36v">Saft 3.6 V Li-SOCl2</option></select></div>
-      <div class="switch"><input id="lowPower" type="checkbox"><label id="lowPowerLabel">Maximum low-power field mode</label></div>
-      <div class="switch"><input id="autoRedirect" type="checkbox"><label id="autoRedirectLabel">Automatic captive portal redirect</label></div>
-      <button class="btn" id="rebootBtn" type="button" style="width:100%;margin-top:16px">Reboot controller</button>
-    </article>
-    <article class="subpanel">
-      <div class="panel-heading"><div class="panel-title"><span class="section-icon">&#8767;</span><h2 id="calibrationTitle">Wegsensor calibration</h2></div></div>
-      <p class="help" id="calibrationHelp">Set two known mechanical positions. The raw value may increase or decrease with movement.</p>
-      <div class="calibration-grid"><div class="field"><label>Point 0</label><div class="buttons"><input id="raw0" type="number"><input id="mm0" type="number" step="0.001"></div></div><button class="btn" id="capture0Btn" type="button">Use current RAW</button><div class="field"><label>Point 1</label><div class="buttons"><input id="raw1" type="number"><input id="mm1" type="number" step="0.001"></div></div><button class="btn" id="capture1Btn" type="button">Use current RAW</button></div>
-    </article>
-    <article class="subpanel">
-      <div class="panel-heading"><div class="panel-title"><span class="section-icon">&#9881;</span><h2 id="sensorPowerHeading">Sensors</h2></div></div>
-      <div class="metric"><span id="sensorPowerLabel">External sensor power (MOSFET GPIO34)</span><b id="sensorPowerState">—</b></div>
-      <button class="btn" id="sensorPowerBtn" type="button" style="width:100%;margin-top:16px">Turn sensor power on</button>
-      <div class="lora-test-section">
-        <h3 class="lora-test-heading" id="loraTestTitle">LoRaWAN test</h3>
-        <div class="metrics lora-test-metrics">
-        <div class="metric"><span id="loraTestStatusLabel">Test status</span><b id="loraTestStatus">—</b></div>
-        <div class="metric"><span id="gatewayRssiLabel">Last gateway downlink RSSI</span><b id="gatewayRssi">—</b></div>
-        <div class="metric"><span id="gatewaySnrLabel">Last gateway downlink SNR</span><b id="gatewaySnr">—</b></div>
-        <div class="metric"><span id="gatewayDownlinkAgeLabel">Downlink age</span><b id="gatewayDownlinkAge">—</b></div>
-        </div>
-        <button class="btn" id="loraTestBtn" type="button" style="width:100%;margin-top:12px">Send cached V5 test uplink</button>
-      </div>
-    </article>
-  </section>
-
-  <section id="chartsPanel" class="panel expert-only charts-panel">
-    <div class="panel-heading"><div class="panel-title"><span class="section-icon">&#8767;</span><h2 id="chartsTitle">Trends</h2></div></div>
-    <div class="chart-grid">
-      <div class="chart-slot"><div class="chart-heading"><h3 id="temperatureChartTitle">Temperature history</h3><span id="temperatureChartValue" class="chart-value">—</span></div><canvas id="temperatureChart" class="chart-canvas" role="img" aria-label="Temperature history">Waiting for data</canvas></div>
-      <div class="chart-slot"><div class="chart-heading"><h3 id="positionChartTitle">Position history</h3><span id="positionChartValue" class="chart-value">—</span></div><canvas id="positionChart" class="chart-canvas" role="img" aria-label="Position history">Waiting for data</canvas></div>
-    </div>
-  </section>
-
-  <section class="panel save-panel"><button id="saveBtn" class="btn primary" type="button">Save all settings</button><div id="message" class="message"></div></section>
-  <footer class="footer">MKP GmbH · MultiConnect Kohlbrandbrücke</footer>
+<header class="topbar"><div class="brand"><img src="logo.svg" alt="MKP"><span>MultiConnect</span></div><span class="spacer"></span><div class="top-actions"><select id="language" aria-label="Language"><option value="de">DE</option><option value="en">EN</option><option value="uk">UK</option></select><button class="icon-btn" id="theme" type="button" title="Theme" aria-label="Toggle theme">&#9790;</button></div></header>
+<main class="wrap">
+<div class="status-line"><span class="dot" id="connectionDot"></span><strong id="mode">—</strong><span id="ip">—</span><span id="firmware">—</span><span class="spacer"></span><span id="updated">—</span></div>
+<section class="section"><div class="section-head"><h2 data-i18n="live_data">Live data</h2><span class="muted" id="mqttStatus">—</span></div><div class="metrics">
+<div class="metric"><span data-i18n="temperature">Temperature</span><strong id="temperature">—</strong><small id="temperatureValid">—</small></div>
+<div class="metric"><span data-i18n="position_mm">Position</span><strong id="position">—</strong><small id="wegRaw">—</small></div>
+<div class="metric"><span data-i18n="battery">Battery</span><strong id="batteryPercent">—</strong><small id="batteryVoltage">—</small></div>
+<div class="metric"><span data-i18n="ina226">INA226</span><strong id="inaCurrent">—</strong><small id="inaBus">—</small></div>
+</div></section>
+<div class="grid">
+<section class="section"><div class="section-head"><h2 data-i18n="connection">Cellular / MQTT</h2><span class="muted" id="signal">—</span></div>
+<div class="form-grid">
+<div class="field"><label for="apn" data-i18n="apn">APN</label><input id="apn" autocomplete="off"></div>
+<div class="field"><label for="gprsUser" data-i18n="gprs_user">SIM user</label><input id="gprsUser" autocomplete="off"></div>
+<div class="field"><label for="gprsPassword" data-i18n="gprs_password">SIM password</label><input id="gprsPassword" type="password" autocomplete="new-password" placeholder="••••••••"></div>
+<div class="field"><label for="mqttServer" data-i18n="mqtt_server">MQTT server</label><input id="mqttServer" autocomplete="off"></div>
+<div class="field"><label for="mqttPort" data-i18n="mqtt_port">Port</label><input id="mqttPort" type="number" min="1" max="65535" inputmode="numeric"></div>
+<div class="field"><label for="mqttUser" data-i18n="mqtt_user">MQTT user</label><input id="mqttUser" autocomplete="off"></div>
+<div class="field"><label for="mqttPassword" data-i18n="mqtt_password">MQTT password</label><input id="mqttPassword" type="password" autocomplete="new-password" placeholder="••••••••"></div>
+<div class="field"><label for="controllerId" data-i18n="controller_id">Controller ID (hardware MAC)</label><input id="controllerId" type="text" readonly></div>
+<div class="field wide"><label for="mqttTopic" data-i18n="mqtt_topic">Topic</label><input id="mqttTopic" autocomplete="off"></div>
+</div><div class="buttons"><button class="btn primary" id="save" type="button" data-i18n="save_all">Save settings</button></div>
+<p class="help" data-i18n="password_help">Leave password fields blank to keep stored values.</p>
+<p class="help" data-i18n="mqtt_topic_help">The default topic ends with this controller ID. A manually edited topic is used as entered.</p>
+</section>
+<section class="section"><div class="section-head"><h2 data-i18n="measurement">Measurement</h2><span class="muted" id="sensorPower">—</span></div>
+<div class="form-grid">
+<div class="field"><label for="measurementInterval" data-i18n="measurement_interval">Measurement interval (minutes)</label><input id="measurementInterval" type="number" min="1" max="1440"></div>
+<div class="field"><label for="interval" data-i18n="send_interval">Send interval (minutes)</label><input id="interval" type="number" min="1" max="1440"></div>
+<div class="field"><label for="batteryType" data-i18n="battery_type">Battery type</label><select id="batteryType"><option value="lipo-18650">LiPo / 18650</option><option value="saft-36v">SAFT 3.6 V</option></select></div>
+<div class="field"><label for="raw0" data-i18n="calibration_raw0">RAW point 0</label><input id="raw0" type="number"></div>
+<div class="field"><label for="mm0" data-i18n="calibration_mm0">Position point 0 (mm)</label><input id="mm0" type="number" step="0.001"></div>
+<div class="field"><label for="raw1" data-i18n="calibration_raw1">RAW point 1</label><input id="raw1" type="number"></div>
+<div class="field"><label for="mm1" data-i18n="calibration_mm1">Position point 1 (mm)</label><input id="mm1" type="number" step="0.001"></div>
+</div><div class="checks"><label class="check"><input id="lowPower" type="checkbox"><span data-i18n="low_power">Low-power field mode</span></label><label class="check"><input id="autoRedirect" type="checkbox"><span data-i18n="auto_redirect">Captive portal redirect</span></label><label class="check"><input id="j7Output" type="checkbox"><span data-i18n="j7_24v_output">J7 switched 24 V output (GPIO14)</span></label></div>
+<p class="help" data-i18n="j7_24v_warning">For compatible 24 V loads only; independent of the sensor 3.3 V rail.</p>
+<div class="buttons"><button class="btn" id="capture0" type="button" data-i18n="capture_raw">Use current RAW for point 0</button><button class="btn" id="capture1" type="button" data-i18n="capture_raw">Use current RAW for point 1</button></div>
+</section>
+</div>
+<section class="section"><div class="section-head"><h2 data-i18n="actions">Actions</h2><span class="muted" id="mqttTask">—</span></div><div class="buttons"><button class="btn" id="measure" type="button" data-i18n="measure_now">Measure now</button><button class="btn primary" id="publish" type="button" data-i18n="publish_mqtt">Publish MQTT test</button><button class="btn" id="reboot" type="button" data-i18n="reboot">Reboot</button></div><div id="message" class="message" role="status" aria-live="polite"></div></section>
+<section class="section"><div class="grid"><div><div class="section-head"><h2 data-i18n="temperature_history">Temperature history</h2><span id="temperatureChartValue" class="muted">—</span></div><canvas class="canvas" id="temperatureChart" aria-label="Temperature history"></canvas></div><div><div class="section-head"><h2 data-i18n="position_history">Position history</h2><span id="positionChartValue" class="muted">—</span></div><canvas class="canvas" id="positionChart" aria-label="Position history"></canvas></div></div></section>
+<footer class="footer">MKP GmbH · MultiConnect · <span id="board">—</span></footer>
 </main>
-
 <script>
-const LANGS=['en','de','uk'];const MAX_CHART_POINTS=120;const browserLanguage=(navigator.languages?.[0]||navigator.language||'de').toLowerCase();const detectedLanguage=browserLanguage.startsWith('de')?'de':browserLanguage.startsWith('uk')?'uk':'en';const savedLanguage=localStorage.getItem('mc-lang');let lang=LANGS.includes(savedLanguage)?savedLanguage:detectedLanguage;let dict={},state={};const chartHistory={temperature:[],position:[]};const $=id=>document.getElementById(id);const set=(id,v)=>{const e=$(id);if(e)e.textContent=v};const tr=k=>dict[lang]?.[k]||dict.en?.[k]||k;
-async function req(url,opt){const r=await fetch(url,opt);if(!r.ok)throw new Error(await r.text());return (r.headers.get('content-type')||'').includes('json')?r.json():r.text()}
-function fmt(v,n,u){return Number.isFinite(Number(v))?`${Number(v).toFixed(n)} ${u}`:'—'}function input(id,v){const e=$(id);if(document.activeElement!==e&&!e.dataset.dirty)e.value=v??''}
-function recordChartPoint(){const time=Date.now();if(state.temperature_valid&&Number.isFinite(Number(state.temperature_c)))chartHistory.temperature.push({time,value:Number(state.temperature_c)});if(state.weg_valid&&Number.isFinite(Number(state.position_mm)))chartHistory.position.push({time,value:Number(state.position_mm)});Object.values(chartHistory).forEach(points=>{if(points.length>MAX_CHART_POINTS)points.splice(0,points.length-MAX_CHART_POINTS)})}
-function drawChart(id,points,unit,decimals){const canvas=$(id);if(!canvas)return;const rect=canvas.getBoundingClientRect();const width=Math.max(280,Math.floor(rect.width||320));const height=Math.max(190,Math.floor(rect.height||220));const ratio=window.devicePixelRatio||1;if(canvas.width!==width*ratio||canvas.height!==height*ratio){canvas.width=width*ratio;canvas.height=height*ratio}const context=canvas.getContext('2d');if(!context)return;context.setTransform(ratio,0,0,ratio,0,0);context.clearRect(0,0,width,height);const styles=getComputedStyle(document.documentElement);const grid=styles.getPropertyValue('--line').trim()||'rgba(0,0,0,.12)';const muted=styles.getPropertyValue('--muted').trim()||'#9aabb4';const accent=styles.getPropertyValue('--accent').trim()||'#42c0eb';const left=52,right=16,top=16,bottom=30;const plotWidth=width-left-right,plotHeight=height-top-bottom;context.strokeStyle=grid;context.lineWidth=1;for(let i=0;i<=4;i++){const y=top+(plotHeight*i/4);context.beginPath();context.moveTo(left,y);context.lineTo(width-right,y);context.stroke()}context.font='12px "HCo Gotham Rounded", Arial, sans-serif';context.fillStyle=muted;context.textAlign='right';context.textBaseline='middle';if(!points.length){context.textAlign='center';context.fillText(tr('no_chart_data'),width/2,height/2);canvas.setAttribute('aria-label',tr(id==='temperatureChart'?'temperature_chart':'position_chart'));return}const values=points.map(point=>point.value);const minimum=Math.min(...values);const maximum=Math.max(...values);const span=maximum===minimum?Math.max(Math.abs(maximum)*.05,1):maximum-minimum;const lower=minimum-span*.12;const upper=maximum+span*.12;const valueY=value=>top+(upper-value)/(upper-lower)*plotHeight;context.fillText(`${upper.toFixed(decimals)} ${unit}`,left-8,top);context.fillText(`${lower.toFixed(decimals)} ${unit}`,left-8,top+plotHeight);const firstTime=points[0].time;const lastTime=points[points.length-1].time;const timeSpan=lastTime-firstTime;const pointX=(point,index)=>timeSpan>0?left+(point.time-firstTime)/timeSpan*plotWidth:left+(points.length===1?plotWidth/2:index/(points.length-1)*plotWidth);context.beginPath();points.forEach((point,index)=>{const x=pointX(point,index);const y=valueY(point.value);if(index===0)context.moveTo(x,y);else context.lineTo(x,y)});context.lineTo(pointX(points[points.length-1],points.length-1),top+plotHeight);context.lineTo(pointX(points[0],0),top+plotHeight);context.closePath();context.globalAlpha=.1;context.fillStyle=accent;context.fill();context.globalAlpha=1;context.beginPath();points.forEach((point,index)=>{const x=pointX(point,index);const y=valueY(point.value);if(index===0)context.moveTo(x,y);else context.lineTo(x,y)});context.strokeStyle=accent;context.lineWidth=2;context.stroke();const last=points[points.length-1];context.beginPath();context.arc(pointX(last,points.length-1),valueY(last.value),3.5,0,Math.PI*2);context.fillStyle=accent;context.fill();canvas.setAttribute('aria-label',`${tr(id==='temperatureChart'?'temperature_chart':'position_chart')}: ${last.value.toFixed(decimals)} ${unit}`)}
-function chartNumber(value,decimals){const number=Number(value);if(!Number.isFinite(number))return '—';const normalized=Math.abs(number)<0.0000005?0:number;return normalized.toFixed(decimals).replace(/\.?0+$/,'')}
-function drawChart(id,points,unit,decimals){const canvas=$(id);if(!canvas)return;const valueId=id==='temperatureChart'?'temperatureChartValue':'positionChartValue';const rect=canvas.getBoundingClientRect();const width=Math.max(280,Math.floor(rect.width||320));const height=Math.max(190,Math.floor(rect.height||220));const ratio=window.devicePixelRatio||1;if(canvas.width!==width*ratio||canvas.height!==height*ratio){canvas.width=width*ratio;canvas.height=height*ratio}const context=canvas.getContext('2d');if(!context)return;context.setTransform(ratio,0,0,ratio,0,0);context.clearRect(0,0,width,height);const styles=getComputedStyle(document.documentElement);const grid=styles.getPropertyValue('--line').trim()||'rgba(0,0,0,.12)';const muted=styles.getPropertyValue('--muted').trim()||'#9aabb4';const accent=styles.getPropertyValue('--accent').trim()||'#42c0eb';const left=78,right=16,top=16,bottom=30;const plotWidth=width-left-right,plotHeight=height-top-bottom;context.font='12px "HCo Gotham Rounded", Arial, sans-serif';context.textAlign='right';context.textBaseline='middle';context.strokeStyle=grid;context.lineWidth=1;for(let i=0;i<=4;i++){const y=top+plotHeight*i/4;context.beginPath();context.moveTo(left,y);context.lineTo(width-right,y);context.stroke()}if(!points.length){context.fillStyle=muted;context.textAlign='center';context.fillText(tr('no_chart_data'),width/2,height/2);set(valueId,'—');canvas.setAttribute('aria-label',tr(id==='temperatureChart'?'temperature_chart':'position_chart'));return}const values=points.map(point=>point.value);const minimum=Math.min(...values);const maximum=Math.max(...values);const span=maximum===minimum?Math.max(Math.abs(maximum)*.05,1):maximum-minimum;const lower=minimum-span*.12;const upper=maximum+span*.12;const valueY=value=>top+(upper-value)/(upper-lower)*plotHeight;context.fillStyle=muted;for(let i=0;i<=4;i++){const y=top+plotHeight*i/4;const tick=upper-(upper-lower)*i/4;context.fillText(`${chartNumber(tick,decimals)} ${unit}`,left-8,y)}const firstTime=points[0].time;const lastTime=points[points.length-1].time;const timeSpan=lastTime-firstTime;const pointX=(point,index)=>timeSpan>0?left+(point.time-firstTime)/timeSpan*plotWidth:left+(points.length===1?plotWidth/2:index/(points.length-1)*plotWidth);context.beginPath();points.forEach((point,index)=>{const x=pointX(point,index);const y=valueY(point.value);if(index===0)context.moveTo(x,y);else context.lineTo(x,y)});context.lineTo(pointX(points[points.length-1],points.length-1),top+plotHeight);context.lineTo(pointX(points[0],0),top+plotHeight);context.closePath();context.globalAlpha=.1;context.fillStyle=accent;context.fill();context.globalAlpha=1;context.beginPath();points.forEach((point,index)=>{const x=pointX(point,index);const y=valueY(point.value);if(index===0)context.moveTo(x,y);else context.lineTo(x,y)});context.strokeStyle=accent;context.lineWidth=2;context.stroke();const last=points[points.length-1];context.beginPath();context.arc(pointX(last,points.length-1),valueY(last.value),3.5,0,Math.PI*2);context.fillStyle=accent;context.fill();set(valueId,`${chartNumber(last.value,decimals)} ${unit}`);canvas.setAttribute('aria-label',`${tr(id==='temperatureChart'?'temperature_chart':'position_chart')}: ${chartNumber(last.value,decimals)} ${unit}`)}
-function drawCharts(){drawChart('temperatureChart',chartHistory.temperature,'°C',1);drawChart('positionChart',chartHistory.position,'mm',4)}
-function applyLang(){const m={pageLabel:'live_data',liveTitle:'live_data',chartsTitle:'trends',temperatureChartTitle:'temperature_chart',positionChartTitle:'position_chart',drawerLive:'live_data',drawerLora:'lora_simple',drawerDiagnostics:'diagnostics',drawerCalibration:'calibration',sensorPowerHeading:'sensors',subtitle:'simple_subtitle',temperatureLabel:'temperature',temperatureHint:'temperature_hint',positionLabel:'position',positionHint:'position_hint',batteryLabel:'battery',loraTitle:'lora_simple',intervalLabel:'interval_simple',dataRateLabel:'range_speed',summaryTitle:'status',radioModeLabel:'operating_mode',lastUpdateLabel:'last_measurement',batteryStateLabel:'battery_state',diagnosticsTitle:'diagnostics',lowPowerLabel:'low_power',sensorPowerLabel:'sensor_power',calibrationTitle:'calibration',calibrationHelp:'calibration_help',saveBtn:'save_all',rebootBtn:'reboot'};Object.entries(m).forEach(([i,k])=>set(i,tr(k)));set('langBtn',lang.toUpperCase());document.title=tr('title');updateSensorPowerControl();drawCharts()}
-function applyLang(){const m={pageLabel:'live_data',liveTitle:'live_data',chartsTitle:'trends',temperatureChartTitle:'temperature_chart',positionChartTitle:'position_chart',drawerLive:'live_data',drawerLora:'lora_simple',drawerCharts:'charts',drawerDiagnostics:'diagnostics',drawerCalibration:'calibration',sensorPowerHeading:'sensors',subtitle:'simple_subtitle',temperatureLabel:'temperature',temperatureHint:'temperature_hint',positionLabel:'position',positionHint:'position_hint',batteryLabel:'battery',loraTitle:'lora_simple',intervalLabel:'interval_simple',dataRateLabel:'range_speed',summaryTitle:'status',radioModeLabel:'operating_mode',lastUpdateLabel:'last_measurement',batteryStateLabel:'battery_state',diagnosticsTitle:'diagnostics',batteryTypeLabel:'battery_type',batteryTypeLipo:'battery_type_lipo',batteryTypeSaft:'battery_type_saft',lowPowerLabel:'low_power',sensorPowerLabel:'sensor_power',calibrationTitle:'calibration',calibrationHelp:'calibration_help',saveBtn:'save_all',rebootBtn:'reboot'};Object.entries(m).forEach(([i,k])=>set(i,tr(k)));set('langBtn',lang.toUpperCase());document.title=tr('title');updateSensorPowerControl();drawCharts()}
-function updateSensorPowerControl(){const b=$('sensorPowerBtn');if(!b)return;const on=state.sensor_power_enabled===true;set('sensorPowerState',on?tr('sensor_power_on'):tr('sensor_power_off'));b.textContent=on?tr('disable_sensor_power'):tr('enable_sensor_power');b.disabled=state.mode!=='AP'||state.lora_test_active===true;b.setAttribute('aria-pressed',String(on))}
-function batteryText(p){if(p<15)return tr('battery_critical');if(p<30)return tr('battery_low');if(p<60)return tr('battery_medium');return tr('battery_good')}
-function render(){set('temperature',state.temperature_valid?fmt(state.temperature_c,2,'°C'):'—');set('position',state.weg_valid?fmt(state.position_mm,3,'mm'):'—');const pos=Math.max(0,Math.min(100,(Number(state.position_mm)||0)*10));$('positionBar').style.width=pos+'%';const bp=state.battery_valid?Number(state.battery_percent):null;$('batteryGauge').style.setProperty('--p',bp??0);set('batteryPercent',bp!=null?Math.round(bp)+'%':'—');set('batteryVoltage',state.battery_valid?fmt(state.battery_v,3,'V'):'—');set('batteryState',bp!=null?batteryText(bp):'—');set('mode',state.mode==='AP'?tr('mode_ap'):tr('mode_field'));set('age',state.measurement_age_s!=null?Math.round(state.measurement_age_s)+' s':'—');set('raw',state.weg_raw??'—');set('wegVoltage',state.weg_valid?fmt(state.weg_voltage_v,6,'V'):'—');const connected=!!state.ina_connected;set('inaStatus',connected?tr('connected'):tr('not_connected'));$('inaDot').classList.toggle('ok',connected);set('inaBus',state.ina_valid?fmt(state.ina_bus_v,4,'V'):'—');set('inaCurrent',state.ina_valid?fmt(state.ina_current_ma,1,'mA'):'—');set('inaPower',state.ina_valid?fmt(state.ina_power_w,4,'W'):'—');set('ip',state.ip||'—');set('firmware',state.fw||'—');set('drawerFirmware',state.fw||'—');set('heap',(state.heap_free??'—')+' B');const c=state.cfg||{};input('interval',c.minutes);const dr=$('dr');if(!dr.dataset.dirty)dr.value=c.adr?'auto':String(c.dr??3);input('devEui',c.devEui_msb);input('joinEui',c.appEui_msb);input('appKey',c.appKey_msb);input('raw0',c.weg_cal?.raw0);input('mm0',c.weg_cal?.mm0);input('raw1',c.weg_cal?.raw1);input('mm1',c.weg_cal?.mm1);if(!$('lowPower').dataset.dirty)$('lowPower').checked=c.low_power!==false}
-function render(){const c=state.cfg||{};const calibration=c.weg_cal||{};set('temperature',state.temperature_valid?fmt(state.temperature_c,1,'°C'):'—');set('position',state.weg_valid?fmt(state.position_mm,3,'mm'):'—');const currentPosition=Number(state.position_mm);const calibration0=Number(calibration.mm0);const calibration1=Number(calibration.mm1);let positionPercent=0;if(state.weg_valid&&Number.isFinite(currentPosition)&&Number.isFinite(calibration0)&&Number.isFinite(calibration1)&&calibration1!==calibration0){const lower=Math.min(calibration0,calibration1);const upper=Math.max(calibration0,calibration1);positionPercent=((currentPosition-lower)/(upper-lower))*100}$('positionBar').style.width=Math.max(0,Math.min(100,positionPercent))+'%';const bp=state.battery_valid?Number(state.battery_percent):null;$('batteryGauge').style.setProperty('--p',bp??0);set('batteryPercent',bp!=null?Math.round(bp)+'%':'—');set('batteryVoltage',state.battery_valid?fmt(state.battery_v,3,'V'):'—');set('batteryState',bp!=null?batteryText(bp):'—');set('mode',state.mode==='AP'?tr('mode_ap'):tr('mode_field'));set('age',state.measurement_age_s!=null?Math.round(state.measurement_age_s)+' s':'—');set('raw',state.weg_raw??'—');set('wegVoltage',state.weg_valid?fmt(state.weg_voltage_v,6,'V'):'—');const connected=!!state.ina_connected;set('inaStatus',connected?tr('connected'):tr('not_connected'));$('inaDot').classList.toggle('ok',connected);set('inaBus',state.ina_valid?fmt(state.ina_bus_v,4,'V'):'—');set('inaCurrent',state.ina_valid?fmt(state.ina_current_ma,1,'mA'):'—');set('inaPower',state.ina_valid?fmt(state.ina_power_w,4,'W'):'—');set('ip',state.ip||'—');set('firmware',state.fw||'—');set('drawerFirmware',state.fw||'—');set('heap',(state.heap_free??'—')+' B');const batteryType=$('batteryType');if(batteryType&&!batteryType.dataset.dirty)batteryType.value=c.battery_type||'lipo-18650';input('interval',c.minutes);const dr=$('dr');if(!dr.dataset.dirty)dr.value=c.adr?'auto':String(c.dr??3);input('devEui',c.devEui_msb);input('joinEui',c.appEui_msb);input('appKey',c.appKey_msb);input('raw0',calibration.raw0);input('mm0',calibration.mm0);input('raw1',calibration.raw1);input('mm1',calibration.mm1);if(!$('lowPower').dataset.dirty)$('lowPower').checked=c.low_power!==false}
-async function load(){try{state=await req('/api/state');render();recordChartPoint();drawCharts();updateSensorPowerControl()}catch(e){set('message',e.message)}}
-async function setSensorPower(){try{await req('/api/sensor-power',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:state.sensor_power_enabled!==true})});await load()}catch(e){set('message',e.message)}}
-async function save(){const d=$('dr').value,p={minutes:Number($('interval').value),adr:d==='auto',dr:d==='auto'?3:Number(d),low_power:$('lowPower').checked,devEui_msb:$('devEui').value,appEui_msb:$('joinEui').value,appKey_msb:$('appKey').value,weg_cal:{raw0:Number($('raw0').value),mm0:Number($('mm0').value),raw1:Number($('raw1').value),mm1:Number($('mm1').value)}};try{await req('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});set('message',tr('saved'));document.querySelectorAll('input,select').forEach(e=>delete e.dataset.dirty);await load()}catch(e){set('message',e.message)}}
-async function save(){const d=$('dr').value,p={minutes:Number($('interval').value),adr:d==='auto',dr:d==='auto'?3:Number(d),low_power:$('lowPower').checked,battery_type:$('batteryType').value,devEui_msb:$('devEui').value,appEui_msb:$('joinEui').value,appKey_msb:$('appKey').value,weg_cal:{raw0:Number($('raw0').value),mm0:Number($('mm0').value),raw1:Number($('raw1').value),mm1:Number($('mm1').value)}};try{await req('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});set('message',tr('saved'));document.querySelectorAll('input,select').forEach(e=>delete e.dataset.dirty);await load()}catch(e){set('message',e.message)}}
-function setMenu(open){document.documentElement.dataset.menu=open?'open':'closed';$('drawer').setAttribute('aria-hidden',String(!open));$('drawerScrim').hidden=!open}
-async function init(){try{dict=await req('/i18n.json')}catch(_){dict={en:{}}}applyLang();const theme=localStorage.getItem('mc-theme')||'light';document.documentElement.dataset.theme=theme;$('themeBtn').textContent=theme==='dark'?'☀':'☾';const expert=localStorage.getItem('mc-view')==='expert';document.documentElement.dataset.view=expert?'expert':'user';$('expertBtn').classList.toggle('active',expert);$('expertBtn').setAttribute('aria-pressed',String(expert));$('menuBtn').onclick=()=>setMenu(document.documentElement.dataset.menu!=='open');$('drawerScrim').onclick=()=>setMenu(false);document.querySelectorAll('[data-scroll]').forEach(e=>e.onclick=()=>{const target=$(e.dataset.scroll);if(target)target.scrollIntoView({behavior:'smooth',block:'start'});setMenu(false)});$('expertBtn').onclick=()=>{const e=document.documentElement.dataset.view!=='expert';document.documentElement.dataset.view=e?'expert':'user';localStorage.setItem('mc-view',e?'expert':'user');$('expertBtn').classList.toggle('active',e);$('expertBtn').setAttribute('aria-pressed',String(e));drawCharts()};$('themeBtn').onclick=()=>{const t=document.documentElement.dataset.theme==='dark'?'light':'dark';document.documentElement.dataset.theme=t;localStorage.setItem('mc-theme',t);$('themeBtn').textContent=t==='dark'?'☀':'☾';drawCharts()};$('langBtn').onclick=()=>{lang=LANGS[(LANGS.indexOf(lang)+1)%LANGS.length];localStorage.setItem('mc-lang',lang);applyLang();render()};document.querySelectorAll('input,select').forEach(e=>{e.oninput=()=>e.dataset.dirty='1';e.onchange=()=>e.dataset.dirty='1'});$('saveBtn').onclick=save;$('sensorPowerBtn').onclick=setSensorPower;$('capture0Btn').onclick=()=>{$('raw0').value=state.weg_raw??0;$('raw0').dataset.dirty='1'};$('capture1Btn').onclick=()=>{$('raw1').value=state.weg_raw??0;$('raw1').dataset.dirty='1'};$('readChipBtn').onclick=async()=>{const d=await req('/api/deveui');$('devEui').value=d.chip_devEui_msb;$('devEui').dataset.dirty='1'};$('useChipBtn').onclick=async()=>{await req('/api/deveui/use-chip',{method:'POST'});await load()};$('rebootBtn').onclick=async()=>{await req('/api/reboot',{method:'POST'});set('message',tr('restarting'))};window.addEventListener('resize',drawCharts);document.addEventListener('keydown',e=>{if(e.key==='Escape')setMenu(false)});await load();setInterval(load,1500)}init();
+const $=id=>document.getElementById(id);let state={},dict={},lang='de';const history={temperature:[],position:[]};const maxPoints=120;const tr=key=>dict[lang]?.[key]??dict.en?.[key]??key;
+async function request(url,options){const response=await fetch(url,options);if(!response.ok)throw new Error(await response.text());return (response.headers.get('content-type')||'').includes('json')?response.json():response.text()}
+function setText(id,value){const element=$(id);if(element)element.textContent=value}
+function format(value,digits,unit){const number=Number(value);return Number.isFinite(number)?`${number.toFixed(digits)} ${unit}`:'—'}
+function applyLanguage(){document.documentElement.lang=lang;document.querySelectorAll('[data-i18n]').forEach(element=>element.textContent=tr(element.dataset.i18n));document.title=tr('title')}
+function drawChart(id,points,unit,digits){const canvas=$(id);if(!canvas)return;const box=canvas.getBoundingClientRect(),ratio=window.devicePixelRatio||1,width=Math.max(280,Math.floor(box.width||320)),height=Math.max(170,Math.floor(box.height||190));canvas.width=width*ratio;canvas.height=height*ratio;const context=canvas.getContext('2d');context.scale(ratio,ratio);context.clearRect(0,0,width,height);const style=getComputedStyle(document.documentElement),line=style.getPropertyValue('--line').trim(),muted=style.getPropertyValue('--muted').trim(),accent=style.getPropertyValue('--accent').trim(),left=72,right=12,top=14,bottom=24,plotWidth=width-left-right,plotHeight=height-top-bottom;context.strokeStyle=line;context.fillStyle=muted;context.font='11px sans-serif';context.textAlign='right';for(let i=0;i<=4;i++){const y=top+plotHeight*i/4;context.beginPath();context.moveTo(left,y);context.lineTo(width-right,y);context.stroke()}if(!points.length){context.textAlign='center';context.fillText(tr('waiting_data'),width/2,height/2);return}const values=points.map(point=>point.value),minimum=Math.min(...values),maximum=Math.max(...values),span=maximum===minimum?Math.max(Math.abs(maximum)*.05,1):maximum-minimum,low=minimum-span*.12,high=maximum+span*.12;for(let i=0;i<=4;i++){const v=high-(high-low)*i/4;context.fillText(`${v.toFixed(digits)} ${unit}`,left-5,top+plotHeight*i/4)}const first=points[0].time,last=points[points.length-1].time,range=Math.max(1,last-first);context.strokeStyle=accent;context.lineWidth=2;context.beginPath();points.forEach((point,index)=>{const x=left+((point.time-first)/range)*plotWidth,y=top+((high-point.value)/(high-low))*plotHeight;if(index)context.lineTo(x,y);else context.moveTo(x,y)});context.stroke();const lastPoint=points[points.length-1];setText(id==='temperatureChart'?'temperatureChartValue':'positionChartValue',`${lastPoint.value.toFixed(digits)} ${unit}`)}
+function drawCharts(){drawChart('temperatureChart',history.temperature,'°C',1);drawChart('positionChart',history.position,'mm',3)}
+function render(){const cfg=state.cfg||{};setText('mode',state.mode==='AP'?tr('mode_ap'):tr('mode_field'));setText('ip',state.ip||'—');setText('firmware',state.fw||'—');setText('board',state.board||'—');setText('updated',state.measurement_age_s!=null?`${Math.round(Number(state.measurement_age_s))} s`:tr('waiting_data'));$('connectionDot').classList.toggle('ok',state.mode==='AP');$('connectionDot').classList.toggle('bad',state.mode!=='AP');setText('temperature',state.temperature_valid?format(state.temperature_c,2,'°C'):'—');setText('temperatureValid',state.temperature_valid?tr('valid'):tr('no_valid_reading'));setText('position',state.weg_valid?format(state.position_mm,3,'mm'):'—');setText('wegRaw',state.weg_valid?`${tr('raw')}: ${state.weg_raw}`:tr('no_valid_reading'));setText('batteryPercent',state.battery_valid?`${state.battery_percent}%`:'—');setText('batteryVoltage',state.battery_valid?format(state.battery_voltage_v,3,'V'):'—');setText('inaCurrent',state.ina_valid?format(state.ina_current_ma,1,'mA'):'—');setText('inaBus',state.ina_valid?format(state.ina_bus_v,3,'V'):'—');setText('sensorPower',state.sensor_power_always_on?tr('sensor_rail_always_on'):tr('sensor_rail'));setText('signal',state.signal_quality!=null?`CSQ ${state.signal_quality}`:'');setText('mqttStatus',state.mqtt_busy?tr('mqtt_busy'):tr('mqtt_idle'));setText('mqttTask',tr(`mqtt_${state.mqtt_status||'idle'}`));const fields={apn:cfg.apn,gprsUser:cfg.gprs_user,mqttServer:cfg.mqtt_server,mqttPort:cfg.mqtt_port,mqttUser:cfg.mqtt_user,mqttTopic:cfg.mqtt_topic,measurementInterval:cfg.measurement_interval,interval:cfg.send_interval,batteryType:cfg.battery_type,raw0:cfg.weg_cal?.raw0,raw1:cfg.weg_cal?.raw1,mm0:cfg.weg_cal?.mm0,mm1:cfg.weg_cal?.mm1};Object.entries(fields).forEach(([id,value])=>{const element=$(id);if(element&&document.activeElement!==element)element.value=value??''});if(!$('lowPower').matches(':focus'))$('lowPower').checked=cfg.low_power!==false;if(!$('autoRedirect').matches(':focus'))$('autoRedirect').checked=cfg.auto_redirect===true;if(!$('j7Output').matches(':focus'))$('j7Output').checked=state.j7_24v_enabled===true;if(state.temperature_valid)history.temperature.push({time:Number(state.timestamp_ms)||Date.now(),value:Number(state.temperature_c)});if(state.weg_valid)history.position.push({time:Number(state.timestamp_ms)||Date.now(),value:Number(state.position_mm)});for(const series of Object.values(history))if(series.length>maxPoints)series.splice(0,series.length-maxPoints);drawCharts();const busy=state.mqtt_busy===true;$('publish').disabled=busy;$('save').disabled=busy;$('measure').disabled=busy}
+async function load(){try{state=await request('/api/state');render()}catch(error){setText('message',error.message)}}
+async function save(){const body={apn:$('apn').value.trim(),gprs_user:$('gprsUser').value.trim(),gprs_password:$('gprsPassword').value,mqtt_server:$('mqttServer').value.trim(),mqtt_port:Number($('mqttPort').value),mqtt_user:$('mqttUser').value.trim(),mqtt_topic:$('mqttTopic').value.trim(),measurement_interval:Number($('measurementInterval').value),send_interval:Number($('interval').value),battery_type:$('batteryType').value,low_power:$('lowPower').checked,auto_redirect:$('autoRedirect').checked,weg_cal:{raw0:Number($('raw0').value),raw1:Number($('raw1').value),mm0:Number($('mm0').value),mm1:Number($('mm1').value)}};if(body.gprs_password==='')delete body.gprs_password;if($('mqttPassword').value!=='')body.mqtt_password=$('mqttPassword').value;try{await request('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});$('gprsPassword').value='';$('mqttPassword').value='';setText('message',tr('saved'));await load()}catch(error){setText('message',error.message)}}
+async function action(url){try{await request(url,{method:'POST'});setText('message',tr('request_sent'));await load()}catch(error){setText('message',error.message)}}
+async function init(){try{dict=await request('/i18n.json')}catch(_){dict={en:{}}}lang=localStorage.getItem('mc-lang')||((navigator.language||'de').startsWith('uk')?'uk':(navigator.language||'de').startsWith('en')?'en':'de');$('language').value=lang;applyLanguage();const theme=localStorage.getItem('mc-theme')||'light';document.documentElement.dataset.theme=theme;$('theme').textContent=theme==='dark'?'☀':'☾';$('language').onchange=()=>{lang=$('language').value;localStorage.setItem('mc-lang',lang);applyLanguage();render()};$('theme').onclick=()=>{const next=document.documentElement.dataset.theme==='dark'?'light':'dark';document.documentElement.dataset.theme=next;localStorage.setItem('mc-theme',next);$('theme').textContent=next==='dark'?'☀':'☾';drawCharts()};$('save').onclick=save;$('measure').onclick=()=>action('/api/measure');$('publish').onclick=()=>action('/api/mqtt/test');$('reboot').onclick=()=>action('/api/reboot');$('capture0').onclick=()=>{$('raw0').value=state.weg_raw??0};$('capture1').onclick=()=>{$('raw1').value=state.weg_raw??0};$('j7Output').onchange=async()=>{const control=$('j7Output');try{await request('/api/j7-24v',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:control.checked})});setText('message',tr('request_sent'));await load()}catch(error){control.checked=state.j7_24v_enabled===true;setText('message',error.message)}};await load();setInterval(load,1000);window.addEventListener('resize',drawCharts)}init();
 </script>
 <script>
-document.addEventListener('click',event=>{const item=event.target.closest('[data-expert]');if(!item)return;document.documentElement.dataset.view='expert';localStorage.setItem('mc-view','expert');$('expertBtn').classList.add('active');$('expertBtn').setAttribute('aria-pressed','true');drawCharts()},true);
-</script>
-<script>
-function syncDocumentLanguage(){document.documentElement.lang=lang;document.documentElement.setAttribute('translate','no')};syncDocumentLanguage();document.addEventListener('click',event=>{if(event.target.closest('#langBtn'))setTimeout(syncDocumentLanguage,0)},true);
-</script>
-<script>
-(function(){const baseRender=render;render=function(){baseRender();const control=$('autoRedirect');if(control&&!control.dataset.dirty)control.checked=(state.cfg||{}).auto_redirect===true};const baseRequest=req;req=async function(url,options){if(url==='/api/config'&&options?.body&&$('autoRedirect')){try{const payload=JSON.parse(options.body);payload.auto_redirect=$('autoRedirect').checked;options={...options,body:JSON.stringify(payload)}}catch(_){}}return baseRequest(url,options)};const baseApplyLang=applyLang;applyLang=function(){baseApplyLang();set('autoRedirectLabel',tr('auto_redirect'))};applyLang()})();
-</script>
-<script>
-(function () {
-  const statusKeys = {
-    idle: 'lora_test_idle',
-    queued: 'lora_test_queued',
-    initializing: 'lora_test_initializing',
-    joining: 'lora_test_joining',
-    sending: 'lora_test_sending',
-    awaiting_result: 'lora_test_awaiting_result',
-    acknowledged: 'lora_test_acknowledged',
-    downlink_received: 'lora_test_downlink_received',
-    sent_without_ack: 'lora_test_sent_without_ack',
-    join_timeout: 'lora_test_join_timeout'
-  };
-  let previousLoraTestStatus = 'idle';
-  const baseRecordChartPoint = recordChartPoint;
-  let lastChartMeasurement = 0;
-  recordChartPoint = function () {
-    const measurement = Number(state.measurement_id_ms);
-    if (!measurement || measurement === lastChartMeasurement) return;
-    lastChartMeasurement = measurement;
-    baseRecordChartPoint();
-  };
-  const baseRender = render;
-  render = function () {
-    baseRender();
-    const currentStatus = state.lora_test_status || 'idle';
-    const key = statusKeys[currentStatus] || 'lora_test_idle';
-    if (currentStatus !== previousLoraTestStatus) {
-      if (currentStatus !== 'idle') set('message', tr(key));
-      previousLoraTestStatus = currentStatus;
-    }
-    set('loraTestStatus', tr(key));
-    set('gatewayRssi', state.gateway_downlink_valid === true
-      ? fmt(state.gateway_downlink_rssi_dbm, 0, 'dBm')
-      : tr('not_available'));
-    set('gatewaySnr', state.gateway_downlink_valid === true
-      ? fmt(state.gateway_downlink_snr_db, 0, 'dB')
-      : tr('not_available'));
-    set('gatewayDownlinkAge', state.gateway_downlink_valid === true
-      ? `${Math.round(Number(state.gateway_downlink_age_s))} s`
-      : tr('not_available'));
-
-    const locked = state.mode !== 'AP' || state.lora_test_active === true;
-    ['loraTestBtn', 'sensorPowerBtn', 'saveBtn', 'useChipBtn'].forEach(id => {
-      const button = $(id);
-      if (button) button.disabled = locked;
-    });
-  };
-
-  const baseApplyLang = applyLang;
-  applyLang = function () {
-    baseApplyLang();
-    set('loraTestTitle', tr('lora_test_title'));
-    set('loraTestStatusLabel', tr('lora_test_status_label'));
-    set('gatewayRssiLabel', tr('gateway_downlink_rssi'));
-    set('gatewaySnrLabel', tr('gateway_downlink_snr'));
-    set('gatewayDownlinkAgeLabel', tr('gateway_downlink_age'));
-    set('loraTestBtn', tr('lora_test_send'));
-  };
-
-  const testButton = $('loraTestBtn');
-  if (testButton) {
-    testButton.onclick = async () => {
-      try {
-        await req('/api/lora/test', { method: 'POST' });
-        set('message', tr('lora_test_queued'));
-        await load();
-      } catch (error) {
-        set('message', error.message);
-      }
-    };
-  }
-
-  let refreshPending = false;
-  let lastRefreshAtMs = Date.now();
-  setInterval(async () => {
-    if (document.hidden || refreshPending) return;
-    const now = Date.now();
-    const refreshIntervalMs = 1000;
-    if (now - lastRefreshAtMs < refreshIntervalMs) return;
-    lastRefreshAtMs = now;
-    refreshPending = true;
-    try {
-      await load();
-    } finally {
-      refreshPending = false;
-    }
-  }, 1000);
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden || refreshPending) return;
-    refreshPending = true;
-    lastRefreshAtMs = Date.now();
-    load().finally(() => {
-      refreshPending = false;
-    });
-  });
-
-  applyLang();
-})();
+const renderWithControllerId=render;render=function(){renderWithControllerId();const field=$('controllerId');if(field&&document.activeElement!==field)field.value=state.controller_id||''};
 </script>
 </body>
 </html>

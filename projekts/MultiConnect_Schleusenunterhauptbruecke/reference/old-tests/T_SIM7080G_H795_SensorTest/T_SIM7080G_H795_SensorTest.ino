@@ -422,8 +422,9 @@ bool readINA226(float& busVoltageV, float& shuntVoltageMv,
 
 String mqttClientId() {
 	char value[24];
+	const char* profile = camPmuReady ? "CAM" : "H795";
 	const uint32_t suffix = static_cast<uint32_t>(ESP.getEfuseMac() & 0xFFFFFFULL);
-	snprintf(value, sizeof(value), "MC-H795-%06lX", static_cast<unsigned long>(suffix));
+	snprintf(value, sizeof(value), "MC-%s-%06lX", profile, static_cast<unsigned long>(suffix));
 	return String(value);
 }
 
@@ -435,7 +436,7 @@ bool publishMeasurements() {
 
 	JsonDocument doc;
 	doc["controller_id"] = mqttClientId();
-	doc["board"] = "T-SIM7080G-S3-Standard";
+	doc["board"] = camPmuReady ? "LilyGo-T-SIM7080G-S3-PMU" : "T-SIM7080G-S3-Standard";
 	doc["timestamp_ms"] = cached.measuredAtMs;
 	doc["temperature_valid"] = cached.temperatureValid;
 	if (cached.temperatureValid) doc["temperature_c"] = cached.temperatureC;
